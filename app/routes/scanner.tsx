@@ -26,14 +26,14 @@ import { Link, useNavigate } from "react-router";
 import { SyncBadge } from "~/components/SyncBadge";
 import { getCameraStream, setTorch, torchCapableTrack } from "~/lib/camera";
 import { db } from "~/lib/db";
-import { binIdFromScan } from "~/lib/format";
+import { type ScanTarget, binIdFromScan } from "~/lib/format";
 
 const DETECT_INTERVAL_MS = 125; // ~8/s — faster only burns battery.
 const DUPLICATE_SUPPRESS_MS = 2500;
 
 function useScanner(
   videoRef: React.RefObject<HTMLVideoElement | null>,
-  onHit: (binId: number) => void,
+  onHit: (target: ScanTarget) => void,
 ) {
   const [cameraError, setCameraError] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
@@ -65,10 +65,10 @@ function useScanner(
           ) {
             continue;
           }
-          const binId = binIdFromScan(value);
-          if (binId !== null) {
+          const target = binIdFromScan(value);
+          if (target !== null) {
             lastHit = { value, at: Date.now() };
-            onHitRef.current(binId);
+            onHitRef.current(target);
             break;
           }
         }
@@ -133,8 +133,11 @@ export default function Scanner() {
   const [torchOn, setTorchOn] = useState(false);
   const [manualId, setManualId] = useState("");
 
-  const { cameraError, torchAvailable } = useScanner(videoRef, (binId) => {
-    navigate(`/${binId}`, { replace: true });
+  const { cameraError, torchAvailable } = useScanner(videoRef, (target) => {
+    // Keep the code in the URL: an unauthenticated helper handed the phone
+    // mid-scan can join from this exact location (see the shell gate).
+    const suffix = target.code ? `?${target.code}` : "";
+    navigate(`/${target.binId}${suffix}`, { replace: true });
   });
 
   const recentBins = useLiveQuery(
@@ -226,8 +229,8 @@ export default function Scanner() {
             value={manualId}
             onChange={(e) => setManualId(e.currentTarget.value)}
             onKeyDown={(e) => {
-              const id = binIdFromScan(manualId);
-              if (e.key === "Enter" && id !== null) navigate(`/${id}`);
+              const target = binIdFromScan(manualId);
+              if (e.key === "Enter" && target) navigate(`/${target.binId}`);
             }}
           />
         </Paper>

@@ -9,12 +9,28 @@ import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import { db, schema } from "../db/client.server";
 import { DrizzleStateStore } from "../db/store.server";
-import type { CanonicalOp } from "../shared/ops";
+import {
+  type CanonicalOp,
+  SECRET_CODE_ALPHABET,
+  SECRET_CODE_LENGTH,
+} from "../shared/ops";
 import { applyOp } from "../shared/reducer";
 import { type Ctx, error, json, serializedTransaction } from "./context";
 
 /** Short IDs start here — no bin 1; low numbers read as test noise. */
 const FIRST_BIN_ID = 100;
+
+/**
+ * Mint a sticker secret. The tiny modulo bias (256 % 30 ≠ 0) is fine — the
+ * codes are deliberately low-security (see shared/ops.ts).
+ */
+function generateSecretCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(SECRET_CODE_LENGTH));
+  let code = "";
+  for (const byte of bytes)
+    code += SECRET_CODE_ALPHABET[byte % SECRET_CODE_ALPHABET.length];
+  return code;
+}
 
 const allocateSchema = z.object({ count: z.number().int().min(1).max(200) });
 
@@ -26,7 +42,7 @@ export async function handleAllocate(
   if (!parsed.success) return error(400, "invalid allocate request");
   const { count } = parsed.data;
 
-  const binIds = await serializedTransaction(async () => {
+  const bins = await serializedTransaction(async () => {
     const store = new DrizzleStateStore(ctx.groupId);
     // The ID sequence is global across groups (URLs can't carry a group).
     const top = await db.query.bin.findFirst({
@@ -35,15 +51,16 @@ export async function handleAllocate(
     });
     let nextId = Math.max((top?.id ?? 0) + 1, FIRST_BIN_ID);
 
-    const ids: number[] = [];
+    const allocated: { id: number; code: string }[] = [];
     const now = Date.now();
     for (let i = 0; i < count; i++) {
       const binId = nextId++;
+      const code = generateSecretCode();
       const op: CanonicalOp = {
         opId: uuidv7(),
         type: "bin.allocate",
         binId,
-        payload: {},
+        payload: { code },
         clientTime: now,
         geo: null,
         seq: null,
@@ -66,10 +83,10 @@ export async function handleAllocate(
         .returning({ seq: schema.op.seq });
       op.seq = inserted[0]?.seq ?? null;
       await applyOp(store, op);
-      ids.push(binId);
+      allocated.push({ id: binId, code });
     }
-    return ids;
+    return allocated;
   });
 
-  return json({ binIds });
+  return json({ bins });
 }

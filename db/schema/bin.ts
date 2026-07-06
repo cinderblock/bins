@@ -22,6 +22,8 @@ export const bin = sqliteTable(
       .notNull()
       .references(() => group.id, { onDelete: "cascade" }),
     status: text("status").notNull().default("unclaimed"),
+    /** Sticker secret (the ?CODE in the QR URL) — written by bin.allocate. */
+    secretCode: text("secret_code"),
     name: text("name"),
     sizeClass: text("size_class"),
     externalLabel: text("external_label"),

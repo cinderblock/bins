@@ -16,10 +16,12 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconArrowLeft, IconPrinter } from "@tabler/icons-react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { renderSVG } from "uqr";
 import { apiJson } from "~/lib/api";
+import { db } from "~/lib/db";
 import { syncNow } from "~/lib/sync";
 
 const printCss = `
@@ -42,17 +44,34 @@ export default function Print() {
     .map((s) => Number(s))
     .filter((n) => Number.isInteger(n) && n > 0);
 
+  // Sticker secrets come from the replica (they ride the bin.allocate ops),
+  // which is also what lets old sheets re-render long after allocation.
+  const codeById = useLiveQuery(
+    async () =>
+      new Map(
+        (await db.bins.where("id").anyOf(ids).toArray()).map((bin) => [
+          bin.id,
+          bin.secretCode,
+        ]),
+      ),
+    [params.get("ids")],
+    new Map<number, string | null>(),
+  );
+
   async function allocate() {
     setBusy(true);
     try {
-      const response = await apiJson<{ binIds: number[] }>(
+      const response = await apiJson<{ bins: { id: number; code: string }[] }>(
         "/api/bins/allocate",
         {
           method: "POST",
           body: JSON.stringify({ count: Number(count) || 20 }),
         },
       );
-      setParams({ ids: response.binIds.join(",") }, { replace: true });
+      setParams(
+        { ids: response.bins.map((bin) => bin.id).join(",") },
+        { replace: true },
+      );
       // Pull the new unclaimed bins into the local replica right away.
       void syncNow();
     } catch (err) {
@@ -120,7 +139,9 @@ export default function Print() {
           }}
         >
           {ids.map((id) => {
-            const url = `${window.location.origin}/${id}`;
+            const code = codeById.get(id);
+            // No QR without the secret — a bare /{id} sticker grants nothing.
+            const url = code ? `${window.location.origin}/${id}?${code}` : null;
             return (
               <div
                 key={id}
@@ -134,13 +155,19 @@ export default function Print() {
                   breakInside: "avoid",
                 }}
               >
-                <div
-                  style={{ width: "100%" }}
-                  // biome-ignore lint/security/noDangerouslySetInnerHtml: uqr generates the SVG locally
-                  dangerouslySetInnerHTML={{
-                    __html: renderSVG(url, { border: 1 }),
-                  }}
-                />
+                {url ? (
+                  <div
+                    style={{ width: "100%" }}
+                    // biome-ignore lint/security/noDangerouslySetInnerHtml: uqr generates the SVG locally
+                    dangerouslySetInnerHTML={{
+                      __html: renderSVG(url, { border: 1 }),
+                    }}
+                  />
+                ) : (
+                  <div style={{ padding: "2em 0", color: "#888" }}>
+                    waiting for sync…
+                  </div>
+                )}
                 <div
                   style={{
                     fontFamily: "monospace",
@@ -150,7 +177,17 @@ export default function Print() {
                 >
                   #{id}
                 </div>
-                <div style={{ fontSize: 9, color: "#555" }}>{url}</div>
+                {/* Human fallback: type the number + this code to join. */}
+                <div
+                  style={{
+                    fontFamily: "monospace",
+                    fontSize: 12,
+                    letterSpacing: 2,
+                  }}
+                >
+                  {code ?? ""}
+                </div>
+                {url && <div style={{ fontSize: 9, color: "#555" }}>{url}</div>}
               </div>
             );
           })}

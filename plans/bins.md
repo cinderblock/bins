@@ -79,14 +79,30 @@ dead zones (storage units, remote sites), merging back to the server later.
   (`/`), bin (`/:binId`, claim-in-place for unclaimed), search, settings,
   print.
 
-## Spec: per-bin secret codes (NEXT UP — not yet implemented)
+## Spec: per-bin secret codes (IMPLEMENTED 2026-07-06)
 
 User decision 2026-07-06. QR stickers encode `/{binId}?{CODE}`; a valid
 (id, code) pair seen once = "login" (mints the normal device token). Bare
 `/123` typed by hand grants nothing. Codes are per-bin, short, printed on the
 sticker; after joining, edits never need a bin's code again.
 
-Implementation touchpoints (in dependency order):
+As-built deviations from the touchpoint list below:
+
+- `bin.secret_code` is NULLABLE, not NOT NULL: `BinState.secretCode` must be
+  `string | null` anyway (a claim can outrun its allocate on a replica,
+  leaving a code-less stub), and one shared shape across both store adapters
+  beats a server-only constraint. Server rows always get a code in practice
+  (push rejects ops on unknown bins). Migration 0001 (additive), not a
+  regenerated 0000.
+- Allocate response changed shape: `{ binIds }` → `{ bins: [{ id, code }] }`.
+- The print page reads codes from the Dexie replica (they ride the allocate
+  ops), rendering "waiting for sync…" placeholders until the pull lands — it
+  never prints a code-less QR.
+- Code helpers (`SECRET_CODE_ALPHABET`, `normalizeSecretCode`,
+  `secretCodeSchema`) live in `shared/ops.ts`; generation in `api/allocate.ts`
+  keeps the trivial modulo bias (low-security by design).
+
+Original implementation touchpoints (in dependency order):
 
 1. **Code format**: 4 chars from Crockford-style alphabet
    `23456789ABCDEFGHJKMNPQRSTVWXYZ` (no 0/1/I/L/O/U confusables), generated
@@ -136,8 +152,12 @@ leaked sticker (retire the bin instead).
   early because the "online-only" variant would have been throwaway.
 - [x] Tests: 6 reducer convergence (order-independence + re-application) + 6
   API integration (join/allocate/push/pull/idempotency/foreign-bin/blob).
-- [ ] **Per-bin secret codes** — see spec section above. Do this BEFORE any
-  stickers are printed for real (changes the QR contents).
+- [x] **Per-bin secret codes** (2026-07-06) — full spec implemented (see spec
+  section incl. as-built deviations): schema+migration 0001, allocate embeds
+  codes in ops, `/api/auth/join-by-bin`, scanner keeps `?CODE` in the URL,
+  sticker-URL FirstRun gate (name-only join + access-code fallback), print
+  page QR/caption/code text. Tests: reducer claim-before-allocate convergence
+  + API join-by-bin suite (14 pass).
 - [ ] Phase 3 (PWA shell) — vite-plugin-pwa: manifest (standalone, portrait,
   icons incl. maskable), Workbox precache + navigateFallback, update prompt
   (NEVER auto-reload), CacheFirst `/api/blobs/**`, **NetworkOnly `/api/*`**,

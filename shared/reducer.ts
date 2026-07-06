@@ -21,6 +21,12 @@ export interface BinState {
   /** The global short ID (the number in the QR URL). */
   id: number;
   status: BinStatus;
+  /**
+   * The sticker secret (`/{id}?{CODE}`). Written only by bin.allocate — the
+   * sole allocate per bin is the sole writer, so no clock is needed. Null only
+   * on stubs created by an op that outran its allocate on this replica.
+   */
+  secretCode: string | null;
   name: string | null;
   sizeClass: string | null;
   externalLabel: string | null;
@@ -92,6 +98,7 @@ function newBin(id: number, time: number): BinState {
   return {
     id,
     status: "unclaimed",
+    secretCode: null,
     name: null,
     sizeClass: null,
     externalLabel: null,
@@ -126,7 +133,9 @@ export async function applyOp(
 ): Promise<void> {
   switch (op.type) {
     case "bin.allocate": {
-      await store.putBin(await touchBin(store, op));
+      const bin = await touchBin(store, op);
+      bin.secretCode = op.payload.code;
+      await store.putBin(bin);
       return;
     }
 

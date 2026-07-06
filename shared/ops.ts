@@ -27,6 +27,23 @@ const opBase = {
 
 const binId = z.number().int().positive();
 
+/**
+ * Per-bin secret codes — the `?CODE` in a sticker QR (`/{id}?{CODE}`). Seeing
+ * a sticker once is "login" (proof of physical access); a bare `/{id}` typed
+ * by hand grants nothing. Deliberately low security: codes are short, stored
+ * plaintext (sticker sheets must be re-renderable), and never rotated.
+ * Crockford-style alphabet — no 0/1/I/L/O/U confusables.
+ */
+export const SECRET_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTVWXYZ";
+export const SECRET_CODE_LENGTH = 4;
+
+/** Codes compare case-insensitively (people type them off stickers). */
+export function normalizeSecretCode(code: string): string {
+  return code.trim().toUpperCase();
+}
+
+export const secretCodeSchema = z.string().min(1).max(20);
+
 export const ENTRY_KINDS = ["contents_photo", "item_photo", "note"] as const;
 export type EntryKind = (typeof ENTRY_KINDS)[number];
 
@@ -116,7 +133,9 @@ export const serverOpSchema = z.discriminatedUnion("type", [
     ...opBase,
     type: z.literal("bin.allocate"),
     binId,
-    payload: z.object({}),
+    // The bin's sticker secret rides the op so it reaches every member's
+    // replica through normal sync (sticker-sheet re-render, URL sharing).
+    payload: z.object({ code: secretCodeSchema }),
   }),
 ]);
 export type ServerOp = z.infer<typeof serverOpSchema>;

@@ -1,5 +1,5 @@
 import { handleAllocate } from "./allocate";
-import { handleDevices, handleJoin, handleMe } from "./auth";
+import { handleDevices, handleJoin, handleJoinByBin, handleMe } from "./auth";
 import { handleBlob } from "./blobs";
 /**
  * Tiny hand-rolled API router — the whole surface is small enough that a
@@ -14,9 +14,11 @@ export async function handleApi(req: Request, url: URL): Promise<Response> {
   const method = req.method;
 
   try {
-    // The only unauthenticated endpoint.
+    // The join endpoints are the only unauthenticated ones.
     if (path === "/api/auth/join" && method === "POST")
       return await handleJoin(req);
+    if (path === "/api/auth/join-by-bin" && method === "POST")
+      return await handleJoinByBin(req);
 
     const ctx = await authenticate(req);
     if (!ctx) return error(401, "unauthorized");

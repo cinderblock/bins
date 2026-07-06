@@ -23,6 +23,7 @@ export class DrizzleStateStore implements StateStore {
     return {
       id: row.id,
       status: row.status as BinState["status"],
+      secretCode: row.secretCode,
       name: row.name,
       sizeClass: row.sizeClass,
       externalLabel: row.externalLabel,
@@ -39,6 +40,7 @@ export class DrizzleStateStore implements StateStore {
       id: bin.id,
       groupId: this.groupId,
       status: bin.status,
+      secretCode: bin.secretCode,
       name: bin.name,
       sizeClass: bin.sizeClass,
       externalLabel: bin.externalLabel,

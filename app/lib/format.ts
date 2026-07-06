@@ -12,14 +12,28 @@ export function relativeTime(ms: number): string {
   return new Date(ms).toLocaleDateString();
 }
 
-/** Extract a bin id from a scanned QR value: our URL or a bare number. */
-export function binIdFromScan(raw: string): number | null {
+export interface ScanTarget {
+  binId: number;
+  /** The sticker secret (`/{id}?{CODE}`) when the scan carried one. */
+  code: string | null;
+}
+
+/**
+ * Extract a bin target from a scanned QR value: our URL (with or without the
+ * secret code) or a bare number. The code is the RAW query string
+ * (`/1?7HX6`); a `?code=7HX6` form is tolerated too.
+ */
+export function binIdFromScan(raw: string): ScanTarget | null {
   const trimmed = raw.trim();
-  if (/^\d{1,9}$/.test(trimmed)) return Number(trimmed);
+  if (/^\d{1,9}$/.test(trimmed)) return { binId: Number(trimmed), code: null };
   try {
     const url = new URL(trimmed);
     const match = url.pathname.match(/^\/(\d{1,9})\/?$/);
-    if (match?.[1]) return Number(match[1]);
+    if (match?.[1]) {
+      const query = url.search.replace(/^\?/, "");
+      const code = /^code=/i.test(query) ? query.slice("code=".length) : query;
+      return { binId: Number(match[1]), code: code || null };
+    }
   } catch {}
   return null;
 }

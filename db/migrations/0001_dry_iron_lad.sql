@@ -1,0 +1,1 @@
+ALTER TABLE `bin` ADD `secret_code` text;

@@ -1,9 +1,11 @@
 /**
- * First-run onboarding: display name + group access code (+ optional location
- * consent). Mints the device token; everything persists on this device
- * until "leave group".
+ * First-run onboarding. Two ways in, both minting the same device token:
+ * scanning a sticker (`/{id}?{CODE}` — proof of physical access, name-only
+ * join) or the shared group access code (bootstrap path + fallback).
+ * Everything persists on this device until "leave group".
  */
 import {
+  Anchor,
   Button,
   Checkbox,
   Container,
@@ -20,25 +22,35 @@ import { IDENTITY_KEY, type Identity, setMeta } from "~/lib/db";
 import { setGeoOptIn } from "~/lib/geo";
 import { syncNow } from "~/lib/sync";
 
-export function FirstRun() {
+export function FirstRun({
+  sticker,
+}: {
+  /** Set when the app was opened on a sticker URL while unauthenticated. */
+  sticker?: { binId: number; code: string } | null;
+}) {
   const [displayName, setDisplayName] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [geoOk, setGeoOk] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [forceAccessCode, setForceAccessCode] = useState(false);
+  const byBin = !!sticker && !forceAccessCode;
 
   async function join() {
     setBusy(true);
     setError(null);
     try {
+      const path = byBin ? "/api/auth/join-by-bin" : "/api/auth/join";
       // Retry once with a fresh uuid on the (theoretical) device-id collision.
       let response: Response | null = null;
       for (let attempt = 0; attempt < 2; attempt++) {
-        response = await fetch("/api/auth/join", {
+        response = await fetch(path, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            accessCode,
+            ...(byBin
+              ? { binId: sticker.binId, code: sticker.code }
+              : { accessCode }),
             displayName: displayName.trim(),
             deviceId: crypto.randomUUID(),
           }),
@@ -71,23 +83,26 @@ export function FirstRun() {
         <Stack>
           <Title order={2}>bins</Title>
           <Text c="dimmed" size="sm">
-            Scan a box, see what's inside. Enter your group's access code and a
-            name (shown next to your photos and notes).
+            {byBin
+              ? `You scanned bin #${sticker.binId} — that's your ticket in. Just add a name (shown next to your photos and notes).`
+              : "Scan a box, see what's inside. Enter your group's access code and a name (shown next to your photos and notes)."}
           </Text>
           <TextInput
             label="Your name"
-            placeholder="e.g. Cameron"
+            placeholder="e.g. Sam"
             value={displayName}
             onChange={(e) => setDisplayName(e.currentTarget.value)}
             size="lg"
             autoFocus
           />
-          <PasswordInput
-            label="Group access code"
-            value={accessCode}
-            onChange={(e) => setAccessCode(e.currentTarget.value)}
-            size="lg"
-          />
+          {!byBin && (
+            <PasswordInput
+              label="Group access code"
+              value={accessCode}
+              onChange={(e) => setAccessCode(e.currentTarget.value)}
+              size="lg"
+            />
+          )}
           <Checkbox
             checked={geoOk}
             onChange={(e) => setGeoOk(e.currentTarget.checked)}
@@ -102,10 +117,21 @@ export function FirstRun() {
             size="lg"
             onClick={() => void join()}
             loading={busy}
-            disabled={!displayName.trim() || !accessCode}
+            disabled={!displayName.trim() || (!byBin && !accessCode)}
           >
             Join
           </Button>
+          {byBin && (
+            <Anchor
+              component="button"
+              type="button"
+              size="sm"
+              c="dimmed"
+              onClick={() => setForceAccessCode(true)}
+            >
+              Join with the group access code instead
+            </Anchor>
+          )}
         </Stack>
       </Paper>
     </Container>

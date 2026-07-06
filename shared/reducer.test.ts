@@ -78,7 +78,12 @@ async function expectConvergence(ops: CanonicalOp[]) {
 describe("reducer convergence", () => {
   test("claim + conflicting field writes from two devices (LWW per field)", async () => {
     const ops = [
-      op({ type: "bin.allocate", deviceId: null, effectiveTime: 100 }),
+      op({
+        type: "bin.allocate",
+        deviceId: null,
+        effectiveTime: 100,
+        payload: { code: "7HX6" },
+      }),
       op({
         type: "bin.claim",
         deviceId: "device-a",
@@ -107,7 +112,12 @@ describe("reducer convergence", () => {
 
   test("location conflict: latest effectiveTime wins, opId breaks ties", async () => {
     const ops = [
-      op({ type: "bin.allocate", deviceId: null, effectiveTime: 100 }),
+      op({
+        type: "bin.allocate",
+        deviceId: null,
+        effectiveTime: 100,
+        payload: { code: "7HX6" },
+      }),
       op({
         type: "bin.setLocation",
         deviceId: "device-a",
@@ -132,7 +142,12 @@ describe("reducer convergence", () => {
     const hashB = "b".repeat(64);
     const hashC = "c".repeat(64);
     const ops = [
-      op({ type: "bin.allocate", deviceId: null, effectiveTime: 100 }),
+      op({
+        type: "bin.allocate",
+        deviceId: null,
+        effectiveTime: 100,
+        payload: { code: "7HX6" },
+      }),
       op({
         type: "entry.addPhoto",
         effectiveTime: 200,
@@ -167,7 +182,12 @@ describe("reducer convergence", () => {
       payload: { hash: hashB, kind: "contents_photo", mime: "image/jpeg" },
     });
     const ops = [
-      op({ type: "bin.allocate", deviceId: null, effectiveTime: 100 }),
+      op({
+        type: "bin.allocate",
+        deviceId: null,
+        effectiveTime: 100,
+        payload: { code: "7HX6" },
+      }),
       add1,
       add2,
       op({
@@ -184,7 +204,12 @@ describe("reducer convergence", () => {
 
   test("notes append and survive any ordering", async () => {
     const ops = [
-      op({ type: "bin.allocate", deviceId: null, effectiveTime: 100 }),
+      op({
+        type: "bin.allocate",
+        deviceId: null,
+        effectiveTime: 100,
+        payload: { code: "7HX6" },
+      }),
       op({
         type: "entry.addNote",
         deviceId: "device-a",
@@ -202,6 +227,29 @@ describe("reducer convergence", () => {
     const snapshot = await expectConvergence(ops);
     expect(snapshot).toContain("3 tarps, rope");
     expect(snapshot).toContain("added the zip ties");
+  });
+
+  test("allocate carries the sticker secret; claim-before-allocate converges", async () => {
+    const ops = [
+      // The claim can reach a replica before its allocate (offline claim of a
+      // fresh sticker) — the code must land either way.
+      op({
+        type: "bin.claim",
+        deviceId: "device-a",
+        effectiveTime: 200,
+        payload: { name: "Tools" },
+      }),
+      op({
+        type: "bin.allocate",
+        deviceId: null,
+        effectiveTime: 100,
+        payload: { code: "QK4M" },
+      }),
+    ];
+    const snapshot = await expectConvergence(ops);
+    expect(snapshot).toContain('"secretCode":"QK4M"');
+    expect(snapshot).toContain('"status":"active"');
+    expect(snapshot).toContain('"name":"Tools"');
   });
 
   test("locations: upsert/rename/archive converge", async () => {

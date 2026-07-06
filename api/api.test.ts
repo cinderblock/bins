@@ -50,6 +50,7 @@ const uuid = () =>
 let tokenA: string;
 let tokenB: string;
 let binId: number;
+let allocated: { id: number; code: string }[];
 
 describe("api", () => {
   beforeAll(async () => {
@@ -101,10 +102,14 @@ describe("api", () => {
       body: { count: 3 },
     });
     expect(alloc.status).toBe(200);
-    const { binIds } = (await alloc.json()) as { binIds: number[] };
-    expect(binIds).toHaveLength(3);
-    expect(Math.min(...binIds)).toBeGreaterThanOrEqual(100);
-    binId = binIds[0] as number;
+    allocated = ((await alloc.json()) as { bins: typeof allocated }).bins;
+    expect(allocated).toHaveLength(3);
+    expect(Math.min(...allocated.map((b) => b.id))).toBeGreaterThanOrEqual(100);
+    // Every sticker gets a secret from the confusable-free alphabet.
+    for (const { code } of allocated) {
+      expect(code).toMatch(/^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{4}$/);
+    }
+    binId = (allocated[0] as { id: number }).id;
 
     const push = await call("POST", "/api/sync/push", {
       token: tokenA,
@@ -139,12 +144,15 @@ describe("api", () => {
     // Device B pulls everything: 3 allocations + claim + note.
     const pull = await call("GET", "/api/sync/pull?since=0", { token: tokenB });
     const pullBody = (await pull.json()) as {
-      ops: { type: string; binId?: number }[];
+      ops: { type: string; binId?: number; payload?: { code?: string } }[];
       hasMore: boolean;
     };
     expect(pullBody.ops).toHaveLength(5);
-    expect(pullBody.ops.filter((o) => o.type === "bin.allocate")).toHaveLength(
-      3,
+    const allocOps = pullBody.ops.filter((o) => o.type === "bin.allocate");
+    expect(allocOps).toHaveLength(3);
+    // The sticker secrets ride the ops into every replica.
+    expect(allocOps.map((o) => o.payload?.code).sort()).toEqual(
+      allocated.map((b) => b.code).sort(),
     );
     expect(pullBody.hasMore).toBe(false);
 
@@ -155,6 +163,59 @@ describe("api", () => {
     });
     expect(bin?.status).toBe("active");
     expect(bin?.name).toBe("Kitchen");
+  });
+
+  test("join-by-bin: sticker pair joins (even unclaimed); bare id never does", async () => {
+    // Happy path on an UNCLAIMED bin, with the code typed in the wrong case.
+    const fresh = allocated[2] as { id: number; code: string };
+    const res = await call("POST", "/api/auth/join-by-bin", {
+      body: {
+        binId: fresh.id,
+        code: fresh.code.toLowerCase(),
+        displayName: "Cleo",
+        deviceId: crypto.randomUUID(),
+      },
+    });
+    expect(res.status).toBe(200);
+    const { token } = (await res.json()) as { token: string };
+
+    // The minted token is a full member token.
+    const me = await call("GET", "/api/auth/me", { token });
+    expect(me.status).toBe(200);
+    const meBody = (await me.json()) as { displayName: string };
+    expect(meBody.displayName).toBe("Cleo");
+
+    // Wrong code and unknown bin fail identically ("0" is not in the
+    // code alphabet, so this can never accidentally match).
+    for (const body of [
+      { binId: fresh.id, code: "0000" },
+      { binId: 99999, code: fresh.code },
+    ]) {
+      const denied = await call("POST", "/api/auth/join-by-bin", {
+        body: {
+          ...body,
+          displayName: "Mallory",
+          deviceId: crypto.randomUUID(),
+        },
+      });
+      expect(denied.status).toBe(403);
+      expect(((await denied.json()) as { error: string }).error).toBe(
+        "unknown bin or code",
+      );
+    }
+
+    // A bare bin number — no code, or an empty one — can't even ask.
+    for (const code of [undefined, ""]) {
+      const bare = await call("POST", "/api/auth/join-by-bin", {
+        body: {
+          binId: fresh.id,
+          code,
+          displayName: "Mallory",
+          deviceId: crypto.randomUUID(),
+        },
+      });
+      expect(bare.status).toBe(400);
+    }
   });
 
   test("push is idempotent (same opId re-acked, not re-applied)", async () => {

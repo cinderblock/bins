@@ -1,36 +1,41 @@
 /**
- * Join + identity endpoints. No accounts: entering the group access code with
- * a display name mints a device row and a long-lived opaque bearer token
- * (returned once, stored hashed). Revocation = delete the device row.
+ * Join + identity endpoints. No accounts: proving membership — the group
+ * access code, or a valid (binId, code) pair off a sticker — with a display
+ * name mints a device row and a long-lived opaque bearer token (returned
+ * once, stored hashed). Revocation = delete the device row.
  */
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "../db/client.server";
+import { normalizeSecretCode, secretCodeSchema } from "../shared/ops";
 import { type Ctx, error, json, sha256Hex } from "./context";
+
+const displayName = z.string().min(1).max(100);
+const deviceId = z.string().uuid();
 
 const joinSchema = z.object({
   accessCode: z.string().min(1).max(200),
-  displayName: z.string().min(1).max(100),
-  deviceId: z.string().uuid(),
+  displayName,
+  deviceId,
+});
+
+const joinByBinSchema = z.object({
+  binId: z.number().int().positive(),
+  code: secretCodeSchema,
+  displayName,
+  deviceId,
 });
 
 export function normalizeAccessCode(code: string): string {
   return code.trim().toLowerCase();
 }
 
-export async function handleJoin(req: Request): Promise<Response> {
-  const parsed = joinSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return error(400, "invalid join request");
-  const { accessCode, displayName, deviceId } = parsed.data;
-
-  const group = await db.query.group.findFirst({
-    where: eq(
-      schema.group.accessCodeHash,
-      sha256Hex(normalizeAccessCode(accessCode)),
-    ),
-  });
-  if (!group) return error(403, "unknown access code");
-
+/** Mint the device row + bearer token — the shared tail of both join paths. */
+async function mintDevice(
+  group: { id: string; name: string },
+  displayName: string,
+  deviceId: string,
+): Promise<Response> {
   const existing = await db.query.device.findFirst({
     where: eq(schema.device.id, deviceId),
   });
@@ -53,6 +58,53 @@ export async function handleJoin(req: Request): Promise<Response> {
     groupName: group.name,
     displayName,
   });
+}
+
+export async function handleJoin(req: Request): Promise<Response> {
+  const parsed = joinSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return error(400, "invalid join request");
+  const { accessCode, displayName, deviceId } = parsed.data;
+
+  const group = await db.query.group.findFirst({
+    where: eq(
+      schema.group.accessCodeHash,
+      sha256Hex(normalizeAccessCode(accessCode)),
+    ),
+  });
+  if (!group) return error(403, "unknown access code");
+
+  return mintDevice(group, displayName, deviceId);
+}
+
+/**
+ * Join by sticker: a valid (binId, code) pair seen once = proof of physical
+ * access to the group's stuff. Works for ANY bin status — a fresh unclaimed
+ * sticker is as good as a claimed one. Bare bin ids grant nothing.
+ */
+export async function handleJoinByBin(req: Request): Promise<Response> {
+  const parsed = joinByBinSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return error(400, "invalid join request");
+  const { binId, code, displayName, deviceId } = parsed.data;
+
+  // Short IDs are globally unique across groups; the bin resolves the group.
+  const bin = await db.query.bin.findFirst({
+    where: eq(schema.bin.id, binId),
+    columns: { groupId: true, secretCode: true },
+  });
+  if (
+    !bin?.secretCode ||
+    normalizeSecretCode(bin.secretCode) !== normalizeSecretCode(code)
+  ) {
+    // One error for both unknown-bin and wrong-code: don't leak which ids exist.
+    return error(403, "unknown bin or code");
+  }
+
+  const group = await db.query.group.findFirst({
+    where: eq(schema.group.id, bin.groupId),
+  });
+  if (!group) return error(403, "unknown bin or code");
+
+  return mintDevice(group, displayName, deviceId);
 }
 
 export async function handleMe(req: Request, ctx: Ctx): Promise<Response> {
