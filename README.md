@@ -13,16 +13,20 @@ where.
 
 ## Features
 
-- **QR-first**: `https://your-host/123` on a sticker is the whole UX entry
-  point. Print sticker sheets in-app; fresh stickers are claimed on first scan
-  (works offline — allocations sync into every device's replica beforehand).
+- **QR-first**: `https://your-host/123?7HX6` on a sticker is the whole UX
+  entry point — the short query string is that bin's secret, so scanning any
+  sticker once proves physical access and logs you in (a hand-typed bare
+  `/123` grants nothing). Print sticker sheets in-app; fresh stickers are
+  claimed on first scan (works offline — allocations sync into every device's
+  replica beforehand).
 - **Offline-first**: full local replica (IndexedDB), append-only op-log sync
   with last-writer-wins merges, photos captured offline upload later. Built
   for storage units, basements, and other dead zones.
 - **"Which box is X in"** search over names, labels, and notes — offline,
   fuzzy ("sharpee" finds the Sharpies).
-- **No accounts**: members join with a shared group access code + a display
-  name. One deploy hosts many groups (`group_id` on every tenant table).
+- **No accounts**: scan any sticker (or enter the shared group access code)
+  and pick a display name — that's the whole onboarding. One deploy hosts
+  many groups (`group_id` on every tenant table).
 - **Photos done right**: on-device downscale (~300 KB), content-addressed
   (sha256) storage, latest top-down shot automatically becomes the bin's
   primary picture.
