@@ -57,8 +57,8 @@ dead zones (storage units, remote sites), merging back to the server later.
 - **Publishable / tenant-agnostic (2026-07-06)**: the repo will be published
   for anyone to self-host. No tenant, domain, host, or sibling-project names
   in tracked files — operator specifics go in untracked `plans/local.md`.
-  Publish with fresh history (pre-2026-07-06 commits contain tenant strings);
-  checklist in `plans/local.md`.
+  Master history was rewritten to a fresh clean root on 2026-07-06; publish
+  by pushing master only (checklist in `plans/local.md`).
 
 ## Architecture map
 
@@ -145,9 +145,9 @@ leaked sticker (retire the bin instead).
 - [x] Publishability sweep (2026-07-06) — scrubbed all tenant/host strings
   from tracked files (`.env.example`, deploy.yml, CLAUDE.md, comments,
   README, this plan); operator specifics moved to untracked `plans/local.md`.
-- [ ] Deploy — create GitHub repo (fresh history — see `plans/local.md`),
-  register runner + host layout + reverse-proxy block per `plans/local.md`;
-  then push & watch CI.
+- [ ] Deploy — create GitHub repo (push master only — history already clean;
+  see `plans/local.md`), register runner + host layout + reverse-proxy block
+  per `plans/local.md`; then push & watch CI.
 - [ ] Phase 4 — per-device unclaimed-ID reserve (offline new-box without
   sticker), print layout for real label stock, location reorder, retired-bin
   browsing, unarchive places UI.
