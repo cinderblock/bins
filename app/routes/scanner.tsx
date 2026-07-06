@@ -134,10 +134,9 @@ export default function Scanner() {
   const [manualId, setManualId] = useState("");
 
   const { cameraError, torchAvailable } = useScanner(videoRef, (target) => {
-    // Keep the code in the URL: an unauthenticated helper handed the phone
-    // mid-scan can join from this exact location (see the shell gate).
-    const suffix = target.code ? `?${target.code}` : "";
-    navigate(`/${target.binId}${suffix}`, { replace: true });
+    // Scans inside the app are already authenticated — the sticker's code is
+    // only for joining, so land on the clean canonical URL.
+    navigate(`/${target.binId}`, { replace: true });
   });
 
   const recentBins = useLiveQuery(

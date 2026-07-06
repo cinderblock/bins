@@ -17,6 +17,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { setCachedToken } from "~/lib/api";
 import { IDENTITY_KEY, type Identity, setMeta } from "~/lib/db";
 import { setGeoOptIn } from "~/lib/geo";
@@ -35,6 +36,7 @@ export function FirstRun({
   const [error, setError] = useState<string | null>(null);
   const [forceAccessCode, setForceAccessCode] = useState(false);
   const byBin = !!sticker && !forceAccessCode;
+  const navigate = useNavigate();
 
   async function join() {
     setBusy(true);
@@ -70,6 +72,9 @@ export function FirstRun({
       // Ask the browser not to evict our replica + unsynced photos.
       void navigator.storage?.persist?.();
       void syncNow();
+      // Drop the sticker code from the URL — it's only for joining, and the
+      // canonical bin URL is what belongs in history/share sheets.
+      if (sticker) navigate(`/${sticker.binId}`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "could not join");
     } finally {

@@ -101,6 +101,11 @@ As-built deviations from the touchpoint list below:
 - Code helpers (`SECRET_CODE_ALPHABET`, `normalizeSecretCode`,
   `secretCodeSchema`) live in `shared/ops.ts`; generation in `api/allocate.ts`
   keeps the trivial modulo bias (low-security by design).
+- User decision (2026-07-06, supersedes touchpoint 6's "keep the code in the
+  URL"): the code does NOT stay in the URL after use. In-app scans navigate
+  straight to `/{id}` (the session is already authenticated), and FirstRun
+  redirects to `/{id}` after a successful sticker join — the canonical URL is
+  what belongs in history/share sheets.
 
 Original implementation touchpoints (in dependency order):
 
