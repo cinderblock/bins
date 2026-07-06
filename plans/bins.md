@@ -78,8 +78,8 @@ dead zones (storage units, remote sites), merging back to the server later.
   visibility/60s); `lib/store.client.ts` Dexie StateStore adapter;
   `lib/camera.ts` shared MediaStream singleton (never re-negotiate between
   scans); `lib/actions.ts` = the only place ops are built. Routes: scanner
-  (`/`), bin (`/:binId`, claim-in-place for unclaimed), search, settings,
-  print.
+  (`/`, AUTO-SCAN mode — see below), bin (`/:binId`, claim-in-place for
+  unclaimed), search, settings, print.
 
 ## Spec: per-bin secret codes (IMPLEMENTED 2026-07-06)
 
@@ -163,6 +163,16 @@ leaked sticker (retire the bin instead).
   early because the "online-only" variant would have been throwaway.
 - [x] Tests: 6 reducer convergence (order-independence + re-application) + 6
   API integration (join/allocate/push/pull/idempotency/foreign-bin/blob).
+- [x] **Auto-scan mode** (2026-07-06, user request) — the primary usage mode:
+  the root camera never leaves the screen. Scanning an active bin makes it
+  "current": its contents/history peek up over the camera (`BinPeek`,
+  read-only; header links to the full page) and a pinned "Capture contents
+  of #N" button shoots straight off the live viewfinder (no navigation).
+  Detection keeps running, so a different box's QR in frame auto-switches;
+  the SAME box never re-pops a peek the user collapsed. Current bin persists
+  in meta (`currentBin`) across visits, restored collapsed. Recent-bin chips
+  set the current bin instead of navigating. Unclaimed / not-in-replica bins
+  still navigate to `/:binId` (claim flow / sync dead-end need the page).
 - [x] **Per-bin secret codes** (2026-07-06) — full spec implemented (see spec
   section incl. as-built deviations): schema+migration 0001, allocate embeds
   codes in ops, `/api/auth/join-by-bin`, scanner keeps `?CODE` in the URL,
