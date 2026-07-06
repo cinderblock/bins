@@ -14,14 +14,15 @@ export function relativeTime(ms: number): string {
 
 export interface ScanTarget {
   binId: number;
-  /** The sticker secret (`/{id}?{CODE}`) when the scan carried one. */
+  /** The sticker secret (`/{id}#{CODE}`) when the scan carried one. */
   code: string | null;
 }
 
 /**
  * Extract a bin target from a scanned QR value: our URL (with or without the
- * secret code) or a bare number. The code is the RAW query string
- * (`/1?7HX6`); a `?code=7HX6` form is tolerated too.
+ * secret code) or a bare number. The code rides the RAW fragment (`/1#7HX6`)
+ * so it never appears in server/proxy logs; query-string (`/1?7HX6`) and
+ * `code=` forms are tolerated for hand-typed or legacy inputs.
  */
 export function binIdFromScan(raw: string): ScanTarget | null {
   const trimmed = raw.trim();
@@ -30,9 +31,10 @@ export function binIdFromScan(raw: string): ScanTarget | null {
     const url = new URL(trimmed);
     const match = url.pathname.match(/^\/(\d{1,9})\/?$/);
     if (match?.[1]) {
-      const query = url.search.replace(/^\?/, "");
-      const code = /^code=/i.test(query) ? query.slice("code=".length) : query;
-      return { binId: Number(match[1]), code: code || null };
+      const code = [url.hash.replace(/^#/, ""), url.search.replace(/^\?/, "")]
+        .map((c) => (/^code=/i.test(c) ? c.slice("code=".length) : c))
+        .find((c) => c !== "");
+      return { binId: Number(match[1]), code: code ?? null };
     }
   } catch {}
   return null;

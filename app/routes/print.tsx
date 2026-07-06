@@ -141,7 +141,8 @@ export default function Print() {
           {ids.map((id) => {
             const code = codeById.get(id);
             // No QR without the secret — a bare /{id} sticker grants nothing.
-            const url = code ? `${window.location.origin}/${id}?${code}` : null;
+            // Fragment, not query string: the code never reaches server logs.
+            const url = code ? `${window.location.origin}/${id}#${code}` : null;
             return (
               <div
                 key={id}

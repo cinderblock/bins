@@ -30,11 +30,11 @@ export default function Shell() {
 
   if (identity === undefined) return null;
   if (identity === null) {
-    // Landing unauthenticated on a sticker URL (`/{id}?{CODE}`) is the primary
+    // Landing unauthenticated on a sticker URL (`/{id}#{CODE}`) is the primary
     // onboarding path: the (id, code) pair joins with just a name. Reuse the
     // QR parser on the current location (any origin works — it's discarded).
     const target = binIdFromScan(
-      `https://local${location.pathname}${location.search}`,
+      `https://local${location.pathname}${location.search}${location.hash}`,
     );
     const sticker =
       target?.code != null ? { binId: target.binId, code: target.code } : null;

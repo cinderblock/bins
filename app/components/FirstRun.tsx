@@ -1,6 +1,6 @@
 /**
  * First-run onboarding. Two ways in, both minting the same device token:
- * scanning a sticker (`/{id}?{CODE}` — proof of physical access, name-only
+ * scanning a sticker (`/{id}#{CODE}` — proof of physical access, name-only
  * join) or the shared group access code (bootstrap path + fallback).
  * Everything persists on this device until "leave group".
  */

@@ -32,12 +32,14 @@ dead zones (storage units, remote sites), merging back to the server later.
   proof of physical access, prompts for name only; (b) the shared group access
   code, kept as the bootstrap path (someone must join before the first
   stickers can be allocated) and as fallback.
-- **URL format (2026-07-06 update, NOT yet implemented)**: QR encodes
-  `/{number}?{CODE}` (e.g. `/1?7HX6`) — the raw query string IS a short
-  per-bin secret. Typing a bare `/123` without a token gets you nothing.
-  Deliberately low security: seeing one sticker lets you in; the append-only
-  op log means vandalism is recoverable (rebuild/inspect the log). See the
-  spec section below.
+- **URL format (2026-07-06, implemented)**: QR encodes `/{number}#{CODE}`
+  (e.g. `/1#7HX6`) — the raw URL FRAGMENT is a short per-bin secret. Fragment,
+  not query string (user decision 2026-07-06): fragments never reach the
+  server, so codes can't accumulate in reverse-proxy access logs. The parser
+  tolerates `?CODE` and `code=` forms for hand-typed input. Typing a bare
+  `/123` without a token gets you nothing. Deliberately low security: seeing
+  one sticker lets you in; the append-only op log means vandalism is
+  recoverable (rebuild/inspect the log). See the spec section below.
 - **Sync**: custom append-only op log; NO Replicache/PowerSync/ElectricSQL.
   LWW per scalar field via `(effectiveTime, opId)` clocks; entries append-only;
   primary photo DERIVED (latest non-deleted contents_photo) — never settable.
@@ -106,6 +108,10 @@ As-built deviations from the touchpoint list below:
   straight to `/{id}` (the session is already authenticated), and FirstRun
   redirects to `/{id}` after a successful sticker join — the canonical URL is
   what belongs in history/share sheets.
+- User decision (2026-07-06, supersedes touchpoints 6/8's query string): the
+  code rides the URL FRAGMENT (`/{id}#{CODE}`), keeping it out of server logs.
+  `binIdFromScan` checks the fragment first and still tolerates `?CODE` /
+  `code=` forms; unit-tested in `app/lib/format.test.ts`.
 
 Original implementation touchpoints (in dependency order):
 

@@ -22,7 +22,7 @@ export interface BinState {
   id: number;
   status: BinStatus;
   /**
-   * The sticker secret (`/{id}?{CODE}`). Written only by bin.allocate — the
+   * The sticker secret (`/{id}#{CODE}`). Written only by bin.allocate — the
    * sole allocate per bin is the sole writer, so no clock is needed. Null only
    * on stubs created by an op that outran its allocate on this replica.
    */

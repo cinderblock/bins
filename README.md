@@ -13,12 +13,12 @@ where.
 
 ## Features
 
-- **QR-first**: `https://your-host/123?7HX6` on a sticker is the whole UX
-  entry point — the short query string is that bin's secret, so scanning any
+- **QR-first**: `https://your-host/123#7HX6` on a sticker is the whole UX
+  entry point — the URL fragment is that bin's secret, so scanning any
   sticker once proves physical access and logs you in (a hand-typed bare
-  `/123` grants nothing). Print sticker sheets in-app; fresh stickers are
-  claimed on first scan (works offline — allocations sync into every device's
-  replica beforehand).
+  `/123` grants nothing, and the fragment never appears in server logs).
+  Print sticker sheets in-app; fresh stickers are claimed on first scan
+  (works offline — allocations sync into every device's replica beforehand).
 - **Offline-first**: full local replica (IndexedDB), append-only op-log sync
   with last-writer-wins merges, photos captured offline upload later. Built
   for storage units, basements, and other dead zones.

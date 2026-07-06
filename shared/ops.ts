@@ -28,7 +28,7 @@ const opBase = {
 const binId = z.number().int().positive();
 
 /**
- * Per-bin secret codes — the `?CODE` in a sticker QR (`/{id}?{CODE}`). Seeing
+ * Per-bin secret codes — the `#CODE` in a sticker QR (`/{id}#{CODE}`). Seeing
  * a sticker once is "login" (proof of physical access); a bare `/{id}` typed
  * by hand grants nothing. Deliberately low security: codes are short, stored
  * plaintext (sticker sheets must be re-renderable), and never rotated.
