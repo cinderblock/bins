@@ -391,10 +391,20 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
 - [ ] Phase 4 — per-device unclaimed-ID reserve (offline new-box without
   sticker), print layout for real label stock, location reorder, retired-bin
   browsing, unarchive places UI.
-- [ ] **Integration tokens + public API** (PROPOSED 2026-07-06, user request) —
-  scoped (read/write) admin-minted API tokens for external apps we control;
-  `/api/v1` query REST + op-log sync access; CORS for browser consumers. Full
-  spec above. Blocked on the author-model decision (Open question 1).
+- [~] **Integration tokens + public API** (user request) — steps 1–4 DONE
+  2026-07-07 (author model A). Migration 0005 adds `kind`/`scope`/
+  `allowedOrigins`/`tokenPrefix` to `device`; `authenticate()` returns
+  `kind`/`scope`/`allowedOrigins` + `canWrite()` gate (push and blob PUT need
+  write scope; admin is member-only); `api/v1.ts` read surface (`GET
+  /api/v1/bins` (+`?location=`/`?status=`), `/api/v1/bins/:id` with entries +
+  author labels, `/api/v1/locations`) — never exposes `secretCode`; admin
+  `integrations` create/list/revoke (token `bins_<prefix>_<secret>`, hash
+  stored, shown once) + admin-page "API tokens" section; human device list
+  filtered to `kind=member`, integrations kept in `/api/devices` name cache so
+  their writes attribute. typecheck/lint/26 tests green. STILL TODO: (5) CORS
+  using `allowedOrigins` (deferred until real consumer origins known), (6)
+  integration API tests (scope enforcement, v1 shapes, revoke, secretCode
+  never leaks).
 - [ ] Phase 5 — AI embellishment: server job (gated on ANTHROPIC_API_KEY) runs
   Claude vision over new contents photos → server-authored `bin.aiItems` ops →
   feeds search for free. Schema/op type not yet defined.

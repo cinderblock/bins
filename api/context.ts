@@ -5,11 +5,29 @@
 import { eq } from "drizzle-orm";
 import { db, schema, sqlite } from "../db/client.server";
 
+/** An integration credential's capability; members have full member access. */
+export type Scope = "read" | "write";
+
 export type Ctx = {
   deviceId: string;
   groupId: string;
   displayName: string;
+  /** "member" = a person's device (full member access); "integration" = an API token. */
+  kind: "member" | "integration";
+  /**
+   * Integration capability. Members are unscoped and may do anything a member
+   * can (full read+write) — represented as null, NOT "write", so callers that
+   * key off `kind` stay honest.
+   */
+  scope: Scope | null;
+  /** Integrations only: CORS origin allowlist (null/[] = no browser origins). */
+  allowedOrigins: string[] | null;
 };
+
+/** Members write freely; integrations need the "write" scope. */
+export function canWrite(ctx: Ctx): boolean {
+  return ctx.kind === "member" || ctx.scope === "write";
+}
 
 export function sha256Hex(input: string | Uint8Array): string {
   const hasher = new Bun.CryptoHasher("sha256");
@@ -50,6 +68,9 @@ export async function authenticate(req: Request): Promise<Ctx | null> {
     deviceId: row.id,
     groupId: row.groupId,
     displayName: row.displayName,
+    kind: row.kind === "integration" ? "integration" : "member",
+    scope: row.scope === "read" || row.scope === "write" ? row.scope : null,
+    allowedOrigins: row.allowedOrigins ?? null,
   };
 }
 

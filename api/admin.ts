@@ -53,6 +53,51 @@ const binStatusSchema = withPassword.extend({
   binId: z.number().int().positive(),
 });
 
+/** A CORS origin like "https://app.example.com" (scheme + host, no path), or *. */
+const originSchema = z
+  .string()
+  .trim()
+  .max(200)
+  .refine(
+    (o) => o === "*" || /^https?:\/\/[^/]+$/.test(o),
+    "origin must be scheme://host or *",
+  );
+
+const createIntegrationSchema = withPassword.extend({
+  label: z.string().min(1).max(100),
+  scope: z.enum(["read", "write"]),
+  allowedOrigins: z.array(originSchema).max(20).optional(),
+});
+
+const revokeIntegrationSchema = withPassword.extend({
+  integrationId: z.string().uuid(),
+});
+
+/**
+ * Mint an opaque integration token `bins_<prefix>_<secret>`. The prefix is
+ * stored plaintext so the admin UI can identify a token it otherwise only ever
+ * sees the hash of; the secret is what authenticates. Shown to the operator
+ * exactly once, at creation.
+ */
+function newIntegrationToken(): { token: string; prefix: string } {
+  const prefix = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const secret = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, "");
+  return { token: `bins_${prefix}_${secret}`, prefix };
+}
+
+/** Public view of an integration row (never includes the token or its hash). */
+function integrationView(row: typeof schema.device.$inferSelect) {
+  return {
+    id: row.id,
+    label: row.displayName,
+    scope: row.scope,
+    tokenPrefix: row.tokenPrefix,
+    allowedOrigins: row.allowedOrigins ?? [],
+    lastSeenAt: row.lastSeenAt?.getTime() ?? null,
+    createdAt: row.createdAt.getTime(),
+  };
+}
+
 /** Returns the caller's group when the admin password checks out. */
 async function requireAdmin(
   ctx: Ctx,
@@ -244,8 +289,12 @@ export async function handleAdmin(
   }
 
   if (path === "/api/admin/devices") {
+    // Human devices only — integrations have their own section below.
     const devices = await db.query.device.findMany({
-      where: eq(schema.device.groupId, ctx.groupId),
+      where: and(
+        eq(schema.device.groupId, ctx.groupId),
+        eq(schema.device.kind, "member"),
+      ),
       columns: { id: true, displayName: true, lastSeenAt: true },
     });
     return json({
@@ -267,6 +316,59 @@ export async function handleAdmin(
         and(
           eq(schema.device.id, parsed.data.deviceId),
           eq(schema.device.groupId, ctx.groupId),
+        ),
+      );
+    return json({ ok: true });
+  }
+
+  if (path === "/api/admin/integrations") {
+    const rows = await db.query.device.findMany({
+      where: and(
+        eq(schema.device.groupId, ctx.groupId),
+        eq(schema.device.kind, "integration"),
+      ),
+    });
+    return json({ integrations: rows.map(integrationView) });
+  }
+
+  if (path === "/api/admin/integrations/create") {
+    const parsed = createIntegrationSchema.safeParse(body);
+    if (!parsed.success) return error(400, "invalid integration");
+    const { label, scope, allowedOrigins } = parsed.data;
+    // A wildcard CORS origin is only defensible for a read-only token.
+    if (allowedOrigins?.includes("*") && scope !== "read") {
+      return error(400, "wildcard origin allowed only for read scope");
+    }
+    const { token, prefix } = newIntegrationToken();
+    const id = uuidv7();
+    await db.insert(schema.device).values({
+      id,
+      groupId: ctx.groupId,
+      displayName: label.trim(),
+      tokenHash: sha256Hex(token),
+      kind: "integration",
+      scope,
+      allowedOrigins: allowedOrigins ?? null,
+      tokenPrefix: prefix,
+    });
+    const row = await db.query.device.findFirst({
+      where: eq(schema.device.id, id),
+    });
+    // The raw token is returned exactly once; only its hash is stored.
+    return json({ token, integration: row ? integrationView(row) : null });
+  }
+
+  if (path === "/api/admin/integrations/revoke") {
+    const parsed = revokeIntegrationSchema.safeParse(body);
+    if (!parsed.success) return error(400, "invalid revoke");
+    // Group-scoped AND kind-scoped: never delete a person's device here.
+    await db
+      .delete(schema.device)
+      .where(
+        and(
+          eq(schema.device.id, parsed.data.integrationId),
+          eq(schema.device.groupId, ctx.groupId),
+          eq(schema.device.kind, "integration"),
         ),
       );
     return json({ ok: true });

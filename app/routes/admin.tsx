@@ -8,10 +8,14 @@
 import {
   ActionIcon,
   Alert,
+  Badge,
   Button,
+  Code,
+  CopyButton,
   Group,
   Paper,
   PasswordInput,
+  Select,
   Stack,
   Table,
   Text,
@@ -20,7 +24,13 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconArrowLeft, IconPrinter, IconTrash } from "@tabler/icons-react";
+import {
+  IconArrowLeft,
+  IconCheck,
+  IconCopy,
+  IconPrinter,
+  IconTrash,
+} from "@tabler/icons-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { apiJson } from "~/lib/api";
@@ -38,6 +48,16 @@ type DeviceRow = {
   displayName: string;
   lastSeenAt: number | null;
   self: boolean;
+};
+
+type IntegrationRow = {
+  id: string;
+  label: string;
+  scope: "read" | "write";
+  tokenPrefix: string | null;
+  allowedOrigins: string[];
+  lastSeenAt: number | null;
+  createdAt: number;
 };
 
 function parseImport(text: string): { id: number; code: string }[] {
@@ -63,6 +83,13 @@ export default function Admin() {
   const [importText, setImportText] = useState("");
   const [devices, setDevices] = useState<DeviceRow[]>([]);
 
+  const [integrations, setIntegrations] = useState<IntegrationRow[]>([]);
+  const [newLabel, setNewLabel] = useState("");
+  const [newScope, setNewScope] = useState<"read" | "write">("read");
+  const [newOrigins, setNewOrigins] = useState("");
+  /** The just-minted token, shown once until the operator dismisses it. */
+  const [freshToken, setFreshToken] = useState<string | null>(null);
+
   function fail(err: unknown) {
     notifications.show({
       message: err instanceof Error ? err.message : String(err),
@@ -78,6 +105,14 @@ export default function Admin() {
     setDevices(res.devices);
   }
 
+  async function refreshIntegrations(pw: string) {
+    const res = await apiJson<{ integrations: IntegrationRow[] }>(
+      "/api/admin/integrations",
+      { method: "POST", body: JSON.stringify({ adminPassword: pw }) },
+    );
+    setIntegrations(res.integrations);
+  }
+
   async function unlock() {
     setBusy(true);
     try {
@@ -87,6 +122,7 @@ export default function Admin() {
       });
       setConfig(res.config);
       await refreshDeviceList(password);
+      await refreshIntegrations(password);
       setUnlocked(true);
     } catch (err) {
       fail(err);
@@ -178,6 +214,56 @@ export default function Admin() {
         message: `Revoked ${device.displayName}`,
         color: "green",
       });
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createIntegration() {
+    const origins = newOrigins
+      .split(/[\s,]+/)
+      .map((o) => o.trim())
+      .filter(Boolean);
+    setBusy(true);
+    try {
+      const res = await apiJson<{ token: string }>(
+        "/api/admin/integrations/create",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            adminPassword: password,
+            label: newLabel.trim(),
+            scope: newScope,
+            ...(origins.length ? { allowedOrigins: origins } : {}),
+          }),
+        },
+      );
+      setFreshToken(res.token);
+      setNewLabel("");
+      setNewOrigins("");
+      setNewScope("read");
+      await refreshIntegrations(password);
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revokeIntegration(row: IntegrationRow) {
+    setBusy(true);
+    try {
+      await apiJson("/api/admin/integrations/revoke", {
+        method: "POST",
+        body: JSON.stringify({
+          adminPassword: password,
+          integrationId: row.id,
+        }),
+      });
+      await refreshIntegrations(password);
+      notifications.show({ message: `Revoked ${row.label}`, color: "green" });
     } catch (err) {
       fail(err);
     } finally {
@@ -325,6 +411,136 @@ export default function Admin() {
               >
                 Import
               </Button>
+            </Stack>
+          </Paper>
+
+          <Paper p="md" radius="lg" withBorder>
+            <Stack gap="sm">
+              <Text fw={600}>Integrations / API tokens</Text>
+              <Text size="xs" c="dimmed">
+                Mint a token for another app to read (and, with write scope,
+                author changes via the API). Read-only tokens are safe to embed
+                in a front-end; keep write tokens server-side.
+              </Text>
+
+              {freshToken && (
+                <Alert color="green" variant="light" title="New token">
+                  <Stack gap="xs">
+                    <Text size="xs">
+                      Copy it now — it's shown only once and never stored in
+                      full.
+                    </Text>
+                    <Group gap="xs" wrap="nowrap">
+                      <Code
+                        style={{
+                          overflowWrap: "anywhere",
+                          flex: 1,
+                          fontSize: 12,
+                        }}
+                      >
+                        {freshToken}
+                      </Code>
+                      <CopyButton value={freshToken}>
+                        {({ copied, copy }) => (
+                          <ActionIcon
+                            variant="light"
+                            color={copied ? "teal" : "gray"}
+                            onClick={copy}
+                            aria-label="Copy token"
+                          >
+                            {copied ? (
+                              <IconCheck size={16} />
+                            ) : (
+                              <IconCopy size={16} />
+                            )}
+                          </ActionIcon>
+                        )}
+                      </CopyButton>
+                    </Group>
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      onClick={() => setFreshToken(null)}
+                    >
+                      Done
+                    </Button>
+                  </Stack>
+                </Alert>
+              )}
+
+              <TextInput
+                label="Label"
+                placeholder="Warehouse dashboard"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.currentTarget.value)}
+              />
+              <Select
+                label="Scope"
+                data={[
+                  { value: "read", label: "Read only" },
+                  { value: "write", label: "Read + write" },
+                ]}
+                value={newScope}
+                onChange={(v) => setNewScope(v === "write" ? "write" : "read")}
+                allowDeselect={false}
+              />
+              <TextInput
+                label="Allowed browser origins"
+                description="Optional, for tokens called from a browser. Space/comma separated, e.g. https://app.example.com."
+                placeholder="https://app.example.com"
+                value={newOrigins}
+                onChange={(e) => setNewOrigins(e.currentTarget.value)}
+              />
+              <Button
+                onClick={() => void createIntegration()}
+                loading={busy}
+                disabled={!newLabel.trim()}
+              >
+                Create token
+              </Button>
+
+              {integrations.length > 0 && (
+                <Table>
+                  <Table.Tbody>
+                    {integrations.map((row) => (
+                      <Table.Tr key={row.id}>
+                        <Table.Td>
+                          {row.label}
+                          <Text size="xs" c="dimmed" ff="monospace">
+                            {row.tokenPrefix
+                              ? `bins_${row.tokenPrefix}_…`
+                              : "—"}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge
+                            size="sm"
+                            variant="light"
+                            color={row.scope === "write" ? "orange" : "blue"}
+                          >
+                            {row.scope}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td c="dimmed">
+                          {row.lastSeenAt
+                            ? relativeTime(row.lastSeenAt)
+                            : "never used"}
+                        </Table.Td>
+                        <Table.Td>
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            onClick={() => void revokeIntegration(row)}
+                            aria-label={`Revoke ${row.label}`}
+                          >
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              )}
             </Stack>
           </Paper>
 

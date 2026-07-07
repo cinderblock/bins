@@ -3,6 +3,13 @@
  * when someone enters the group access code + a display name. Its bearer token
  * (stored hashed) authenticates every API call; ops record authorship as
  * deviceId. Revocation = delete the row.
+ *
+ * An INTEGRATION (kind="integration") is the same row type wearing a different
+ * hat: an admin-minted API credential for an external app we control, carrying
+ * a `scope` (read | write) and an optional CORS origin allowlist. Reusing the
+ * device row means op authorship (op.deviceId) and the /api/devices name cache
+ * attribute integration writes for free; the human device list filters these
+ * out and the admin integrations list filters the opposite way.
  */
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { group, now } from "./group";
@@ -18,6 +25,14 @@ export const device = sqliteTable(
     displayName: text("display_name").notNull(),
     /** sha256 hex of the opaque bearer token (issued once, never stored raw). */
     tokenHash: text("token_hash").notNull().unique(),
+    /** "member" (a person's install) or "integration" (an API credential). */
+    kind: text("kind").notNull().default("member"),
+    /** Integrations only: "read" | "write" (write implies read). Null for members. */
+    scope: text("scope"),
+    /** Integrations only: CORS origin allowlist; null/[] = no browser origins. */
+    allowedOrigins: text("allowed_origins", { mode: "json" }).$type<string[]>(),
+    /** Integrations only: the token's non-secret prefix, shown in admin to ID it. */
+    tokenPrefix: text("token_prefix"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .default(now),
