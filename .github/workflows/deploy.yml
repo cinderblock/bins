@@ -41,7 +41,8 @@ jobs:
           # Ready-to-run tree: the SPA build, the server entry and everything it
           # imports at runtime (api/, shared/, db/ incl. migrations — the app
           # auto-migrates on boot), and prod node_modules.
-          cp -r build api shared db server.ts package.json bun.lock "$REL"/
+          cp -r build api shared db server.ts run package.json bun.lock "$REL"/
+          chmod +x "$REL/run"
           # Stamp the build SHA so the running app reports which release it is
           # (server.ts serves it at /_version; the health check below verifies it).
           printf '%s' "$GITHUB_SHA" > "$REL/BUILD_SHA"
