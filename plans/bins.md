@@ -42,7 +42,13 @@ dead zones (storage units, remote sites), merging back to the server later.
   scripts/create-group.ts, which now takes an optional admin password).
   BOOTSTRAP_* envs removed. **Admin model: per-group admin password**
   (hashed on group row; stateless — password rides every /api/admin/*
-  request with the member token, held only in page state). Admin page
+  request with the member token). Remembered per device (user decision
+  2026-07-06): the verified password is cached in the Dexie replica
+  (`lib/admin.ts`, `useAdminPassword`) — same device-local trust boundary as
+  the member token — so admins unlock once; auto-unlock on load, a "Lock"
+  button forgets it, a rotated password re-locks on the next failed verify.
+  `admin`/`print`/`bins` share the store (the old /print nav-state hand-off is
+  gone). Admin page
   (`/admin`, linked from Settings): group name + landing branding,
   access-code/admin-password rotation, paste-import of pre-printed stickers
   (`id,code` lines → server-authored bin.allocate ops; global-id collisions
@@ -55,6 +61,17 @@ dead zones (storage units, remote sites), merging back to the server later.
   already-verified admin password via router nav state) or by direct load
   (prompts for it, like `/admin`). Allocation moved from the member endpoint
   `/api/bins/allocate` to `/api/admin/bins/allocate` behind `requireAdmin`.
+- **Invite links (user decision 2026-07-06)**: Settings has an "Invite a
+  device" section that produces a copyable `{origin}/join#<code>` link; `/join`
+  reads the access code from the URL fragment (never sent to the server, like
+  sticker secrets) and pre-fills it, so the invitee only types a name. NO
+  server/schema change: the plaintext code is cached client-side in Dexie meta
+  (`lib/invite.ts`, `ACCESS_CODE_KEY`) on the devices that already know it —
+  setup, code-join, sign-back-in, admin rotation. Sticker-joined devices never
+  learn the code; they can type it once in Settings. Tradeoff: a code rotated
+  on another device leaves this device's cached copy stale (re-enter it); chose
+  this over storing the code plaintext server-side to avoid a migration in the
+  currently-churning shared tree.
 - **All-boxes list + roles (user decisions 2026-07-06)**: `/bins` (route
   `routes/bins.tsx`, reached from the scanner nav where print used to be) lets
   EVERYONE browse every active box and bulk-select → **move** (relocate many
