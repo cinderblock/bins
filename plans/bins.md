@@ -46,7 +46,15 @@ dead zones (storage units, remote sites), merging back to the server later.
   (`/admin`, linked from Settings): group name + landing branding,
   access-code/admin-password rotation, paste-import of pre-printed stickers
   (`id,code` lines → server-authored bin.allocate ops; global-id collisions
-  skipped per row), device list + revoke (group-scoped).
+  skipped per row), device list + revoke (group-scoped), and sticker-sheet
+  allocation.
+- **Sticker sheets are admin-only (user decision 2026-07-06)**: allocation
+  hands out the GLOBAL bin-ID sequence, so it's a provisioning action, not a
+  per-member one. The scanner nav no longer has a print button; the `/print`
+  page is reached from the admin page's "Sticker sheets" entry (passes the
+  already-verified admin password via router nav state) or by direct load
+  (prompts for it, like `/admin`). Allocation moved from the member endpoint
+  `/api/bins/allocate` to `/api/admin/bins/allocate` behind `requireAdmin`.
 - **URL format (2026-07-06, implemented)**: QR encodes `/{number}#{CODE}`
   (e.g. `/1#7HX6`) — the raw URL FRAGMENT is a short per-bin secret. Fragment,
   not query string (user decision 2026-07-06): fragments never reach the
@@ -86,7 +94,7 @@ dead zones (storage units, remote sites), merging back to the server later.
   bin_entry, location. `store.server.ts` = Drizzle StateStore adapter.
 - `api/` — hand-rolled router. join/join-by-bin/me/devices, landing + setup
   (unauth), admin (member token + per-request admin password), sync
-  push/pull, blobs (content-addressed PUT/GET/HEAD), allocate. Writes
+  push/pull, blobs (content-addressed PUT/GET/HEAD), allocate (admin). Writes
   serialize through
   `serializedTransaction` (bun:sqlite is one sync connection; awaits
   interleave, so multi-statement writes need the queue + BEGIN IMMEDIATE).
@@ -169,6 +177,97 @@ Original implementation touchpoints (in dependency order):
 Non-goals: rotating codes, rate limiting beyond the trivial, revoking a
 leaked sticker (retire the bin instead).
 
+## Spec: integration tokens + public API (PROPOSED 2026-07-06)
+
+User request 2026-07-06: "APIs and access tokens for other apps we control to
+read (and maybe write) data and embed the info into other apps." Scope calls
+locked by the user (2026-07-06):
+
+- **Consumers**: BOTH server-side (secret held privately) and browser/client
+  (token exposed) — distinguished by scope, so a read-only token is safe to
+  embed in a front-end while read+write is reserved for trusted backends.
+- **Access**: read AND write. Writes MUST be ops through `shared/reducer.ts`
+  (the load-bearing invariant) — an integration authors ops exactly like a
+  device, never touching materialized tables.
+- **API shape**: BOTH — a simple versioned query/embed REST surface over
+  materialized state, AND op-log sync access (pull/push) for apps that want a
+  live local mirror.
+
+### The pivot: how does an integration author ops?
+
+**DECIDED 2026-07-06: model (A).** `op.deviceId` (author) has a hard FK to
+`device` (`db/schema/op.ts:28`). Two ways to give an integration a valid
+author identity were considered:
+
+- **(A, CHOSEN) An integration IS a `device` row** with `kind =
+  "integration"`, a `scope`, and optional CORS `allowedOrigins`. Everything
+  reuses existing machinery for free: `authenticate()` resolves it, op
+  authorship + the `/api/devices` name cache attribute it, revoke = delete
+  row. Migration only ADDS columns to `device` (kind/scope/allowedOrigins/
+  tokenPrefix); no `op` table rebuild. Cost: overloads the "device = phone/
+  install" concept — the human device list must filter out `kind =
+  "integration"`, and the admin integrations list filters the opposite way.
+- **(B) A separate `integration` table.** Semantically cleaner, but `op`
+  authorship then can't FK to it; storing an integration id in `op.deviceId`
+  needs the FK relaxed to a plain column, which on SQLite means a full `op`
+  table rebuild migration, plus reducer/attribution changes to treat author
+  as device|integration|null. More churn against a load-bearing table.
+
+### Token model
+
+- Format `bins_<prefix>_<secret>` (prefix stored plaintext for identification
+  in the admin UI; only `sha256(full token)` stored, reusing `device.
+  tokenHash`). Shown ONCE at creation. `scope ∈ {read, write}` (write implies
+  read). `lastSeenAt` touched hourly like devices. Revoke = delete row.
+- Read tokens: safe for client embedding. Write tokens: documented
+  server-side-only.
+
+### Read surface — versioned REST over materialized state
+
+Prefix `/api/v1/` (a public contract deserves versioning; the sync protocol
+stays internal-shaped). Group derived from the token, never a param:
+
+- `GET /api/v1/bins` (+ `?location=`) — list w/ name, primary-photo blob sha,
+  location, updatedAt.
+- `GET /api/v1/bins/:id` — one bin + entries.
+- `GET /api/v1/locations` — list.
+- Photos: existing `/api/blobs/:sha` already gates on the bearer — read tokens
+  pass. Primary photo stays DERIVED.
+
+### Write surface (write scope only)
+
+- Reuse `POST /api/sync/push` — an integration pushes ops like a device; the
+  handler already stamps `ctx.deviceId` as author (= the integration under A).
+  This is the op-shape write path for free.
+- OPTIONAL later sugar: `POST /api/v1/bins/:id/notes` etc. that build the op
+  server-side via the `lib/actions.ts` equivalents. Defer unless needed.
+
+### Sync access (both scopes read via pull; push needs write)
+
+- `GET /api/sync/pull` open to read+write tokens (build a replica).
+- `POST /api/sync/push` gated on `scope === "write"`.
+
+### CORS (for browser consumers)
+
+- Per-integration `allowedOrigins` (JSON array). Echo
+  `Access-Control-Allow-Origin` only on a matching request Origin; handle
+  OPTIONS preflight. Applies to `/api/v1/*`, `/api/blobs/*`, `/api/sync/pull`.
+  Wildcard `*` permitted only for `read` scope, and only if explicitly set.
+
+### Admin surface + UI
+
+- `POST /api/admin/integrations` (list), `.../integrations/create`
+  `{ label, scope, allowedOrigins? }` → returns token ONCE,
+  `.../integrations/revoke` `{ integrationId }`. All behind existing
+  `requireAdmin` (member token + admin password).
+- Admin page gains an "Integrations / API tokens" section: create (label,
+  scope, origins), list (prefix + scope + lastSeen + revoke), one-time reveal
+  with copy. Human device list filters out `kind = "integration"`.
+
+Non-goals (match project posture): rate limiting beyond trivial, OAuth flows,
+per-bin/per-field ACLs (scope is group-wide read or write), token expiry
+(revoke instead). Tenant-agnostic: all generic, nothing operator-specific.
+
 ## Progress log
 
 - [x] Phase 0 — scaffold: repo, tooling configs, migration,
@@ -183,6 +282,19 @@ leaked sticker (retire the bin instead).
   early because the "online-only" variant would have been throwaway.
 - [x] Tests: 6 reducer convergence (order-independence + re-application) + 6
   API integration (join/allocate/push/pull/idempotency/foreign-bin/blob).
+- [x] **Photo renditions + cache policy** (2026-07-06, user request) — every
+  capture now makes THREE content-addressed blobs: thumb (320px, synced,
+  kept locally forever), display (1600px — the op's canonical `hash`,
+  unchanged), original (native res, only when the source beats 1600px;
+  EXIF-free re-encode like everything else). `entry.addPhoto` payload gains
+  optional thumbHash/originalHash; BinState gains derived primaryThumbHash;
+  migration 0003. Upload order thumb→display→original (originals DEFERRED
+  behind everything visible; their bytes drop locally once the server
+  confirms). Local cache policy (`prunePhotoCache` after each sync cycle):
+  thumbs forever, display bytes kept while primary-of-some-bin OR viewed in
+  the last 7 days, else evicted (refetch on demand; never touches pending).
+  Dexie v2 migrates old blob rows. NOTE: nothing displays originals yet —
+  archival for future zoom/AI use.
 - [x] **Sticker-only entry, landing page, first-boot setup, admin page**
   (2026-07-06, user request) — access-code form removed from visible UI
   (unlinked `/join` keeps it working); branded landing (`/api/landing`,
@@ -235,6 +347,10 @@ leaked sticker (retire the bin instead).
 - [ ] Phase 4 — per-device unclaimed-ID reserve (offline new-box without
   sticker), print layout for real label stock, location reorder, retired-bin
   browsing, unarchive places UI.
+- [ ] **Integration tokens + public API** (PROPOSED 2026-07-06, user request) —
+  scoped (read/write) admin-minted API tokens for external apps we control;
+  `/api/v1` query REST + op-log sync access; CORS for browser consumers. Full
+  spec above. Blocked on the author-model decision (Open question 1).
 - [ ] Phase 5 — AI embellishment: server job (gated on ANTHROPIC_API_KEY) runs
   Claude vision over new contents photos → server-authored `bin.aiItems` ops →
   feeds search for free. Schema/op type not yet defined.
@@ -284,3 +400,7 @@ leaked sticker (retire the bin instead).
   in untracked `plans/local.md`.
 - Don't re-negotiate getUserMedia between scans (slow; iOS re-prompts).
 - Don't run multi-statement DB writes outside `serializedTransaction`.
+
+## Open questions for the user
+
+(none open — see the integration-tokens spec's decided items above.)

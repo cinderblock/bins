@@ -105,6 +105,7 @@ export default function Search() {
               {bin.primaryPhotoHash ? (
                 <PhotoImg
                   hash={bin.primaryPhotoHash}
+                  thumbHash={bin.primaryThumbHash}
                   alt=""
                   style={{
                     width: 56,

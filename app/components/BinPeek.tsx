@@ -93,6 +93,7 @@ export function BinPeek({
             <PhotoImg
               key={entry.id}
               hash={entry.photoHash as string}
+              thumbHash={entry.thumbHash}
               alt={entry.kind === "contents_photo" ? "contents" : "item"}
               style={{
                 width: 72,

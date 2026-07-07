@@ -81,18 +81,23 @@ export const clientOpSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...opBase,
-    type: z.literal("bin.retire"),
-    binId,
-    payload: z.object({}),
-  }),
-  z.object({
-    ...opBase,
     type: z.literal("entry.addPhoto"),
     binId,
     payload: z.object({
+      /** The 1600px display rendition — the canonical photo identity. */
       hash: z.string().regex(/^[0-9a-f]{64}$/),
       kind: z.enum(["contents_photo", "item_photo"]),
       mime: z.string().max(100),
+      /** 320px strip thumbnail (separate content-addressed blob). */
+      thumbHash: z
+        .string()
+        .regex(/^[0-9a-f]{64}$/)
+        .nullish(),
+      /** Native-resolution archival copy; uploads deferred behind the rest. */
+      originalHash: z
+        .string()
+        .regex(/^[0-9a-f]{64}$/)
+        .nullish(),
     }),
   }),
   z.object({
@@ -136,6 +141,21 @@ export const serverOpSchema = z.discriminatedUnion("type", [
     // The bin's sticker secret rides the op so it reaches every member's
     // replica through normal sync (sticker-sheet re-render, URL sharing).
     payload: z.object({ code: secretCodeSchema }),
+  }),
+  // Retiring/restoring a bin flips its status. Server-authored (never pushed):
+  // it's an admin action, gated by the group's admin password on the
+  // /api/admin/bins/{retire,restore} endpoints — see api/admin.ts.
+  z.object({
+    ...opBase,
+    type: z.literal("bin.retire"),
+    binId,
+    payload: z.object({}),
+  }),
+  z.object({
+    ...opBase,
+    type: z.literal("bin.restore"),
+    binId,
+    payload: z.object({}),
   }),
 ]);
 export type ServerOp = z.infer<typeof serverOpSchema>;

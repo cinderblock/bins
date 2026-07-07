@@ -30,6 +30,8 @@ export const bin = sqliteTable(
     locationName: text("location_name"),
     /** Derived: latest non-deleted contents_photo hash (see shared/reducer.ts). */
     primaryPhotoHash: text("primary_photo_hash"),
+    /** Derived with primaryPhotoHash: its 320px thumbnail rendition. */
+    primaryThumbHash: text("primary_thumb_hash"),
     fieldClocks: text("field_clocks", { mode: "json" })
       .notNull()
       .$type<Record<string, string>>(),
@@ -51,6 +53,8 @@ export const binEntry = sqliteTable(
     kind: text("kind").notNull(),
     text: text("text"),
     photoHash: text("photo_hash"),
+    thumbHash: text("thumb_hash"),
+    originalHash: text("original_hash"),
     mime: text("mime"),
     deviceId: text("device_id"),
     effectiveTime: integer("effective_time").notNull(),

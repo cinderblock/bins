@@ -12,7 +12,6 @@ import {
   Center,
   Group,
   Image,
-  Menu,
   Modal,
   Paper,
   SimpleGrid,
@@ -25,7 +24,6 @@ import type { EntryState } from "@shared/reducer";
 import {
   IconArrowLeft,
   IconCamera,
-  IconDots,
   IconMapPin,
   IconNote,
   IconPackage,
@@ -40,7 +38,7 @@ import { LocationSheet } from "~/components/LocationSheet";
 import { NoteSheet } from "~/components/NoteSheet";
 import { PhotoImg, usePhotoUrl } from "~/components/PhotoImg";
 import { SyncBadge } from "~/components/SyncBadge";
-import { removeEntry, retireBin } from "~/lib/actions";
+import { removeEntry } from "~/lib/actions";
 import { db } from "~/lib/db";
 import { relativeTime } from "~/lib/format";
 import { syncNow } from "~/lib/sync";
@@ -151,30 +149,7 @@ export default function BinPage() {
             {bin.name && <Text size="sm">{bin.name}</Text>}
           </div>
         </Group>
-        <Group gap="xs">
-          <SyncBadge />
-          <Menu position="bottom-end">
-            <Menu.Target>
-              <ActionIcon
-                variant="default"
-                size="xl"
-                radius="xl"
-                aria-label="More"
-              >
-                <IconDots />
-              </ActionIcon>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item
-                color="red"
-                leftSection={<IconTrash size={16} />}
-                onClick={() => void retireBin(bin.id)}
-              >
-                Retire bin
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        </Group>
+        <SyncBadge />
       </Group>
 
       {bin.status === "unclaimed" ? (
@@ -226,6 +201,7 @@ export default function BinPage() {
                 >
                   <PhotoImg
                     hash={entry.photoHash as string}
+                    thumbHash={entry.thumbHash}
                     alt={entry.kind === "contents_photo" ? "contents" : "item"}
                     style={{
                       width: 84,
@@ -371,7 +347,7 @@ function Lightbox({
   entry,
   onDeleted,
 }: { entry: EntryState; onDeleted: () => void }) {
-  const url = usePhotoUrl(entry.photoHash, true);
+  const url = usePhotoUrl(entry.photoHash, null, true);
   return (
     <Stack>
       {url ? (

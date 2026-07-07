@@ -17,16 +17,21 @@ export interface PendingOpRow {
   op: ClientOp;
 }
 
+export type BlobRole = "thumb" | "display" | "original";
+
+/** One row per photo RENDITION (thumb/display/original are separate blobs). */
 export interface BlobRow {
-  /** sha256 hex of the full-size bytes. */
+  /** sha256 hex of this rendition's bytes. */
   hash: string;
   mime: string;
   /** pending = captured here, not yet uploaded. done = server has it. */
   status: "pending" | "done";
-  /** Full-size image; dropped after confirmed upload (thumb stays forever). */
-  full: Blob | null;
-  /** Small preview — strips and search results render only this. */
-  thumb: Blob | null;
+  /** Drives upload ordering (originals last) + cache eviction policy. */
+  role: BlobRole;
+  /** Null = uploaded and locally evicted; refetched on demand. */
+  bytes: Blob | null;
+  /** LRU clock for prunePhotoCache (see lib/photos.ts). */
+  lastAccessAt: number;
 }
 
 export interface MetaRow {
@@ -62,6 +67,33 @@ db.version(1).stores({
   blobs: "hash, status",
   meta: "key",
 });
+
+// v2: blobs become one row per rendition (thumb/display/original). Old rows
+// held both full+thumb slots keyed by the display hash — carry them over as
+// display-role rows (preserving pending uploads); old un-addressed thumb
+// bytes are dropped (regenerable/refetchable).
+db.version(2)
+  .stores({
+    bins: "id, updatedAt, status",
+    entries: "id, binId, effectiveTime",
+    locations: "id, sortOrder",
+    pendingOps: "opId",
+    blobs: "hash, status, role, lastAccessAt",
+    meta: "key",
+  })
+  .upgrade((tx) =>
+    tx
+      .table("blobs")
+      .toCollection()
+      .modify((row: Record<string, unknown>) => {
+        row.role = "display";
+        row.bytes = row.full ?? row.thumb ?? null;
+        row.lastAccessAt = Date.now();
+        // undefined properties are dropped by IndexedDB's structured clone.
+        row.full = undefined;
+        row.thumb = undefined;
+      }),
+  );
 
 export async function getMeta<T>(key: string): Promise<T | undefined> {
   const row = await db.meta.get(key);

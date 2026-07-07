@@ -1,23 +1,44 @@
 /**
- * Photo capture pipeline: downscale + compress on-device (a 12MP upload would
- * murder a weak uplink), thumbnail for strips, sha256 for content
- * addressing. Canvas-grabbed frames are upright and EXIF-free by construction;
- * the file-input fallback is normalized through createImageBitmap (which also
+ * Photo capture pipeline: three renditions per shot, each its own
+ * content-addressed blob —
+ *   thumb    320px  q0.7  strips/search; synced, kept locally forever (tiny)
+ *   display 1600px  q0.8  the canonical photo identity (the op's `hash`)
+ *   original native q0.9  archival; only when the source beats 1600px, and
+ *                         uploaded AFTER everything else (deferred)
+ * Canvas-grabbed frames are upright and EXIF-free by construction; the
+ * file-input fallback is normalized through createImageBitmap (which also
  * strips embedded GPS EXIF — location is recorded explicitly, with consent).
+ *
+ * Local cache policy (enforced by prunePhotoCache, run after sync): thumbs
+ * stay forever; display bytes stay while they're some bin's primary photo or
+ * were accessed in the last 7 days; original bytes are dropped the moment
+ * the server confirms the upload. Evicted bytes refetch on demand.
  */
 import { apiFetch } from "./api";
-import { db } from "./db";
+import { type BlobRole, db } from "./db";
 
-const FULL_MAX_EDGE = 1600;
-const FULL_JPEG_QUALITY = 0.8;
+const DISPLAY_MAX_EDGE = 1600;
+const DISPLAY_JPEG_QUALITY = 0.8;
 const THUMB_MAX_EDGE = 320;
 const THUMB_QUALITY = 0.7;
+const ORIGINAL_JPEG_QUALITY = 0.9;
+
+/** Keep non-primary display bytes this long after their last view. */
+const DISPLAY_CACHE_TTL_MS = 7 * 24 * 3_600_000;
+/** Don't churn Dexie with a lastAccessAt write on every render. */
+const ACCESS_TOUCH_INTERVAL_MS = 3_600_000;
+
+export interface Rendition {
+  hash: string;
+  bytes: Blob;
+}
 
 export interface ProcessedPhoto {
-  hash: string;
   mime: string;
-  full: Blob;
-  thumb: Blob;
+  thumb: Rendition;
+  display: Rendition;
+  /** Null when the source wasn't meaningfully larger than the display size. */
+  original: Rendition | null;
 }
 
 function drawScaled(
@@ -60,21 +81,44 @@ async function sha256Hex(blob: Blob): Promise<string> {
     .join("");
 }
 
+async function rendition(bytes: Blob): Promise<Rendition> {
+  return { hash: await sha256Hex(bytes), bytes };
+}
+
 async function process(
   source: CanvasImageSource,
   width: number,
   height: number,
 ): Promise<ProcessedPhoto> {
-  const fullCanvas = drawScaled(source, width, height, FULL_MAX_EDGE);
-  const full = await toBlob(fullCanvas, "image/jpeg", FULL_JPEG_QUALITY);
-  const thumbCanvas = drawScaled(
-    fullCanvas,
-    fullCanvas.width,
-    fullCanvas.height,
-    THUMB_MAX_EDGE,
+  const displayCanvas = drawScaled(source, width, height, DISPLAY_MAX_EDGE);
+  const display = await rendition(
+    await toBlob(displayCanvas, "image/jpeg", DISPLAY_JPEG_QUALITY),
   );
-  const thumb = await toBlob(thumbCanvas, "image/jpeg", THUMB_QUALITY);
-  return { hash: await sha256Hex(full), mime: "image/jpeg", full, thumb };
+  const thumb = await rendition(
+    await toBlob(
+      drawScaled(
+        displayCanvas,
+        displayCanvas.width,
+        displayCanvas.height,
+        THUMB_MAX_EDGE,
+      ),
+      "image/jpeg",
+      THUMB_QUALITY,
+    ),
+  );
+  // Archival copy only when the source genuinely beats the display size —
+  // re-encoded through canvas, so it stays EXIF/GPS-free like everything else.
+  let original: Rendition | null = null;
+  if (Math.max(width, height) > DISPLAY_MAX_EDGE) {
+    original = await rendition(
+      await toBlob(
+        drawScaled(source, width, height, Number.POSITIVE_INFINITY),
+        "image/jpeg",
+        ORIGINAL_JPEG_QUALITY,
+      ),
+    );
+  }
+  return { mime: "image/jpeg", thumb, display, original };
 }
 
 /** Grab + process the current frame of the live viewfinder. */
@@ -97,35 +141,71 @@ export async function processFile(file: File): Promise<ProcessedPhoto> {
   }
 }
 
+async function touchAccess(hash: string, lastAccessAt: number) {
+  if (Date.now() - lastAccessAt > ACCESS_TOUCH_INTERVAL_MS) {
+    await db.blobs.update(hash, { lastAccessAt: Date.now() });
+  }
+}
+
 /**
- * Resolve displayable bytes for a photo hash: local capture first, else fetch
- * from the server (authenticated — <img src> can't send the bearer header)
- * and cache in Dexie so it renders offline forever after.
+ * Resolve displayable bytes for a rendition hash: local cache first, else
+ * fetch from the server (authenticated — <img src> can't send the bearer
+ * header) and cache under the given role for offline reuse. `fallbackHash`
+ * covers renditions that don't exist (old ops without thumbs) or haven't
+ * uploaded yet.
  */
 export async function getPhotoBlob(
   hash: string,
-  preferFull = false,
+  role: BlobRole = "display",
+  fallbackHash?: string | null,
 ): Promise<Blob | undefined> {
   const row = await db.blobs.get(hash);
-  if (row) {
-    const cached = preferFull
-      ? (row.full ?? row.thumb)
-      : (row.thumb ?? row.full);
-    if (cached) return cached;
+  if (row?.bytes) {
+    void touchAccess(hash, row.lastAccessAt);
+    return row.bytes;
   }
   try {
     const res = await apiFetch(`/api/blobs/${hash}`);
-    const blob = await res.blob();
+    const bytes = await res.blob();
     await db.blobs.put({
       hash,
-      mime: blob.type,
+      mime: bytes.type,
       status: "done",
-      full: null,
-      // Cache the fetched image as the local render copy.
-      thumb: blob,
+      role: row?.role ?? role,
+      bytes,
+      lastAccessAt: Date.now(),
     });
-    return blob;
+    return bytes;
   } catch {
+    if (fallbackHash && fallbackHash !== hash) {
+      return getPhotoBlob(fallbackHash, "display");
+    }
     return undefined;
+  }
+}
+
+/**
+ * Enforce the local photo-cache policy (see header). Never touches pending
+ * rows — unsynced bytes are sacred.
+ */
+export async function prunePhotoCache(): Promise<void> {
+  const primaries = new Set<string>();
+  for (const bin of await db.bins.toArray()) {
+    if (bin.primaryPhotoHash) primaries.add(bin.primaryPhotoHash);
+  }
+  const cutoff = Date.now() - DISPLAY_CACHE_TTL_MS;
+  const rows = await db.blobs.where("status").equals("done").toArray();
+  const evict = rows
+    .filter((row) => row.bytes !== null)
+    .filter(
+      (row) =>
+        row.role === "original" ||
+        (row.role === "display" &&
+          !primaries.has(row.hash) &&
+          row.lastAccessAt < cutoff),
+    )
+    .map((row) => row.hash);
+  for (const hash of evict) {
+    await db.blobs.update(hash, { bytes: null });
   }
 }

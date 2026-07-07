@@ -39,10 +39,6 @@ export async function setBinLocation(
   });
 }
 
-export async function retireBin(binId: number) {
-  await enqueueOp({ ...stamp(), type: "bin.retire", binId, payload: {} });
-}
-
 export async function addNote(binId: number, text: string) {
   await enqueueOp({
     ...stamp(),
@@ -62,27 +58,44 @@ export async function removeEntry(binId: number, entryOpId: string) {
 }
 
 /**
- * Photo entry: blob rows land in the SAME transaction pattern as the op (the
- * blob is written first; if the op enqueue then failed the orphan blob is
- * harmless and content-addressed, so a retry reuses it).
+ * Photo entry: rendition blob rows land BEFORE the op (if the op enqueue then
+ * failed, orphan blobs are harmless and content-addressed, so a retry reuses
+ * them). Upload ordering and local retention are driven by each row's role.
  */
 export async function addPhoto(
   binId: number,
   kind: "contents_photo" | "item_photo",
   photo: ProcessedPhoto,
 ) {
-  await db.blobs.put({
-    hash: photo.hash,
-    mime: photo.mime,
-    status: "pending",
-    full: photo.full,
-    thumb: photo.thumb,
-  });
+  const now = Date.now();
+  const renditions = [
+    { role: "thumb" as const, r: photo.thumb },
+    { role: "display" as const, r: photo.display },
+    ...(photo.original
+      ? [{ role: "original" as const, r: photo.original }]
+      : []),
+  ];
+  await db.blobs.bulkPut(
+    renditions.map(({ role, r }) => ({
+      hash: r.hash,
+      mime: photo.mime,
+      status: "pending" as const,
+      role,
+      bytes: r.bytes,
+      lastAccessAt: now,
+    })),
+  );
   const op: ClientOp = {
     ...stamp(),
     type: "entry.addPhoto",
     binId,
-    payload: { hash: photo.hash, kind, mime: photo.mime },
+    payload: {
+      hash: photo.display.hash,
+      kind,
+      mime: photo.mime,
+      thumbHash: photo.thumb.hash,
+      originalHash: photo.original?.hash ?? null,
+    },
   };
   await enqueueOp(op);
 }

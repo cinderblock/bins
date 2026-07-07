@@ -141,6 +141,8 @@ describe("reducer convergence", () => {
     const hashA = "a".repeat(64);
     const hashB = "b".repeat(64);
     const hashC = "c".repeat(64);
+    const thumbB = "d".repeat(64);
+    const originalB = "e".repeat(64);
     const ops = [
       op({
         type: "bin.allocate",
@@ -161,11 +163,22 @@ describe("reducer convergence", () => {
       op({
         type: "entry.addPhoto",
         effectiveTime: 300,
-        payload: { hash: hashB, kind: "contents_photo", mime: "image/jpeg" },
+        payload: {
+          hash: hashB,
+          kind: "contents_photo",
+          mime: "image/jpeg",
+          thumbHash: thumbB,
+          originalHash: originalB,
+        },
       }),
     ];
     const snapshot = await expectConvergence(ops);
     expect(snapshot).toContain(`"primaryPhotoHash":"${hashB}"`);
+    // The rendition hashes ride the entry, and the primary's thumb is derived
+    // alongside the primary photo itself.
+    expect(snapshot).toContain(`"primaryThumbHash":"${thumbB}"`);
+    expect(snapshot).toContain(`"thumbHash":"${thumbB}"`);
+    expect(snapshot).toContain(`"originalHash":"${originalB}"`);
   });
 
   test("removing the primary photo recomputes it; remove-before-add tombstones", async () => {

@@ -33,6 +33,8 @@ export interface BinState {
   locationName: string | null;
   /** Derived: hash of the latest non-deleted contents_photo entry. */
   primaryPhotoHash: string | null;
+  /** Derived alongside primaryPhotoHash: its strip thumbnail, when it has one. */
+  primaryThumbHash: string | null;
   /** field -> clock ("paddedEffectiveTime:opId") of the last write that won. */
   fieldClocks: Record<string, string>;
   createdAt: number;
@@ -46,6 +48,8 @@ export interface EntryState {
   kind: EntryKind;
   text: string | null;
   photoHash: string | null;
+  thumbHash: string | null;
+  originalHash: string | null;
   mime: string | null;
   deviceId: string | null;
   effectiveTime: number;
@@ -104,6 +108,7 @@ function newBin(id: number, time: number): BinState {
     externalLabel: null,
     locationName: null,
     primaryPhotoHash: null,
+    primaryThumbHash: null,
     fieldClocks: {},
     createdAt: time,
     updatedAt: time,
@@ -169,11 +174,14 @@ export async function applyOp(
       return;
     }
 
-    case "bin.retire": {
+    case "bin.retire":
+    case "bin.restore": {
+      // Status is LWW on the same `status` clock as bin.claim, so retire and
+      // restore just compete like any other write — last one wins, converges.
       const bin = await touchBin(store, op);
       const clock = clockOf(op);
       if (wins(clock, bin.fieldClocks.status)) {
-        bin.status = "retired";
+        bin.status = op.type === "bin.retire" ? "retired" : "active";
         bin.fieldClocks.status = clock;
       }
       await store.putBin(bin);
@@ -190,6 +198,12 @@ export async function applyOp(
         kind: op.type === "entry.addNote" ? "note" : op.payload.kind,
         text: op.type === "entry.addNote" ? op.payload.text : null,
         photoHash: op.type === "entry.addPhoto" ? op.payload.hash : null,
+        thumbHash:
+          op.type === "entry.addPhoto" ? (op.payload.thumbHash ?? null) : null,
+        originalHash:
+          op.type === "entry.addPhoto"
+            ? (op.payload.originalHash ?? null)
+            : null,
         mime: op.type === "entry.addPhoto" ? op.payload.mime : null,
         deviceId: op.deviceId,
         effectiveTime: op.effectiveTime,
@@ -216,6 +230,8 @@ export async function applyOp(
           kind: "note",
           text: null,
           photoHash: null,
+          thumbHash: null,
+          originalHash: null,
           mime: null,
           deviceId: null,
           effectiveTime: op.effectiveTime,
@@ -280,6 +296,7 @@ async function refreshDerived(store: StateStore, binId: number, time: number) {
   bin.updatedAt = Math.max(bin.updatedAt, time);
   const latest = await store.getLatestContentsEntry(binId);
   bin.primaryPhotoHash = latest?.photoHash ?? null;
+  bin.primaryThumbHash = latest?.thumbHash ?? null;
   await store.putBin(bin);
 }
 

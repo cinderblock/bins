@@ -22,6 +22,7 @@ import {
   getMeta,
   setMeta,
 } from "./db";
+import { prunePhotoCache } from "./photos";
 import { clientStore } from "./store.client";
 
 const PUSH_BATCH = 200;
@@ -113,11 +114,20 @@ async function pullOnce(): Promise<boolean> {
   return response.hasMore;
 }
 
-/** Upload captured photo blobs; drop full-size bytes once the server has them. */
+/**
+ * Upload captured photo renditions, smallest-value-first: thumbs (make
+ * strips work group-wide fast), then displays, then originals — the archival
+ * copies are DEFERRED behind everything the group actually looks at, and
+ * their bytes are dropped locally the moment the server confirms.
+ */
+const UPLOAD_ORDER = { thumb: 0, display: 1, original: 2 } as const;
+
 async function uploadBlobs(): Promise<void> {
-  const pending = await db.blobs.where("status").equals("pending").toArray();
+  const pending = (
+    await db.blobs.where("status").equals("pending").toArray()
+  ).sort((a, b) => UPLOAD_ORDER[a.role] - UPLOAD_ORDER[b.role]);
   for (const blob of pending) {
-    if (!blob.full) {
+    if (!blob.bytes) {
       await db.blobs.update(blob.hash, { status: "done" });
       continue;
     }
@@ -125,9 +135,14 @@ async function uploadBlobs(): Promise<void> {
       await apiFetch(`/api/blobs/${blob.hash}`, {
         method: "PUT",
         headers: { "Content-Type": blob.mime },
-        body: blob.full,
+        body: blob.bytes,
       });
-      await db.blobs.update(blob.hash, { status: "done", full: null });
+      await db.blobs.update(blob.hash, {
+        status: "done",
+        // Originals are archival — never kept locally once the server has
+        // them. Other roles stay subject to prunePhotoCache's policy.
+        ...(blob.role === "original" ? { bytes: null } : {}),
+      });
     } catch (err) {
       // Offline or server hiccup — leave pending; the next trigger retries.
       if (err instanceof ApiError && err.status === 401) throw err;
@@ -152,6 +167,8 @@ export async function syncNow(): Promise<void> {
       await uploadBlobs();
       await refreshDevices();
     } while (queuedAgain);
+    // Enforce the local photo-cache policy now that uploads are confirmed.
+    await prunePhotoCache();
     if (authDead) {
       // The token works again (e.g. after sign-back-in) — clear the flag.
       authDead = false;
