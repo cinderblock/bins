@@ -15,7 +15,7 @@ import {
   SECRET_CODE_LENGTH,
 } from "../shared/ops";
 import { applyOp } from "../shared/reducer";
-import { type Ctx, error, json, serializedTransaction } from "./context";
+import { type Ctx, serializedTransaction } from "./context";
 
 /** Short IDs start here — no bin 1; low numbers read as test noise. */
 const FIRST_BIN_ID = 100;
@@ -32,17 +32,21 @@ function generateSecretCode(): string {
   return code;
 }
 
-const allocateSchema = z.object({ count: z.number().int().min(1).max(200) });
+export const allocateSchema = z.object({
+  count: z.number().int().min(1).max(200),
+});
 
-export async function handleAllocate(
-  req: Request,
+/**
+ * Reserve `count` fresh short IDs for the group. Admin-only: the caller must
+ * have passed the group's admin password (see api/admin.ts) — allocation hands
+ * out the global integer sequence, so it's a provisioning action, not a
+ * per-member one.
+ */
+export async function allocateBins(
   ctx: Ctx,
-): Promise<Response> {
-  const parsed = allocateSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return error(400, "invalid allocate request");
-  const { count } = parsed.data;
-
-  const bins = await serializedTransaction(async () => {
+  count: number,
+): Promise<{ id: number; code: string }[]> {
+  return serializedTransaction(async () => {
     const store = new DrizzleStateStore(ctx.groupId);
     // The ID sequence is global across groups (URLs can't carry a group).
     const top = await db.query.bin.findFirst({
@@ -87,6 +91,4 @@ export async function handleAllocate(
     }
     return allocated;
   });
-
-  return json({ bins });
 }

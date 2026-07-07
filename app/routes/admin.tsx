@@ -20,7 +20,7 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconArrowLeft, IconTrash } from "@tabler/icons-react";
+import { IconArrowLeft, IconPrinter, IconTrash } from "@tabler/icons-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { apiJson } from "~/lib/api";
@@ -282,6 +282,23 @@ export default function Admin() {
               </Stack>
             </Paper>
           )}
+
+          <Paper p="md" radius="lg" withBorder>
+            <Stack gap="sm">
+              <Text fw={600}>Sticker sheets</Text>
+              <Text size="xs" c="dimmed">
+                Allocate new bin numbers and print a QR sheet to stick on boxes.
+              </Text>
+              <Button
+                leftSection={<IconPrinter size={16} />}
+                onClick={() =>
+                  navigate("/print", { state: { adminPassword: password } })
+                }
+              >
+                Open sticker sheets
+              </Button>
+            </Stack>
+          </Paper>
 
           <Paper p="md" radius="lg" withBorder>
             <Stack gap="sm">

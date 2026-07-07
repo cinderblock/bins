@@ -130,9 +130,22 @@ describe("api", () => {
   });
 
   test("allocate stickers, claim + note, second device converges via pull", async () => {
-    const alloc = await call("POST", "/api/bins/allocate", {
+    // Allocation is admin-only: a member token without the admin password
+    // can't reserve sticker IDs.
+    const denied = await call("POST", "/api/admin/bins/allocate", {
       token: tokenA,
       body: { count: 3 },
+    });
+    expect(denied.status).toBe(400);
+    const wrongPw = await call("POST", "/api/admin/bins/allocate", {
+      token: tokenA,
+      body: { adminPassword: "nope", count: 3 },
+    });
+    expect(wrongPw.status).toBe(403);
+
+    const alloc = await call("POST", "/api/admin/bins/allocate", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", count: 3 },
     });
     expect(alloc.status).toBe(200);
     allocated = ((await alloc.json()) as { bins: typeof allocated }).bins;
@@ -196,6 +209,42 @@ describe("api", () => {
     });
     expect(bin?.status).toBe("active");
     expect(bin?.name).toBe("Kitchen");
+  });
+
+  test("retire/restore is admin-only and flips bin status", async () => {
+    const { eq } = await import("drizzle-orm");
+    const statusOf = async () =>
+      (await db.query.bin.findFirst({ where: eq(schema.bin.id, binId) }))
+        ?.status;
+
+    // Member token, no admin password — rejected before anything changes.
+    const denied = await call("POST", "/api/admin/bins/retire", {
+      token: tokenA,
+      body: { binId },
+    });
+    expect(denied.status).toBe(400);
+    expect(await statusOf()).toBe("active");
+
+    const retire = await call("POST", "/api/admin/bins/retire", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", binId },
+    });
+    expect(retire.status).toBe(200);
+    expect(await statusOf()).toBe("retired");
+
+    const restore = await call("POST", "/api/admin/bins/restore", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", binId },
+    });
+    expect(restore.status).toBe(200);
+    expect(await statusOf()).toBe("active");
+
+    // A bin outside the group (here: nonexistent) is a 404, not a silent stub.
+    const missing = await call("POST", "/api/admin/bins/retire", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", binId: 999_999 },
+    });
+    expect(missing.status).toBe(404);
   });
 
   test("revoked device can re-join with the SAME deviceId (sign-back-in)", async () => {

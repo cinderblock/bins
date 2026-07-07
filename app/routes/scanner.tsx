@@ -20,11 +20,11 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
+  IconBoxMultiple,
   IconBulb,
   IconBulbOff,
   IconCamera,
   IconInfoCircle,
-  IconPrinter,
   IconSearch,
   IconSettings,
 } from "@tabler/icons-react";
@@ -396,6 +396,16 @@ export default function Scanner() {
         <Group justify="center" gap="xl">
           <ActionIcon
             component={Link}
+            to="/bins"
+            variant="default"
+            size={56}
+            radius="xl"
+            aria-label="All boxes"
+          >
+            <IconBoxMultiple />
+          </ActionIcon>
+          <ActionIcon
+            component={Link}
             to="/search"
             variant="default"
             size={56}
@@ -403,16 +413,6 @@ export default function Scanner() {
             aria-label="Search"
           >
             <IconSearch />
-          </ActionIcon>
-          <ActionIcon
-            component={Link}
-            to="/print"
-            variant="default"
-            size={56}
-            radius="xl"
-            aria-label="Print stickers"
-          >
-            <IconPrinter />
           </ActionIcon>
           <ActionIcon
             component={Link}

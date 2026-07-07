@@ -10,6 +10,7 @@ import {
   Group,
   NumberInput,
   Paper,
+  PasswordInput,
   Stack,
   Text,
   Title,
@@ -18,7 +19,7 @@ import { notifications } from "@mantine/notifications";
 import { IconArrowLeft, IconPrinter } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { renderSVG } from "uqr";
 import { apiJson } from "~/lib/api";
 import { db } from "~/lib/db";
@@ -35,9 +36,37 @@ const printCss = `
 
 export default function Print() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [params, setParams] = useSearchParams();
   const [count, setCount] = useState<number | string>(20);
   const [busy, setBusy] = useState(false);
+
+  // Sticker sheets are admin-only: allocation hands out the global bin-ID
+  // sequence. The admin page passes its (already-verified) password via
+  // navigation state; on a direct load we prompt for it here. Never stored —
+  // a reload re-locks, matching the /admin surface.
+  const passedPassword =
+    (location.state as { adminPassword?: string } | null)?.adminPassword ?? "";
+  const [adminPassword, setAdminPassword] = useState(passedPassword);
+  const [unlocked, setUnlocked] = useState(Boolean(passedPassword));
+
+  async function unlock() {
+    setBusy(true);
+    try {
+      await apiJson("/api/admin/verify", {
+        method: "POST",
+        body: JSON.stringify({ adminPassword }),
+      });
+      setUnlocked(true);
+    } catch (err) {
+      notifications.show({
+        message: err instanceof Error ? err.message : String(err),
+        color: "red",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const ids = (params.get("ids") ?? "")
     .split(",")
@@ -62,10 +91,13 @@ export default function Print() {
     setBusy(true);
     try {
       const response = await apiJson<{ bins: { id: number; code: string }[] }>(
-        "/api/bins/allocate",
+        "/api/admin/bins/allocate",
         {
           method: "POST",
-          body: JSON.stringify({ count: Number(count) || 20 }),
+          body: JSON.stringify({
+            adminPassword,
+            count: Number(count) || 20,
+          }),
         },
       );
       setParams(
@@ -82,6 +114,54 @@ export default function Print() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!unlocked) {
+    return (
+      <Stack
+        p="md"
+        pt="max(var(--mantine-spacing-md), env(safe-area-inset-top))"
+        maw={520}
+        mx="auto"
+      >
+        <Group gap="sm">
+          <ActionIcon
+            variant="default"
+            size="xl"
+            radius="xl"
+            onClick={() => navigate(-1)}
+            aria-label="Back"
+          >
+            <IconArrowLeft />
+          </ActionIcon>
+          <Title order={3}>Sticker sheet</Title>
+        </Group>
+        <Paper p="md" radius="lg" withBorder>
+          <Stack gap="sm">
+            <Text size="sm" c="dimmed">
+              Printing sticker sheets allocates new bin numbers, so it needs the
+              admin password (set during first-boot setup).
+            </Text>
+            <PasswordInput
+              label="Admin password"
+              value={adminPassword}
+              onChange={(e) => setAdminPassword(e.currentTarget.value)}
+              onKeyDown={(e) =>
+                e.key === "Enter" && adminPassword && void unlock()
+              }
+              autoFocus
+            />
+            <Button
+              onClick={() => void unlock()}
+              loading={busy}
+              disabled={!adminPassword}
+            >
+              Unlock
+            </Button>
+          </Stack>
+        </Paper>
+      </Stack>
+    );
   }
 
   return (

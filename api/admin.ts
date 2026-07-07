@@ -12,6 +12,7 @@ import { db, schema } from "../db/client.server";
 import { DrizzleStateStore } from "../db/store.server";
 import { type CanonicalOp, secretCodeSchema } from "../shared/ops";
 import { applyOp } from "../shared/reducer";
+import { allocateBins, allocateSchema } from "./allocate";
 import { normalizeAccessCode } from "./auth";
 import {
   type Ctx,
@@ -48,6 +49,10 @@ const importSchema = withPassword.extend({
 
 const revokeSchema = withPassword.extend({ deviceId: z.string().uuid() });
 
+const binStatusSchema = withPassword.extend({
+  binId: z.number().int().positive(),
+});
+
 /** Returns the caller's group when the admin password checks out. */
 async function requireAdmin(
   ctx: Ctx,
@@ -73,6 +78,50 @@ function configOf(group: GroupRow) {
     landingTitle: group.landingTitle,
     landingSubtitle: group.landingSubtitle,
   };
+}
+
+/**
+ * Server-author a bin status op (retire/restore). Same shape as allocation:
+ * the op is written to the log and applied to the materialized store, then
+ * reaches every replica through normal pull. The client triggers a sync after
+ * the call so the admin's own device converges promptly.
+ */
+async function authorBinStatusOp(
+  ctx: Ctx,
+  binId: number,
+  type: "bin.retire" | "bin.restore",
+): Promise<void> {
+  await serializedTransaction(async () => {
+    const store = new DrizzleStateStore(ctx.groupId);
+    const now = Date.now();
+    const op: CanonicalOp = {
+      opId: uuidv7(),
+      type,
+      binId,
+      payload: {},
+      clientTime: now,
+      geo: null,
+      seq: null,
+      deviceId: null,
+      effectiveTime: now,
+    };
+    const inserted = await db
+      .insert(schema.op)
+      .values({
+        opId: op.opId,
+        groupId: ctx.groupId,
+        binId,
+        deviceId: null,
+        type,
+        payload: {},
+        clientTime: now,
+        effectiveTime: now,
+        serverTime: new Date(now),
+      })
+      .returning({ seq: schema.op.seq });
+    op.seq = inserted[0]?.seq ?? null;
+    await applyOp(store, op);
+  });
 }
 
 export async function handleAdmin(
@@ -109,6 +158,33 @@ export async function handleAdmin(
         .where(eq(schema.group.id, group.id));
     }
     return json({ config: configOf({ ...group, ...updates }) });
+  }
+
+  if (path === "/api/admin/bins/allocate") {
+    const parsed = allocateSchema.safeParse(body);
+    if (!parsed.success) return error(400, "invalid allocate request");
+    const bins = await allocateBins(ctx, parsed.data.count);
+    return json({ bins });
+  }
+
+  if (path === "/api/admin/bins/retire" || path === "/api/admin/bins/restore") {
+    const parsed = binStatusSchema.safeParse(body);
+    if (!parsed.success) return error(400, "invalid bin status request");
+    // Group-scoped: an admin must never flip a bin outside their group.
+    const existing = await db.query.bin.findFirst({
+      where: and(
+        eq(schema.bin.id, parsed.data.binId),
+        eq(schema.bin.groupId, ctx.groupId),
+      ),
+      columns: { id: true },
+    });
+    if (!existing) return error(404, "no such bin");
+    await authorBinStatusOp(
+      ctx,
+      parsed.data.binId,
+      path.endsWith("retire") ? "bin.retire" : "bin.restore",
+    );
+    return json({ ok: true });
   }
 
   if (path === "/api/admin/bins/import") {

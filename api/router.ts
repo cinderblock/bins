@@ -1,5 +1,4 @@
 import { handleAdmin } from "./admin";
-import { handleAllocate } from "./allocate";
 import { handleDevices, handleJoin, handleJoinByBin, handleMe } from "./auth";
 import { handleBlob } from "./blobs";
 /**
@@ -39,9 +38,6 @@ export async function handleApi(req: Request, url: URL): Promise<Response> {
       return await handlePush(req, ctx);
     if (path === "/api/sync/pull" && method === "GET")
       return await handlePull(req, ctx);
-    if (path === "/api/bins/allocate" && method === "POST") {
-      return await handleAllocate(req, ctx);
-    }
     // Member token + per-request admin password (checked inside).
     if (path.startsWith("/api/admin/") && method === "POST") {
       return await handleAdmin(req, ctx, path);

@@ -265,6 +265,39 @@ describe("reducer convergence", () => {
     expect(snapshot).toContain('"name":"Tools"');
   });
 
+  test("retire/restore are LWW on status; latest write wins in any order", async () => {
+    const ops = [
+      op({
+        type: "bin.allocate",
+        deviceId: null,
+        effectiveTime: 100,
+        payload: { code: "7HX6" },
+      }),
+      op({
+        type: "bin.claim",
+        deviceId: "device-a",
+        effectiveTime: 200,
+        payload: { name: "Costumes" },
+      }),
+      op({
+        type: "bin.retire",
+        deviceId: null,
+        effectiveTime: 300,
+        payload: {},
+      }),
+      op({
+        type: "bin.restore",
+        deviceId: null,
+        effectiveTime: 400,
+        payload: {},
+      }),
+    ];
+    const snapshot = await expectConvergence(ops);
+    // restore (400) is the latest status write -> active; the name survives.
+    expect(snapshot).toContain('"status":"active"');
+    expect(snapshot).toContain('"name":"Costumes"');
+  });
+
   test("locations: upsert/rename/archive converge", async () => {
     const locationId = fakeUuid();
     const ops = [

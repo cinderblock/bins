@@ -55,6 +55,18 @@ dead zones (storage units, remote sites), merging back to the server later.
   already-verified admin password via router nav state) or by direct load
   (prompts for it, like `/admin`). Allocation moved from the member endpoint
   `/api/bins/allocate` to `/api/admin/bins/allocate` behind `requireAdmin`.
+- **All-boxes list + roles (user decisions 2026-07-06)**: `/bins` (route
+  `routes/bins.tsx`, reached from the scanner nav where print used to be) lets
+  EVERYONE browse every active box and bulk-select → **move** (relocate many
+  at once via `bin.setLocation`). Unlocking with the admin password (inline
+  modal, or nav-state from elsewhere) additionally shows RETIRED boxes and adds
+  per-box **edit** (name/location/label) + **retire/restore**. Retire is now
+  ADMIN-ONLY and server-enforced: `bin.retire` moved from the client push
+  schema to server-authored, joined by a new `bin.restore`; both are authored
+  by `/api/admin/bins/{retire,restore}` behind `requireAdmin` (mirrors
+  allocate) and reach replicas via normal pull. The old member-facing "Retire
+  bin" menu on the bin page is gone. Status stays LWW on the `status` clock, so
+  claim/retire/restore just compete like any field (reducer.test extended).
 - **URL format (2026-07-06, implemented)**: QR encodes `/{number}#{CODE}`
   (e.g. `/1#7HX6`) — the raw URL FRAGMENT is a short per-bin secret. Fragment,
   not query string (user decision 2026-07-06): fragments never reach the
@@ -104,7 +116,8 @@ dead zones (storage units, remote sites), merging back to the server later.
   `lib/camera.ts` shared MediaStream singleton (never re-negotiate between
   scans); `lib/actions.ts` = the only place ops are built. Routes: scanner
   (`/`, AUTO-SCAN mode — see below), bin (`/:binId`, claim-in-place for
-  unclaimed), search, settings, print, admin, plus unauthenticated join
+  unclaimed), bins (all-boxes list), search, settings, print, admin, plus
+  unauthenticated join
   (unlinked) + setup (first boot). Shell gate order for signed-out visitors:
   sticker URL → FirstRun join card; /join, /setup → their routes; anything
   else → Landing (branding via /api/landing, offline fallback text).
