@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#242424"/>
+  <g transform="translate(0 0) scale(1)">
+    <!-- tote lid -->
+    <rect x="76" y="120" width="360" height="64" rx="20"
+      fill="none" stroke="#4dabf7" stroke-width="26"/>
+    <!-- tote body, slightly tapered -->
+    <path d="M112 216 L400 216 L378 396 A26 26 0 0 1 352 419 L160 419 A26 26 0 0 1 134 396 Z"
+      fill="none" stroke="#4dabf7" stroke-width="26" stroke-linejoin="round"/>
+    <!-- QR finder eye on the body -->
+    <rect x="214" y="266" width="84" height="84" rx="14"
+      fill="none" stroke="#ffffff" stroke-width="16"/>
+    <rect x="242" y="294" width="28" height="28" rx="6" fill="#ffffff"/>
+  </g>
+</svg>

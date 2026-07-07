@@ -17,6 +17,7 @@ import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
 
 import type { Route } from "./+types/root";
+import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
 
 // Paint the right background on the very first frame (before JS/CSS), so a
 // dark-mode phone never flashes white. Dark is the app default — this tool
@@ -37,6 +38,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
           content="width=device-width, initial-scale=1, viewport-fit=cover"
         />
         <title>bins</title>
+        <meta name="theme-color" content="#242424" />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/manifest.webmanifest" />
         <Meta />
         <Links />
         <ColorSchemeScript defaultColorScheme="dark" />
@@ -47,6 +52,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {/* Bottom-center: toasts land in the thumb/glance zone, confirming
               fast-flow actions ("Photo saved") without reaching. */}
           <Notifications position="bottom-center" />
+          <PwaUpdatePrompt />
           {children}
         </MantineProvider>
         <ScrollRestoration />

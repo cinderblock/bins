@@ -28,10 +28,11 @@ import {
   IconSearch,
   IconSettings,
 } from "@tabler/icons-react";
-import { BarcodeDetector } from "barcode-detector/ponyfill";
+import { BarcodeDetector, prepareZXingModule } from "barcode-detector/ponyfill";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import wasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url";
 import { BinPeek } from "~/components/BinPeek";
 import { SyncBadge } from "~/components/SyncBadge";
 import { addPhoto } from "~/lib/actions";
@@ -39,6 +40,16 @@ import { getCameraStream, setTorch, torchCapableTrack } from "~/lib/camera";
 import { db, getMeta, setMeta } from "~/lib/db";
 import { type ScanTarget, binIdFromScan } from "~/lib/format";
 import { captureFromVideo } from "~/lib/photos";
+
+// Self-host the ponyfill's wasm: the default fetches from a CDN at runtime,
+// which is useless offline. As a hashed local asset it lands in the service
+// worker precache, so iPhones (no native BarcodeDetector) scan in dead zones.
+prepareZXingModule({
+  overrides: {
+    locateFile: (path: string, prefix: string) =>
+      path.endsWith(".wasm") ? wasmUrl : prefix + path,
+  },
+});
 
 const DETECT_INTERVAL_MS = 125; // ~8/s — faster only burns battery.
 const DUPLICATE_SUPPRESS_MS = 2500;
