@@ -163,6 +163,16 @@ leaked sticker (retire the bin instead).
   early because the "online-only" variant would have been throwaway.
 - [x] Tests: 6 reducer convergence (order-independence + re-application) + 6
   API integration (join/allocate/push/pull/idempotency/foreign-bin/blob).
+- [x] **Auth recovery + install nudge** (2026-07-06, user request) — a 401
+  during sync sets the `authDead` meta flag (cleared by the next good cycle):
+  SyncBadge turns red "signed out", settings shows a sign-back-in card that
+  re-joins via access code WITHOUT touching local data. `lib/auth.ts`
+  signBackIn reuses the old deviceId when its row was deleted (authorship
+  continuity — API-tested) and REFUSES a code for a different group (would
+  push this group's outbox into another tenant). Install nudge: `lib/install`
+  captures `beforeinstallprompt` early; one-time toast (`InstallHint`) +
+  settings card (native prompt on Chromium, Share→Add-to-Home-Screen text on
+  iOS), all hidden when already standalone.
 - [x] **Auto-scan mode** (2026-07-06, user request) — the primary usage mode:
   the root camera never leaves the screen. Scanning an active bin makes it
   "current": its contents/history peek up over the camera (`BinPeek`,

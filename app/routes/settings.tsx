@@ -4,10 +4,12 @@
  */
 import {
   ActionIcon,
+  Alert,
   Button,
   Divider,
   Group,
   Paper,
+  PasswordInput,
   Stack,
   Switch,
   Text,
@@ -15,13 +17,20 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconArchive, IconArrowLeft, IconPlus } from "@tabler/icons-react";
+import {
+  IconArchive,
+  IconArrowLeft,
+  IconDeviceMobilePlus,
+  IconPlus,
+} from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { archiveLocation, upsertLocation } from "~/lib/actions";
 import { apiJson } from "~/lib/api";
+import { signBackIn } from "~/lib/auth";
 import {
+  AUTH_DEAD_KEY,
   IDENTITY_KEY,
   type Identity,
   db,
@@ -30,6 +39,13 @@ import {
   setMeta,
 } from "~/lib/db";
 import { GEO_OPT_IN_KEY, setGeoOptIn } from "~/lib/geo";
+import {
+  canPromptInstall,
+  isIos,
+  isStandalone,
+  onInstallStateChange,
+  promptInstall,
+} from "~/lib/install";
 import { syncNow } from "~/lib/sync";
 
 export default function Settings() {
@@ -56,10 +72,21 @@ export default function Settings() {
     [],
   );
 
+  const authDead = useLiveQuery(
+    async () => (await db.meta.get(AUTH_DEAD_KEY))?.value === true,
+    [],
+    false,
+  );
+
   const [name, setName] = useState("");
   const [geoOk, setGeoOk] = useState(false);
   const [newPlace, setNewPlace] = useState("");
   const [storage, setStorage] = useState("");
+  const [rejoinCode, setRejoinCode] = useState("");
+  const [rejoining, setRejoining] = useState(false);
+  // Re-render when the browser hands us (or consumes) the install prompt.
+  const [, setInstallTick] = useState(0);
+  useEffect(() => onInstallStateChange(() => setInstallTick((n) => n + 1)), []);
 
   useEffect(() => {
     if (identity) setName(identity.displayName);
@@ -81,6 +108,25 @@ export default function Settings() {
     });
     await setMeta(IDENTITY_KEY, { ...identity, displayName: name.trim() });
     notifications.show({ message: "Name updated", color: "green" });
+  }
+
+  async function rejoin() {
+    setRejoining(true);
+    try {
+      await signBackIn(rejoinCode);
+      setRejoinCode("");
+      notifications.show({
+        message: "Signed back in — syncing queued changes",
+        color: "green",
+      });
+    } catch (err) {
+      notifications.show({
+        message: err instanceof Error ? err.message : "could not sign in",
+        color: "red",
+      });
+    } finally {
+      setRejoining(false);
+    }
   }
 
   async function addPlace() {
@@ -113,6 +159,33 @@ export default function Settings() {
         </ActionIcon>
         <Title order={3}>Settings</Title>
       </Group>
+
+      {authDead && (
+        <Alert color="red" title="This device was signed out">
+          <Stack gap="xs">
+            <Text size="sm">
+              The server no longer accepts this device's key, so changes are
+              piling up locally ({pendingOps + pendingBlobs} waiting — nothing
+              is lost). Enter the group access code to reconnect.
+            </Text>
+            <Group gap="xs" align="flex-end">
+              <PasswordInput
+                label="Group access code"
+                value={rejoinCode}
+                onChange={(e) => setRejoinCode(e.currentTarget.value)}
+                style={{ flex: 1 }}
+              />
+              <Button
+                onClick={() => void rejoin()}
+                loading={rejoining}
+                disabled={!rejoinCode}
+              >
+                Sign back in
+              </Button>
+            </Group>
+          </Stack>
+        </Alert>
+      )}
 
       <Paper p="md" radius="lg" withBorder>
         <Stack gap="sm">
@@ -190,6 +263,31 @@ export default function Settings() {
           </Button>
         </Stack>
       </Paper>
+
+      {!isStandalone() && (
+        <Paper p="md" radius="lg" withBorder>
+          <Stack gap="xs">
+            <Group gap="xs">
+              <IconDeviceMobilePlus size={18} />
+              <Text fw={600}>Install on your home screen</Text>
+            </Group>
+            <Text size="sm" c="dimmed">
+              Installed, the app starts instantly offline and the browser treats
+              your local photos and pending changes as much safer from storage
+              cleanup.
+            </Text>
+            {canPromptInstall() ? (
+              <Button onClick={() => void promptInstall()}>Install</Button>
+            ) : (
+              <Text size="sm">
+                {isIos()
+                  ? "In Safari: tap the Share button, then “Add to Home Screen”."
+                  : "In your browser menu, choose “Install app” or “Add to Home Screen”."}
+              </Text>
+            )}
+          </Stack>
+        </Paper>
+      )}
 
       <Divider />
       <Button

@@ -14,7 +14,14 @@ import type {
 } from "@shared/ops";
 import { applyOp } from "@shared/reducer";
 import { ApiError, apiFetch, apiJson } from "./api";
-import { LAST_SEQ_KEY, db, getIdentity, getMeta, setMeta } from "./db";
+import {
+  AUTH_DEAD_KEY,
+  LAST_SEQ_KEY,
+  db,
+  getIdentity,
+  getMeta,
+  setMeta,
+} from "./db";
 import { clientStore } from "./store.client";
 
 const PUSH_BATCH = 200;
@@ -35,6 +42,8 @@ async function refreshDevices(): Promise<void> {
 let syncing = false;
 let queuedAgain = false;
 let started = false;
+/** Mirrors the AUTH_DEAD_KEY meta flag to avoid a Dexie write per cycle. */
+let authDead = false;
 
 /** Enqueue a client op: outbox + optimistic local apply, one transaction. */
 export async function enqueueOp(op: ClientOp): Promise<void> {
@@ -143,7 +152,18 @@ export async function syncNow(): Promise<void> {
       await uploadBlobs();
       await refreshDevices();
     } while (queuedAgain);
+    if (authDead) {
+      // The token works again (e.g. after sign-back-in) — clear the flag.
+      authDead = false;
+      await setMeta(AUTH_DEAD_KEY, false);
+    }
   } catch (err) {
+    if (err instanceof ApiError && err.status === 401 && !authDead) {
+      // The server no longer honors this device's token. Retrying is
+      // pointless until the user signs back in (settings) — surface it.
+      authDead = true;
+      await setMeta(AUTH_DEAD_KEY, true);
+    }
     // Expected whenever offline; every trigger below retries.
     console.debug("sync deferred:", err);
   } finally {

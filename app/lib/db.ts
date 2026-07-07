@@ -74,6 +74,10 @@ export async function setMeta(key: string, value: unknown): Promise<void> {
 
 export const IDENTITY_KEY = "identity";
 export const LAST_SEQ_KEY = "lastSeq";
+/** True when the server 401'd this device's token — see lib/auth.ts. */
+export const AUTH_DEAD_KEY = "authDead";
+/** One-time "add to home screen" nudge already shown. */
+export const INSTALL_HINT_KEY = "installHintShown";
 
 export async function getIdentity(): Promise<Identity | undefined> {
   return getMeta<Identity>(IDENTITY_KEY);

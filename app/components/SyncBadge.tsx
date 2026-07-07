@@ -6,7 +6,7 @@ import { Badge } from "@mantine/core";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { db } from "~/lib/db";
+import { AUTH_DEAD_KEY, db } from "~/lib/db";
 
 export function useOnline(): boolean {
   const [online, setOnline] = useState(true);
@@ -33,6 +33,26 @@ export function SyncBadge() {
     [],
     0,
   );
+  const authDead = useLiveQuery(
+    async () => (await db.meta.get(AUTH_DEAD_KEY))?.value === true,
+    [],
+    false,
+  );
+
+  if (authDead) {
+    // Retrying can't fix a dead token — point at settings' sign-back-in.
+    return (
+      <Badge
+        component={Link}
+        to="/settings"
+        color="red"
+        variant="filled"
+        style={{ cursor: "pointer" }}
+      >
+        signed out{pending ? ` · ${pending}` : ""}
+      </Badge>
+    );
+  }
 
   if (online && pending === 0) return null;
   return (

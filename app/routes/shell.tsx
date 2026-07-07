@@ -7,9 +7,12 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router";
 import { FirstRun } from "~/components/FirstRun";
+import { InstallHint } from "~/components/InstallHint";
 import { IDENTITY_KEY, type Identity, db } from "~/lib/db";
 import { binIdFromScan } from "~/lib/format";
 import { startGeo } from "~/lib/geo";
+// Imported for its side effect too: captures `beforeinstallprompt` early.
+import "~/lib/install";
 import { startSync } from "~/lib/sync";
 
 export default function Shell() {
@@ -40,5 +43,10 @@ export default function Shell() {
       target?.code != null ? { binId: target.binId, code: target.code } : null;
     return <FirstRun sticker={sticker} />;
   }
-  return <Outlet />;
+  return (
+    <>
+      <InstallHint />
+      <Outlet />
+    </>
+  );
 }

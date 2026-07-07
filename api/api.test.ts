@@ -165,6 +165,38 @@ describe("api", () => {
     expect(bin?.name).toBe("Kitchen");
   });
 
+  test("revoked device can re-join with the SAME deviceId (sign-back-in)", async () => {
+    const deviceId = crypto.randomUUID();
+    const first = await call("POST", "/api/auth/join", {
+      body: { accessCode: "secret-code", displayName: "Rex", deviceId },
+    });
+    expect(first.status).toBe(200);
+    const oldToken = ((await first.json()) as { token: string }).token;
+
+    // Live device id must never be adoptable…
+    const dupe = await call("POST", "/api/auth/join", {
+      body: { accessCode: "secret-code", displayName: "Mallory", deviceId },
+    });
+    expect(dupe.status).toBe(409);
+
+    // …but once revoked (row deleted), the same id re-registers, keeping
+    // authorship continuity for the client's sign-back-in flow.
+    const { eq } = await import("drizzle-orm");
+    await db.delete(schema.device).where(eq(schema.device.id, deviceId));
+    const denied = await call("GET", "/api/auth/me", { token: oldToken });
+    expect(denied.status).toBe(401);
+
+    const rejoin = await call("POST", "/api/auth/join", {
+      body: { accessCode: "secret-code", displayName: "Rex", deviceId },
+    });
+    expect(rejoin.status).toBe(200);
+    const fresh = (await rejoin.json()) as { token: string; deviceId: string };
+    expect(fresh.deviceId).toBe(deviceId);
+    expect(fresh.token).not.toBe(oldToken);
+    const me = await call("GET", "/api/auth/me", { token: fresh.token });
+    expect(me.status).toBe(200);
+  });
+
   test("join-by-bin: sticker pair joins (even unclaimed); bare id never does", async () => {
     // Happy path on an UNCLAIMED bin, with the code typed in the wrong case.
     const fresh = allocated[2] as { id: number; code: string };
