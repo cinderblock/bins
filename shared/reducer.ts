@@ -30,7 +30,17 @@ export interface BinState {
   name: string | null;
   sizeClass: string | null;
   externalLabel: string | null;
+  /** Total weight in grams (canonical unit; UI renders lb/kg). LWW scalar. */
+  weightGrams: number | null;
   locationName: string | null;
+  /**
+   * Category label ids this bin carries (many-to-many). DERIVED from the
+   * per-label booleans in `fieldClocks` under `label:<id>` keys — kept SORTED
+   * so the array is order-independent (a convergence requirement). Set by
+   * bin.setLabel; the label rows themselves live in LocationState's sibling
+   * LabelState.
+   */
+  labelIds: string[];
   /** Derived: hash of the latest non-deleted contents_photo entry. */
   primaryPhotoHash: string | null;
   /** Derived alongside primaryPhotoHash: its strip thumbnail, when it has one. */
@@ -68,6 +78,17 @@ export interface LocationState {
   fieldClocks: Record<string, string>;
 }
 
+/** A group-defined category label — the same op-driven shape as a location. */
+export interface LabelState {
+  id: string;
+  name: string;
+  /** Mantine color name for the chip, or null (UI falls back to a default). */
+  color: string | null;
+  sortOrder: number;
+  archived: boolean;
+  fieldClocks: Record<string, string>;
+}
+
 /**
  * Storage the reducer runs against. All methods may be called multiple times
  * per op; implementations should be plain reads/writes (no business logic).
@@ -81,6 +102,8 @@ export interface StateStore {
   getLatestContentsEntry(binId: number): Promise<EntryState | undefined>;
   getLocation(id: string): Promise<LocationState | undefined>;
   putLocation(location: LocationState): Promise<void>;
+  getLabel(id: string): Promise<LabelState | undefined>;
+  putLabel(label: LabelState): Promise<void>;
 }
 
 /** Clock strings compare lexicographically as (effectiveTime, opId) tuples. */
@@ -106,7 +129,9 @@ function newBin(id: number, time: number): BinState {
     name: null,
     sizeClass: null,
     externalLabel: null,
+    weightGrams: null,
     locationName: null,
+    labelIds: [],
     primaryPhotoHash: null,
     primaryThumbHash: null,
     fieldClocks: {},
@@ -158,6 +183,32 @@ export async function applyOp(
         if (!wins(clock, bin.fieldClocks[field])) continue;
         bin[field] = value ?? null;
         bin.fieldClocks[field] = clock;
+      }
+      // weightGrams is numeric, so it's folded separately from the string loop.
+      if (
+        op.payload.weightGrams !== undefined &&
+        wins(clock, bin.fieldClocks.weightGrams)
+      ) {
+        bin.weightGrams = op.payload.weightGrams ?? null;
+        bin.fieldClocks.weightGrams = clock;
+      }
+      await store.putBin(bin);
+      return;
+    }
+
+    case "bin.setLabel": {
+      // Membership is LWW per label: each label is its own boolean field
+      // (`label:<id>` clock), so concurrent toggles of different labels never
+      // interfere. labelIds is the derived, SORTED set of present labels.
+      const bin = await touchBin(store, op);
+      const clock = clockOf(op);
+      const key = `label:${op.payload.labelId}`;
+      if (wins(clock, bin.fieldClocks[key])) {
+        bin.fieldClocks[key] = clock;
+        const present = new Set(bin.labelIds);
+        if (op.payload.present) present.add(op.payload.labelId);
+        else present.delete(op.payload.labelId);
+        bin.labelIds = [...present].sort();
       }
       await store.putBin(bin);
       return;
@@ -283,6 +334,51 @@ export async function applyOp(
         location.archived = archived;
         location.fieldClocks.archived = clock;
         await store.putLocation(location);
+      }
+      return;
+    }
+
+    case "label.upsert": {
+      const { labelId, name, color, sortOrder } = op.payload;
+      const clock = clockOf(op);
+      const label = (await store.getLabel(labelId)) ?? {
+        id: labelId,
+        name,
+        color: color ?? null,
+        sortOrder,
+        archived: false,
+        fieldClocks: {},
+      };
+      if (wins(clock, label.fieldClocks.value)) {
+        label.name = name;
+        label.color = color ?? null;
+        label.sortOrder = sortOrder;
+        label.fieldClocks.value = clock;
+      }
+      await store.putLabel(label);
+      return;
+    }
+
+    case "label.archive": {
+      const { labelId, archived } = op.payload;
+      const clock = clockOf(op);
+      const label = await store.getLabel(labelId);
+      if (!label) {
+        // archive before upsert: keep the flag, name arrives later via LWW.
+        await store.putLabel({
+          id: labelId,
+          name: "",
+          color: null,
+          sortOrder: 0,
+          archived,
+          fieldClocks: { archived: clock },
+        });
+        return;
+      }
+      if (wins(clock, label.fieldClocks.archived)) {
+        label.archived = archived;
+        label.fieldClocks.archived = clock;
+        await store.putLabel(label);
       }
       return;
     }

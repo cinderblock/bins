@@ -298,6 +298,92 @@ describe("reducer convergence", () => {
     expect(snapshot).toContain('"name":"Costumes"');
   });
 
+  test("labels: many-to-many membership converges (LWW per label)", async () => {
+    const booze = fakeUuid();
+    const liquid = fakeUuid();
+    const ops = [
+      op({
+        type: "bin.allocate",
+        deviceId: null,
+        effectiveTime: 100,
+        payload: { code: "7HX6" },
+      }),
+      op({
+        type: "label.upsert",
+        effectiveTime: 110,
+        payload: {
+          labelId: booze,
+          name: "booze",
+          color: "grape",
+          sortOrder: 1,
+        },
+      }),
+      op({
+        type: "label.upsert",
+        effectiveTime: 120,
+        payload: { labelId: liquid, name: "liquid", sortOrder: 2 },
+      }),
+      // Add both labels from two different devices...
+      op({
+        type: "bin.setLabel",
+        deviceId: "device-a",
+        effectiveTime: 200,
+        payload: { labelId: booze, present: true },
+      }),
+      op({
+        type: "bin.setLabel",
+        deviceId: "device-b",
+        effectiveTime: 210,
+        payload: { labelId: liquid, present: true },
+      }),
+      // ...then remove "booze" later — the per-label clock means this only
+      // touches booze, never liquid.
+      op({
+        type: "bin.setLabel",
+        deviceId: "device-a",
+        effectiveTime: 300,
+        payload: { labelId: booze, present: false },
+      }),
+    ] as CanonicalOp[];
+    const snapshot = await expectConvergence(ops);
+    // Only "liquid" survives; the array is sorted, so it's order-independent.
+    expect(snapshot).toContain(`"labelIds":["${liquid}"]`);
+    expect(snapshot).toContain('"name":"booze"');
+    expect(snapshot).toContain('"color":"grape"');
+  });
+
+  test("weight is LWW like any scalar field; a stale clear can't beat it", async () => {
+    const ops = [
+      op({
+        type: "bin.allocate",
+        deviceId: null,
+        effectiveTime: 100,
+        payload: { code: "7HX6" },
+      }),
+      op({
+        type: "bin.claim",
+        deviceId: "device-a",
+        effectiveTime: 200,
+        payload: { name: "Wine", weightGrams: 5000 },
+      }),
+      op({
+        type: "bin.setFields",
+        deviceId: "device-b",
+        effectiveTime: 300,
+        payload: { weightGrams: 7000 },
+      }),
+      // An earlier clear (250) must NOT beat the 300 write.
+      op({
+        type: "bin.setFields",
+        deviceId: "device-a",
+        effectiveTime: 250,
+        payload: { weightGrams: null },
+      }),
+    ] as CanonicalOp[];
+    const snapshot = await expectConvergence(ops);
+    expect(snapshot).toContain('"weightGrams":7000');
+  });
+
   test("locations: upsert/rename/archive converge", async () => {
     const locationId = fakeUuid();
     const ops = [

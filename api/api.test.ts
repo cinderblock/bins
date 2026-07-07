@@ -247,6 +247,84 @@ describe("api", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("labels + weight: pushed ops materialize on the server and pull", async () => {
+    const { eq } = await import("drizzle-orm");
+    const boozeId = crypto.randomUUID();
+    const liquidId = crypto.randomUUID();
+    const push = await call("POST", "/api/sync/push", {
+      token: tokenA,
+      body: {
+        ops: [
+          {
+            opId: uuid(),
+            type: "label.upsert",
+            payload: {
+              labelId: boozeId,
+              name: "booze",
+              color: "grape",
+              sortOrder: 1,
+            },
+            clientTime: Date.now(),
+          },
+          {
+            opId: uuid(),
+            type: "label.upsert",
+            payload: { labelId: liquidId, name: "liquid", sortOrder: 2 },
+            clientTime: Date.now(),
+          },
+          {
+            opId: uuid(),
+            type: "bin.setLabel",
+            binId,
+            payload: { labelId: boozeId, present: true },
+            clientTime: Date.now(),
+          },
+          {
+            opId: uuid(),
+            type: "bin.setLabel",
+            binId,
+            payload: { labelId: liquidId, present: true },
+            clientTime: Date.now(),
+          },
+          {
+            opId: uuid(),
+            type: "bin.setFields",
+            binId,
+            payload: { weightGrams: 12000 },
+            clientTime: Date.now(),
+          },
+        ],
+      },
+    });
+    expect(push.status).toBe(200);
+    const pushBody = (await push.json()) as {
+      acks: unknown[];
+      rejected: unknown[];
+    };
+    expect(pushBody.acks).toHaveLength(5);
+    expect(pushBody.rejected).toHaveLength(0);
+
+    // Server materialized the label rows, the bin membership, and the weight.
+    const label = await db.query.label.findFirst({
+      where: eq(schema.label.id, boozeId),
+    });
+    expect(label?.name).toBe("booze");
+    expect(label?.color).toBe("grape");
+    const bin = await db.query.bin.findFirst({
+      where: eq(schema.bin.id, binId),
+    });
+    expect(bin?.weightGrams).toBe(12000);
+    expect([...(bin?.labelIds ?? [])].sort()).toEqual(
+      [boozeId, liquidId].sort(),
+    );
+
+    // A second device pulls the label + membership ops through normal sync.
+    const pull = await call("GET", "/api/sync/pull?since=0", { token: tokenB });
+    const pullBody = (await pull.json()) as { ops: { type: string }[] };
+    expect(pullBody.ops.some((o) => o.type === "label.upsert")).toBe(true);
+    expect(pullBody.ops.some((o) => o.type === "bin.setLabel")).toBe(true);
+  });
+
   test("revoked device can re-join with the SAME deviceId (sign-back-in)", async () => {
     const deviceId = crypto.randomUUID();
     const first = await call("POST", "/api/auth/join", {

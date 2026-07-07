@@ -51,7 +51,7 @@ export async function enqueueOp(op: ClientOp): Promise<void> {
   const identity = await getIdentity();
   await db.transaction(
     "rw",
-    [db.pendingOps, db.bins, db.entries, db.locations],
+    [db.pendingOps, db.bins, db.entries, db.locations, db.labels],
     async () => {
       await db.pendingOps.put({ opId: op.opId, op });
       const provisional: CanonicalOp = {
@@ -100,7 +100,7 @@ async function pullOnce(): Promise<boolean> {
   if (response.ops.length > 0) {
     await db.transaction(
       "rw",
-      [db.bins, db.entries, db.locations, db.meta],
+      [db.bins, db.entries, db.locations, db.labels, db.meta],
       async () => {
         for (const op of response.ops) await applyOp(clientStore, op);
         const last = response.ops[response.ops.length - 1];

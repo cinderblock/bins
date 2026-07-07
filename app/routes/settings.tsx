@@ -6,6 +6,7 @@ import {
   ActionIcon,
   Alert,
   Button,
+  ColorSwatch,
   Divider,
   Group,
   Paper,
@@ -16,6 +17,7 @@ import {
   Text,
   TextInput,
   Title,
+  UnstyledButton,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import {
@@ -28,7 +30,12 @@ import {
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { archiveLocation, upsertLocation } from "~/lib/actions";
+import {
+  archiveLabel,
+  archiveLocation,
+  upsertLabel,
+  upsertLocation,
+} from "~/lib/actions";
 import { apiJson } from "~/lib/api";
 import { signBackIn } from "~/lib/auth";
 import {
@@ -48,6 +55,7 @@ import {
   onInstallStateChange,
   promptInstall,
 } from "~/lib/install";
+import { LABEL_COLORS, labelColor, nextLabelColor } from "~/lib/labels";
 import {
   DEFAULT_PHOTO_RETENTION,
   type PhotoRetention,
@@ -81,6 +89,15 @@ export default function Settings() {
     [],
     [],
   );
+  const labels = useLiveQuery(
+    () =>
+      db.labels
+        .orderBy("sortOrder")
+        .filter((l) => !l.archived)
+        .toArray(),
+    [],
+    [],
+  );
 
   const authDead = useLiveQuery(
     async () => (await db.meta.get(AUTH_DEAD_KEY))?.value === true,
@@ -91,6 +108,8 @@ export default function Settings() {
   const [name, setName] = useState("");
   const [geoOk, setGeoOk] = useState(false);
   const [newPlace, setNewPlace] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+  const [newLabelColor, setNewLabelColor] = useState<string | null>(null);
   const [storage, setStorage] = useState("");
   const [retention, setRetention] = useState<PhotoRetention>(
     DEFAULT_PHOTO_RETENTION,
@@ -171,6 +190,24 @@ export default function Settings() {
       (places.at(-1)?.sortOrder ?? 0) + 1,
     );
     setNewPlace("");
+  }
+
+  async function addLabel() {
+    const trimmed = newLabel.trim();
+    if (!trimmed) return;
+    // Don't duplicate an existing category (case-insensitive).
+    if (labels.some((l) => l.name.toLowerCase() === trimmed.toLowerCase())) {
+      setNewLabel("");
+      return;
+    }
+    await upsertLabel(
+      crypto.randomUUID(),
+      trimmed,
+      newLabelColor ?? nextLabelColor(labels.length),
+      (labels.at(-1)?.sortOrder ?? 0) + 1,
+    );
+    setNewLabel("");
+    setNewLabelColor(null);
   }
 
   return (
@@ -280,6 +317,76 @@ export default function Settings() {
             >
               <IconPlus size={16} />
             </ActionIcon>
+          </Group>
+        </Stack>
+      </Paper>
+
+      <Paper p="md" radius="lg" withBorder>
+        <Stack gap="xs">
+          <Text fw={600}>Categories</Text>
+          <Text size="xs" c="dimmed">
+            Group boxes together — booze, soda, kitchen, shade… A box can have
+            several. Manage the colored labels that appear on every box.
+          </Text>
+          {labels.map((label) => (
+            <Group key={label.id} justify="space-between">
+              <Group gap="xs">
+                <ColorSwatch
+                  color={`var(--mantine-color-${labelColor(label.color)}-6)`}
+                  size={16}
+                />
+                <Text>{label.name}</Text>
+              </Group>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                onClick={() => void archiveLabel(label.id, true)}
+                aria-label={`Archive ${label.name}`}
+              >
+                <IconArchive size={16} />
+              </ActionIcon>
+            </Group>
+          ))}
+          <Group gap="xs">
+            <TextInput
+              placeholder="e.g. booze"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.currentTarget.value)}
+              style={{ flex: 1 }}
+              onKeyDown={(e) => e.key === "Enter" && void addLabel()}
+            />
+            <ActionIcon
+              size="lg"
+              variant="default"
+              onClick={() => void addLabel()}
+              aria-label="Add category"
+            >
+              <IconPlus size={16} />
+            </ActionIcon>
+          </Group>
+          {/* Optional color for the next category; defaults to the next in the palette. */}
+          <Group gap={6}>
+            {LABEL_COLORS.map((color) => (
+              <UnstyledButton
+                key={color}
+                onClick={() =>
+                  setNewLabelColor((c) => (c === color ? null : color))
+                }
+                aria-label={`Use ${color}`}
+              >
+                <ColorSwatch
+                  color={`var(--mantine-color-${color}-6)`}
+                  size={22}
+                  withShadow={newLabelColor === color}
+                  style={{
+                    outline:
+                      newLabelColor === color
+                        ? "2px solid var(--mantine-color-white)"
+                        : undefined,
+                  }}
+                />
+              </UnstyledButton>
+            ))}
           </Group>
         </Stack>
       </Paper>

@@ -119,3 +119,38 @@ export async function archiveLocation(locationId: string, archived: boolean) {
     payload: { locationId, archived },
   });
 }
+
+export async function upsertLabel(
+  labelId: string,
+  name: string,
+  color: string | null,
+  sortOrder: number,
+) {
+  await enqueueOp({
+    ...stamp(),
+    type: "label.upsert",
+    payload: { labelId, name, color, sortOrder },
+  });
+}
+
+export async function archiveLabel(labelId: string, archived: boolean) {
+  await enqueueOp({
+    ...stamp(),
+    type: "label.archive",
+    payload: { labelId, archived },
+  });
+}
+
+/** Add/remove a category label on a bin (many-to-many; LWW per label). */
+export async function setBinLabel(
+  binId: number,
+  labelId: string,
+  present: boolean,
+) {
+  await enqueueOp({
+    ...stamp(),
+    type: "bin.setLabel",
+    binId,
+    payload: { labelId, present },
+  });
+}

@@ -6,6 +6,7 @@
 import {
   ActionIcon,
   Badge,
+  Chip,
   Group,
   Paper,
   Stack,
@@ -19,13 +20,30 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { PhotoImg } from "~/components/PhotoImg";
 import { db } from "~/lib/db";
+import { formatWeight, labelColor } from "~/lib/labels";
 import { type SearchDoc, buildSearchIndex } from "~/lib/search";
 
 export default function Search() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
+  const [filterLabel, setFilterLabel] = useState<string | null>(null);
   const indexRef = useRef<MiniSearch<SearchDoc> | null>(null);
   const [indexReady, setIndexReady] = useState(0);
+
+  const labels = useLiveQuery(
+    () =>
+      db.labels
+        .orderBy("sortOrder")
+        .filter((l) => !l.archived)
+        .toArray(),
+    [],
+    [],
+  );
+  const labelById = useLiveQuery(
+    async () => new Map((await db.labels.toArray()).map((l) => [l.id, l])),
+    [],
+    new Map(),
+  );
 
   // Rebuild when the replica changes (cheap at this scale).
   const changeStamp = useLiveQuery(
@@ -49,11 +67,23 @@ export default function Search() {
 
   const hits = useLiveQuery(
     async () => {
+      // A category filter browses every active box with that label (the
+      // "show me all the booze boxes" view); a text query then narrows it.
+      if (filterLabel) {
+        const labeled = (
+          await db.bins.where("labelIds").equals(filterLabel).toArray()
+        )
+          .filter((b) => b.status === "active")
+          .sort((a, b) => a.id - b.id);
+        if (!query.trim()) return labeled;
+        const keep = new Set(results.map((r) => r.id as number));
+        return labeled.filter((b) => keep.has(b.id));
+      }
       const ids = results.map((r) => r.id as number);
       const bins = await db.bins.bulkGet(ids);
       return bins.flatMap((bin) => (bin ? [bin] : []));
     },
-    [results.map((r) => r.id).join(",")],
+    [filterLabel, query, results.map((r) => r.id).join(",")],
     [],
   );
 
@@ -84,9 +114,25 @@ export default function Search() {
         />
       </Group>
 
-      {query.trim() && hits.length === 0 && (
+      {labels.length > 0 && (
+        <Group gap="xs">
+          {labels.map((label) => (
+            <Chip
+              key={label.id}
+              size="sm"
+              color={labelColor(label.color)}
+              checked={filterLabel === label.id}
+              onChange={(checked) => setFilterLabel(checked ? label.id : null)}
+            >
+              {label.name}
+            </Chip>
+          ))}
+        </Group>
+      )}
+
+      {(query.trim() || filterLabel) && hits.length === 0 && (
         <Text c="dimmed" ta="center" mt="xl">
-          Nothing matches "{query}".
+          {query.trim() ? `Nothing matches "${query}".` : "No boxes here yet."}
         </Text>
       )}
 
@@ -140,6 +186,25 @@ export default function Search() {
                       {bin.locationName}
                     </Badge>
                   )}
+                  {bin.weightGrams != null && (
+                    <Badge variant="light" color="gray">
+                      {formatWeight(bin.weightGrams)}
+                    </Badge>
+                  )}
+                  {bin.labelIds.map((id) => {
+                    const label = labelById.get(id);
+                    if (!label) return null;
+                    return (
+                      <Badge
+                        key={id}
+                        variant="light"
+                        color={labelColor(label.color)}
+                        style={{ textTransform: "none" }}
+                      >
+                        {label.name}
+                      </Badge>
+                    );
+                  })}
                   {bin.externalLabel && (
                     <Text size="xs" c="dimmed" truncate>
                       {bin.externalLabel}

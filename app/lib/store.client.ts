@@ -6,6 +6,7 @@
 import type {
   BinState,
   EntryState,
+  LabelState,
   LocationState,
   StateStore,
 } from "@shared/reducer";
@@ -39,6 +40,12 @@ export class DexieStateStore implements StateStore {
   }
   async putLocation(location: LocationState): Promise<void> {
     await db.locations.put(location);
+  }
+  async getLabel(id: string): Promise<LabelState | undefined> {
+    return db.labels.get(id);
+  }
+  async putLabel(label: LabelState): Promise<void> {
+    await db.labels.put(label);
   }
 }
 

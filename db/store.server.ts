@@ -7,6 +7,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import type {
   BinState,
   EntryState,
+  LabelState,
   LocationState,
   StateStore,
 } from "../shared/reducer";
@@ -27,7 +28,9 @@ export class DrizzleStateStore implements StateStore {
       name: row.name,
       sizeClass: row.sizeClass,
       externalLabel: row.externalLabel,
+      weightGrams: row.weightGrams,
       locationName: row.locationName,
+      labelIds: row.labelIds ?? [],
       primaryPhotoHash: row.primaryPhotoHash,
       primaryThumbHash: row.primaryThumbHash,
       fieldClocks: row.fieldClocks,
@@ -45,7 +48,9 @@ export class DrizzleStateStore implements StateStore {
       name: bin.name,
       sizeClass: bin.sizeClass,
       externalLabel: bin.externalLabel,
+      weightGrams: bin.weightGrams,
       locationName: bin.locationName,
+      labelIds: bin.labelIds,
       primaryPhotoHash: bin.primaryPhotoHash,
       primaryThumbHash: bin.primaryThumbHash,
       fieldClocks: bin.fieldClocks,
@@ -144,5 +149,31 @@ export class DrizzleStateStore implements StateStore {
       .insert(schema.location)
       .values(values)
       .onConflictDoUpdate({ target: schema.location.id, set: values });
+  }
+
+  async getLabel(id: string): Promise<LabelState | undefined> {
+    const row = await db.query.label.findFirst({
+      where: and(
+        eq(schema.label.id, id),
+        eq(schema.label.groupId, this.groupId),
+      ),
+    });
+    if (!row) return undefined;
+    return {
+      id: row.id,
+      name: row.name,
+      color: row.color,
+      sortOrder: row.sortOrder,
+      archived: row.archived,
+      fieldClocks: row.fieldClocks,
+    };
+  }
+
+  async putLabel(label: LabelState): Promise<void> {
+    const values = { ...label, groupId: this.groupId };
+    await db
+      .insert(schema.label)
+      .values(values)
+      .onConflictDoUpdate({ target: schema.label.id, set: values });
   }
 }

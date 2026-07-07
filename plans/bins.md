@@ -103,7 +103,9 @@ dead zones (storage units, remote sites), merging back to the server later.
   `reducer.ts` (the ONE reducer both sides run), `memory-store.ts` (tests).
 - `db/` — Drizzle SQLite. Authoritative: group, device, op, photo_blob.
   Materialized (rebuildable via `scripts/rebuild-materialized.ts`): bin,
-  bin_entry, location. `store.server.ts` = Drizzle StateStore adapter.
+  bin_entry, location, label. `store.server.ts` = Drizzle StateStore adapter.
+  (Bin label MEMBERSHIP is not its own table — it lives on `bin.label_ids`,
+  LWW per label; only the label *definitions* get a table.)
 - `api/` — hand-rolled router. join/join-by-bin/me/devices, landing + setup
   (unauth), admin (member token + per-request admin password), sync
   push/pull, blobs (content-addressed PUT/GET/HEAD), allocate (admin). Writes
@@ -362,6 +364,27 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
 - [x] Publishability sweep (2026-07-06) — scrubbed all tenant/host strings
   from tracked files (`.env.example`, deploy.yml, CLAUDE.md, comments,
   README, this plan); operator specifics moved to untracked `plans/local.md`.
+- [x] **Category labels + weight** (2026-07-06, user request) — many-to-many
+  category labels ("booze", "soda", "liquid", "kitchen", "shade"…) so boxes of
+  a kind group together, plus an optional per-box weight. Design decisions:
+  labels are group-defined rows driven by `label.upsert`/`label.archive` (same
+  op-shape as locations; carry an optional Mantine `color`). MEMBERSHIP is LWW
+  *per label*: `bin.setLabel {labelId, present}` folds into `fieldClocks` under
+  `label:<id>` keys, and the bin's `labelIds` is the derived SORTED present set
+  — so concurrent toggles of different labels never clobber each other, and the
+  sorted array stays order-independent (convergence-tested). No new StateStore
+  membership table; only a `label` definition table + `bin.label_ids`/
+  `bin.weight_grams` columns (additive migration 0004). Weight rides the
+  existing `binFieldsSchema` LWW scalar path, stored canonically in GRAMS (UI
+  enters lb/kg per-device pref; `app/lib/labels.ts`). Dexie v3 adds a `labels`
+  table + a multiEntry `*labelIds` index (indexed "all boxes tagged X"). UI:
+  LabelChips (reusable multi-select + create), LabelSheet (bin-page categories
+  + weight), WeightInput (lb/kg toggle), category chips/weight badge on the bin
+  page + all-boxes + search rows, category filter chips on Search (browse a
+  category), label management (+colors) in Settings, labels folded into the
+  search index. Tests: 2 reducer convergence + 1 API round-trip (26 pass total).
+  Built alongside a concurrent session (per user: waited for its commits first;
+  slotted labels/weight in next to the renditions/retire work).
 - [ ] Deploy — create GitHub repo (push master only — history already clean;
   see `plans/local.md`), register runner + host layout + reverse-proxy block
   per `plans/local.md`; then push & watch CI.

@@ -1,5 +1,10 @@
 import type { ClientOp } from "@shared/ops";
-import type { BinState, EntryState, LocationState } from "@shared/reducer";
+import type {
+  BinState,
+  EntryState,
+  LabelState,
+  LocationState,
+} from "@shared/reducer";
 /**
  * The client-side replica: Dexie (IndexedDB). Materialized state (bins,
  * entries, locations) is reducer output — the same shapes the server holds —
@@ -52,6 +57,7 @@ class BinsDatabase extends Dexie {
   bins!: EntityTable<BinState, "id">;
   entries!: EntityTable<EntryState, "id">;
   locations!: EntityTable<LocationState, "id">;
+  labels!: EntityTable<LabelState, "id">;
   pendingOps!: EntityTable<PendingOpRow, "opId">;
   blobs!: EntityTable<BlobRow, "hash">;
   meta!: EntityTable<MetaRow, "key">;
@@ -92,6 +98,29 @@ db.version(2)
         // undefined properties are dropped by IndexedDB's structured clone.
         row.full = undefined;
         row.thumb = undefined;
+      }),
+  );
+
+// v3: category labels. New `labels` table + a multiEntry `*labelIds` index on
+// bins so "show every box tagged X" is a single indexed query. Backfill
+// labelIds=[] on existing bin rows so the index and reads are consistent
+// before the next reducer pass rewrites them.
+db.version(3)
+  .stores({
+    bins: "id, updatedAt, status, *labelIds",
+    entries: "id, binId, effectiveTime",
+    locations: "id, sortOrder",
+    labels: "id, sortOrder",
+    pendingOps: "opId",
+    blobs: "hash, status, role, lastAccessAt",
+    meta: "key",
+  })
+  .upgrade((tx) =>
+    tx
+      .table("bins")
+      .toCollection()
+      .modify((row: Record<string, unknown>) => {
+        if (!Array.isArray(row.labelIds)) row.labelIds = [];
       }),
   );
 

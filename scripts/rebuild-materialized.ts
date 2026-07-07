@@ -1,7 +1,8 @@
 /**
- * Rebuild all materialized tables (bin, bin_entry, location) by replaying the
- * op log through the shared reducer — proof the log is the source of truth,
- * and the recovery tool if a reducer bug ever corrupts materialized state.
+ * Rebuild all materialized tables (bin, bin_entry, location, label) by
+ * replaying the op log through the shared reducer — proof the log is the source
+ * of truth, and the recovery tool if a reducer bug ever corrupts materialized
+ * state.
  *
  *   bun scripts/rebuild-materialized.ts
  */
@@ -17,6 +18,7 @@ try {
   await db.delete(schema.binEntry);
   await db.delete(schema.bin);
   await db.delete(schema.location);
+  await db.delete(schema.label);
 
   const stores = new Map<string, DrizzleStateStore>();
   for (const row of ops) {

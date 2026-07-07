@@ -52,8 +52,25 @@ export const binFieldsSchema = z.object({
   name: z.string().max(200).nullish(),
   sizeClass: z.string().max(50).nullish(),
   externalLabel: z.string().max(500).nullish(),
+  /**
+   * Total weight of the box, in GRAMS — the canonical unit. The UI enters/
+   * displays lb or kg (per-device preference) and converts; storing grams
+   * keeps the protocol unit-agnostic. `null` clears a previously-set weight.
+   */
+  weightGrams: z.number().int().nonnegative().max(100_000_000).nullish(),
 });
 export type BinFields = z.infer<typeof binFieldsSchema>;
+
+/**
+ * Category labels ("booze", "soda", "liquid", "kitchen", "shade", …) — a box
+ * can carry MANY. Labels are group-defined rows (label.upsert / label.archive,
+ * like locations); a box's membership is a per-(bin,label) boolean set by
+ * bin.setLabel, materialized as `labelIds` on the bin (LWW per label, so
+ * concurrent adds/removes of *different* labels never clobber each other).
+ */
+export const labelNameSchema = z.string().min(1).max(100);
+/** A Mantine color name (e.g. "grape"); free-form so the palette can grow. */
+export const labelColorSchema = z.string().max(20);
 
 /**
  * Ops a client may push. `bin.allocate` is deliberately absent — allocation is
@@ -127,6 +144,33 @@ export const clientOpSchema = z.discriminatedUnion("type", [
     payload: z.object({
       locationId: z.string().uuid(),
       archived: z.boolean(),
+    }),
+  }),
+  z.object({
+    ...opBase,
+    type: z.literal("label.upsert"),
+    payload: z.object({
+      labelId: z.string().uuid(),
+      name: labelNameSchema,
+      color: labelColorSchema.nullish(),
+      sortOrder: z.number().int(),
+    }),
+  }),
+  z.object({
+    ...opBase,
+    type: z.literal("label.archive"),
+    payload: z.object({
+      labelId: z.string().uuid(),
+      archived: z.boolean(),
+    }),
+  }),
+  z.object({
+    ...opBase,
+    type: z.literal("bin.setLabel"),
+    binId,
+    payload: z.object({
+      labelId: z.string().uuid(),
+      present: z.boolean(),
     }),
   }),
 ]);

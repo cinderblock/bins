@@ -34,10 +34,13 @@ import {
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
+import { LabelChips } from "~/components/LabelChips";
 import { PhotoImg } from "~/components/PhotoImg";
-import { setBinFields, setBinLocation } from "~/lib/actions";
+import { WeightInput } from "~/components/WeightInput";
+import { setBinFields, setBinLabel, setBinLocation } from "~/lib/actions";
 import { apiJson } from "~/lib/api";
 import { db } from "~/lib/db";
+import { formatWeight, labelColor } from "~/lib/labels";
 import { syncNow } from "~/lib/sync";
 
 function usePlaces() {
@@ -52,6 +55,15 @@ function usePlaces() {
   );
 }
 
+/** The group's label rows keyed by id, for rendering bins' labelIds as chips. */
+function useLabelMap() {
+  return useLiveQuery(
+    async () => new Map((await db.labels.toArray()).map((l) => [l.id, l])),
+    [],
+    new Map(),
+  );
+}
+
 function fail(err: unknown) {
   notifications.show({
     message: err instanceof Error ? err.message : String(err),
@@ -62,6 +74,7 @@ function fail(err: unknown) {
 export default function Bins() {
   const navigate = useNavigate();
   const location = useLocation();
+  const labelById = useLabelMap();
 
   // The admin page can hand us its already-verified password via nav state.
   const passed =
@@ -301,6 +314,25 @@ export default function Bins() {
                             {bin.locationName}
                           </Badge>
                         )}
+                        {bin.weightGrams != null && (
+                          <Badge variant="light" color="gray">
+                            {formatWeight(bin.weightGrams)}
+                          </Badge>
+                        )}
+                        {bin.labelIds.map((id) => {
+                          const label = labelById.get(id);
+                          if (!label) return null;
+                          return (
+                            <Badge
+                              key={id}
+                              variant="light"
+                              color={labelColor(label.color)}
+                              style={{ textTransform: "none" }}
+                            >
+                              {label.name}
+                            </Badge>
+                          );
+                        })}
                         {bin.externalLabel && (
                           <Text size="xs" c="dimmed" truncate>
                             {bin.externalLabel}
@@ -461,6 +493,9 @@ function EditDrawer({ bin, onClose }: { bin: BinState; onClose: () => void }) {
   const [name, setName] = useState(bin.name ?? "");
   const [label, setLabel] = useState(bin.externalLabel ?? "");
   const [locationName, setLocationName] = useState(bin.locationName ?? "");
+  const [weightGrams, setWeightGrams] = useState<number | null>(
+    bin.weightGrams,
+  );
   const [busy, setBusy] = useState(false);
 
   async function save() {
@@ -469,6 +504,7 @@ function EditDrawer({ bin, onClose }: { bin: BinState; onClose: () => void }) {
       await setBinFields(bin.id, {
         name: name.trim() || null,
         externalLabel: label.trim() || null,
+        weightGrams,
       });
       if ((locationName.trim() || null) !== (bin.locationName ?? null)) {
         await setBinLocation(bin.id, locationName.trim() || null);
@@ -508,6 +544,19 @@ function EditDrawer({ bin, onClose }: { bin: BinState; onClose: () => void }) {
           value={label}
           onChange={(e) => setLabel(e.currentTarget.value)}
         />
+        <WeightInput grams={weightGrams} onChange={setWeightGrams} />
+        <div>
+          <Text size="sm" fw={500} mb={4}>
+            Categories
+          </Text>
+          {/* Membership applies immediately (the bin already exists). */}
+          <LabelChips
+            selected={new Set(bin.labelIds)}
+            onToggle={(labelId, present) =>
+              void setBinLabel(bin.id, labelId, present)
+            }
+          />
+        </div>
         <Button onClick={() => void save()} loading={busy}>
           Save
         </Button>

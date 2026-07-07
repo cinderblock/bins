@@ -27,7 +27,11 @@ export const bin = sqliteTable(
     name: text("name"),
     sizeClass: text("size_class"),
     externalLabel: text("external_label"),
+    /** Total weight in grams (canonical unit; UI renders lb/kg). */
+    weightGrams: integer("weight_grams"),
     locationName: text("location_name"),
+    /** Category label ids this bin carries (derived set; see shared/reducer.ts). */
+    labelIds: text("label_ids", { mode: "json" }).$type<string[]>(),
     /** Derived: latest non-deleted contents_photo hash (see shared/reducer.ts). */
     primaryPhotoHash: text("primary_photo_hash"),
     /** Derived with primaryPhotoHash: its 320px thumbnail rendition. */

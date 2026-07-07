@@ -27,6 +27,7 @@ import {
   IconMapPin,
   IconNote,
   IconPackage,
+  IconTag,
   IconTrash,
 } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -34,6 +35,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { CaptureOverlay } from "~/components/CaptureOverlay";
 import { ClaimBin } from "~/components/ClaimBin";
+import { LabelSheet } from "~/components/LabelSheet";
 import { LocationSheet } from "~/components/LocationSheet";
 import { NoteSheet } from "~/components/NoteSheet";
 import { PhotoImg, usePhotoUrl } from "~/components/PhotoImg";
@@ -41,6 +43,7 @@ import { SyncBadge } from "~/components/SyncBadge";
 import { removeEntry } from "~/lib/actions";
 import { db } from "~/lib/db";
 import { relativeTime } from "~/lib/format";
+import { formatWeight, labelColor } from "~/lib/labels";
 import { syncNow } from "~/lib/sync";
 
 const ACTION_BAR_HEIGHT = 88;
@@ -84,11 +87,19 @@ export default function BinPage() {
     {} as Record<string, string>,
   );
 
+  // The group's label rows, to render a bin's labelIds as named, colored chips.
+  const labelById = useLiveQuery(
+    async () => new Map((await db.labels.toArray()).map((l) => [l.id, l])),
+    [],
+    new Map(),
+  );
+
   const [capture, setCapture] = useState<
     null | "contents_photo" | "item_photo"
   >(null);
   const [noteOpen, setNoteOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
+  const [labelsOpen, setLabelsOpen] = useState(false);
   const [lightbox, setLightbox] = useState<EntryState | null>(null);
 
   if (binId === null) {
@@ -144,6 +155,11 @@ export default function BinPage() {
             <Group gap={8}>
               <Title order={3}>#{bin.id}</Title>
               {bin.sizeClass && <Badge variant="light">{bin.sizeClass}</Badge>}
+              {bin.weightGrams != null && (
+                <Badge variant="light" color="gray">
+                  {formatWeight(bin.weightGrams)}
+                </Badge>
+              )}
               {bin.status === "retired" && <Badge color="gray">retired</Badge>}
             </Group>
             {bin.name && <Text size="sm">{bin.name}</Text>}
@@ -171,6 +187,33 @@ export default function BinPage() {
                 {bin.externalLabel}
               </Badge>
             )}
+          </Group>
+
+          {/* Category labels — tap to add/remove or set weight */}
+          <Group gap="xs">
+            {bin.labelIds.map((id) => {
+              const label = labelById.get(id);
+              if (!label) return null;
+              return (
+                <Badge
+                  key={id}
+                  variant="light"
+                  color={labelColor(label.color)}
+                  style={{ textTransform: "none" }}
+                >
+                  {label.name}
+                </Badge>
+              );
+            })}
+            <Button
+              size="compact-sm"
+              variant="subtle"
+              color="gray"
+              leftSection={<IconTag size={14} />}
+              onClick={() => setLabelsOpen(true)}
+            >
+              {bin.labelIds.length > 0 ? "Edit" : "Add categories"}
+            </Button>
           </Group>
 
           {/* Primary photo (latest top-down contents shot) */}
@@ -317,6 +360,13 @@ export default function BinPage() {
         current={bin.locationName}
         opened={locationOpen}
         onClose={() => setLocationOpen(false)}
+      />
+      <LabelSheet
+        binId={bin.id}
+        labelIds={bin.labelIds}
+        weightGrams={bin.weightGrams}
+        opened={labelsOpen}
+        onClose={() => setLabelsOpen(false)}
       />
 
       {/* Lightbox */}
