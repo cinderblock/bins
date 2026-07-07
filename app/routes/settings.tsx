@@ -22,6 +22,7 @@ import {
   IconArrowLeft,
   IconDeviceMobilePlus,
   IconPlus,
+  IconShieldLock,
 } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
@@ -260,6 +261,23 @@ export default function Settings() {
           </Text>
           <Button variant="default" onClick={() => void syncNow()}>
             Sync now
+          </Button>
+        </Stack>
+      </Paper>
+
+      <Paper p="md" radius="lg" withBorder>
+        <Stack gap="xs">
+          <Text fw={600}>Administration</Text>
+          <Text size="xs" c="dimmed">
+            Landing page text, importing pre-printed stickers, device
+            revocation. Needs the group's admin password.
+          </Text>
+          <Button
+            variant="default"
+            leftSection={<IconShieldLock size={16} />}
+            onClick={() => navigate("/admin")}
+          >
+            Open admin
           </Button>
         </Stack>
       </Paper>

@@ -30,8 +30,23 @@ dead zones (storage units, remote sites), merging back to the server later.
   bearer token (localStorage/Dexie, not cookies). Two ways to join (both →
   the same token): (a) scan a sticker — see "Per-bin secret codes" below —
   proof of physical access, prompts for name only; (b) the shared group access
-  code, kept as the bootstrap path (someone must join before the first
-  stickers can be allocated) and as fallback.
+  code — kept as the bootstrap path, but (user decision 2026-07-06) its form
+  is NOT in the visible UI: it lives only at the unlinked `/join` route.
+  Signed-out visitors on non-sticker URLs see a branded LANDING page (title/
+  subtitle served by `/api/landing`; defaults "{group} Inventory Management
+  System" / "Scan a Box to Start"; repo stays tenant-agnostic).
+- **First-boot setup + admin (user decisions 2026-07-06)**: fresh db → any
+  visit lands on `/setup` (group name, landing branding, access code w/
+  generate, admin password, display name) which creates the group AND joins
+  the operator as first member; locked once a group exists (extra groups via
+  scripts/create-group.ts, which now takes an optional admin password).
+  BOOTSTRAP_* envs removed. **Admin model: per-group admin password**
+  (hashed on group row; stateless — password rides every /api/admin/*
+  request with the member token, held only in page state). Admin page
+  (`/admin`, linked from Settings): group name + landing branding,
+  access-code/admin-password rotation, paste-import of pre-printed stickers
+  (`id,code` lines → server-authored bin.allocate ops; global-id collisions
+  skipped per row), device list + revoke (group-scoped).
 - **URL format (2026-07-06, implemented)**: QR encodes `/{number}#{CODE}`
   (e.g. `/1#7HX6`) — the raw URL FRAGMENT is a short per-bin secret. Fragment,
   not query string (user decision 2026-07-06): fragments never reach the
@@ -69,8 +84,10 @@ dead zones (storage units, remote sites), merging back to the server later.
 - `db/` — Drizzle SQLite. Authoritative: group, device, op, photo_blob.
   Materialized (rebuildable via `scripts/rebuild-materialized.ts`): bin,
   bin_entry, location. `store.server.ts` = Drizzle StateStore adapter.
-- `api/` — hand-rolled router. join/me/devices, sync push/pull, blobs
-  (content-addressed PUT/GET/HEAD), allocate. Writes serialize through
+- `api/` — hand-rolled router. join/join-by-bin/me/devices, landing + setup
+  (unauth), admin (member token + per-request admin password), sync
+  push/pull, blobs (content-addressed PUT/GET/HEAD), allocate. Writes
+  serialize through
   `serializedTransaction` (bun:sqlite is one sync connection; awaits
   interleave, so multi-statement writes need the queue + BEGIN IMMEDIATE).
 - `app/` — SPA. `lib/db.ts` Dexie replica + outboxes; `lib/sync.ts` engine
@@ -79,7 +96,10 @@ dead zones (storage units, remote sites), merging back to the server later.
   `lib/camera.ts` shared MediaStream singleton (never re-negotiate between
   scans); `lib/actions.ts` = the only place ops are built. Routes: scanner
   (`/`, AUTO-SCAN mode — see below), bin (`/:binId`, claim-in-place for
-  unclaimed), search, settings, print.
+  unclaimed), search, settings, print, admin, plus unauthenticated join
+  (unlinked) + setup (first boot). Shell gate order for signed-out visitors:
+  sticker URL → FirstRun join card; /join, /setup → their routes; anything
+  else → Landing (branding via /api/landing, offline fallback text).
 
 ## Spec: per-bin secret codes (IMPLEMENTED 2026-07-06)
 
@@ -163,6 +183,15 @@ leaked sticker (retire the bin instead).
   early because the "online-only" variant would have been throwaway.
 - [x] Tests: 6 reducer convergence (order-independence + re-application) + 6
   API integration (join/allocate/push/pull/idempotency/foreign-bin/blob).
+- [x] **Sticker-only entry, landing page, first-boot setup, admin page**
+  (2026-07-06, user request) — access-code form removed from visible UI
+  (unlinked `/join` keeps it working); branded landing (`/api/landing`,
+  migration 0002 adds landing_title/landing_subtitle/admin_password_hash);
+  `/setup` first-boot wizard (creates group + auto-joins operator; replaces
+  BOOTSTRAP_* envs); `/admin` page: config/branding, code+password rotation,
+  paste-import of pre-existing stickers, device revocation. 21 API tests.
+  Limitation (documented in api/landing.ts): multi-group deploys serve the
+  FIRST group's landing branding — one origin can't know the group.
 - [x] **Auth recovery + install nudge** (2026-07-06, user request) — a 401
   during sync sets the `authDead` meta flag (cleared by the next good cycle):
   SyncBadge turns red "signed out", settings shows a sign-back-in card that

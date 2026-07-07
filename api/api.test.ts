@@ -1,9 +1,10 @@
 /**
- * API integration test: the whole loop a phone performs — join with the access
- * code, allocate stickers, claim + annotate a bin, pull from a second device,
- * upload/fetch a photo blob — against a throwaway SQLite db.
+ * API integration test: the whole loop a phone performs — first-boot setup,
+ * join with the access code, allocate stickers, claim + annotate a bin, pull
+ * from a second device, admin config/import, upload/fetch a photo blob —
+ * against a throwaway SQLite db.
  */
-import { beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 
@@ -53,12 +54,44 @@ let binId: number;
 let allocated: { id: number; code: string }[];
 
 describe("api", () => {
-  beforeAll(async () => {
-    await db.insert(schema.group).values({
-      id: crypto.randomUUID(),
-      name: "Test Camp",
-      accessCodeHash: sha256Hex("secret-code"),
+  test("first boot: landing → setup wizard → branded landing; then locked", async () => {
+    const before = (await (await call("GET", "/api/landing")).json()) as {
+      needsSetup: boolean;
+    };
+    expect(before.needsSetup).toBe(true);
+
+    const setupBody = {
+      groupName: "Test Camp",
+      accessCode: "secret-code",
+      adminPassword: "admin-pw",
+      displayName: "Ops",
+      deviceId: crypto.randomUUID(),
+    };
+    const setup = await call("POST", "/api/setup", { body: setupBody });
+    expect(setup.status).toBe(200);
+    const identity = (await setup.json()) as {
+      token: string;
+      groupName: string;
+    };
+    expect(identity.groupName).toBe("Test Camp");
+    // The operator is a full member immediately (auto-join).
+    const me = await call("GET", "/api/auth/me", { token: identity.token });
+    expect(me.status).toBe(200);
+
+    const after = (await (await call("GET", "/api/landing")).json()) as {
+      needsSetup: boolean;
+      title: string;
+      subtitle: string;
+    };
+    expect(after.needsSetup).toBe(false);
+    expect(after.title).toBe("Test Camp Inventory Management System");
+    expect(after.subtitle).toBe("Scan a Box to Start");
+
+    // Setup is one-shot: a second call must never create another group.
+    const again = await call("POST", "/api/setup", {
+      body: { ...setupBody, deviceId: crypto.randomUUID() },
     });
+    expect(again.status).toBe(403);
   });
 
   test("join with access code (both devices)", async () => {
@@ -248,6 +281,85 @@ describe("api", () => {
       });
       expect(bare.status).toBe(400);
     }
+  });
+
+  test("admin: password-gated config, branding, import; revoke kills tokens", async () => {
+    const wrong = await call("POST", "/api/admin/verify", {
+      token: tokenA,
+      body: { adminPassword: "nope" },
+    });
+    expect(wrong.status).toBe(403);
+
+    const verify = await call("POST", "/api/admin/verify", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw" },
+    });
+    expect(verify.status).toBe(200);
+
+    // Branding edits show up on the public landing.
+    const patch = await call("POST", "/api/admin/group", {
+      token: tokenA,
+      body: {
+        adminPassword: "admin-pw",
+        landingTitle: "Camp Stuff",
+        landingSubtitle: "Point at a box",
+      },
+    });
+    expect(patch.status).toBe(200);
+    const landing = (await (await call("GET", "/api/landing")).json()) as {
+      title: string;
+      subtitle: string;
+    };
+    expect(landing.title).toBe("Camp Stuff");
+    expect(landing.subtitle).toBe("Point at a box");
+
+    // Import pre-printed stickers: collisions skipped, imports usable — the
+    // imported (id, code) pair is a working sticker login.
+    const imp = await call("POST", "/api/admin/bins/import", {
+      token: tokenA,
+      body: {
+        adminPassword: "admin-pw",
+        bins: [
+          { id: 5001, code: "ZZZZ" },
+          { id: binId, code: "AAAA" },
+        ],
+      },
+    });
+    const impBody = (await imp.json()) as {
+      imported: number;
+      skipped: { id: number }[];
+    };
+    expect(impBody.imported).toBe(1);
+    expect(impBody.skipped.map((s) => s.id)).toEqual([binId]);
+
+    const joined = await call("POST", "/api/auth/join-by-bin", {
+      body: {
+        binId: 5001,
+        code: "zzzz",
+        displayName: "Imported Ivy",
+        deviceId: crypto.randomUUID(),
+      },
+    });
+    expect(joined.status).toBe(200);
+    const ivyToken = ((await joined.json()) as { token: string }).token;
+
+    // Devices list shows the member; revoking kills the token.
+    const list = await call("POST", "/api/admin/devices", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw" },
+    });
+    const { devices } = (await list.json()) as {
+      devices: { id: string; displayName: string; self: boolean }[];
+    };
+    const ivy = devices.find((d) => d.displayName === "Imported Ivy");
+    expect(ivy).toBeDefined();
+    const revoke = await call("POST", "/api/admin/devices/revoke", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", deviceId: ivy?.id },
+    });
+    expect(revoke.status).toBe(200);
+    const dead = await call("GET", "/api/auth/me", { token: ivyToken });
+    expect(dead.status).toBe(401);
   });
 
   test("push is idempotent (same opId re-acked, not re-applied)", async () => {

@@ -1,3 +1,4 @@
+import { handleAdmin } from "./admin";
 import { handleAllocate } from "./allocate";
 import { handleDevices, handleJoin, handleJoinByBin, handleMe } from "./auth";
 import { handleBlob } from "./blobs";
@@ -7,6 +8,8 @@ import { handleBlob } from "./blobs";
  * (dev, TCP) and server.ts (production, unix socket).
  */
 import { authenticate, error } from "./context";
+import { handleLanding } from "./landing";
+import { handleSetup } from "./setup";
 import { handlePull, handlePush } from "./sync";
 
 export async function handleApi(req: Request, url: URL): Promise<Response> {
@@ -14,11 +17,15 @@ export async function handleApi(req: Request, url: URL): Promise<Response> {
   const method = req.method;
 
   try {
-    // The join endpoints are the only unauthenticated ones.
+    // Unauthenticated surface: joining, landing branding, first-boot setup.
     if (path === "/api/auth/join" && method === "POST")
       return await handleJoin(req);
     if (path === "/api/auth/join-by-bin" && method === "POST")
       return await handleJoinByBin(req);
+    if (path === "/api/landing" && method === "GET")
+      return await handleLanding();
+    if (path === "/api/setup" && method === "POST")
+      return await handleSetup(req);
 
     const ctx = await authenticate(req);
     if (!ctx) return error(401, "unauthorized");
@@ -34,6 +41,10 @@ export async function handleApi(req: Request, url: URL): Promise<Response> {
       return await handlePull(req, ctx);
     if (path === "/api/bins/allocate" && method === "POST") {
       return await handleAllocate(req, ctx);
+    }
+    // Member token + per-request admin password (checked inside).
+    if (path.startsWith("/api/admin/") && method === "POST") {
+      return await handleAdmin(req, ctx, path);
     }
 
     const blobMatch = path.match(/^\/api\/blobs\/([0-9a-f]{64})$/);

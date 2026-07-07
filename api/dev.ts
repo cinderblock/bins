@@ -3,12 +3,9 @@
  * Production uses server.ts instead, which serves the SPA and the API from
  * one process on a unix socket.
  */
-import { bootstrapGroup } from "./bootstrap";
 import { handleApi } from "./router";
 
 const port = Number(process.env.API_PORT ?? 3001);
-
-await bootstrapGroup();
 
 Bun.serve({
   port,

@@ -8,6 +8,7 @@ import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router";
 import { FirstRun } from "~/components/FirstRun";
 import { InstallHint } from "~/components/InstallHint";
+import { Landing } from "~/components/Landing";
 import { IDENTITY_KEY, type Identity, db } from "~/lib/db";
 import { binIdFromScan } from "~/lib/format";
 import { startGeo } from "~/lib/geo";
@@ -34,14 +35,22 @@ export default function Shell() {
   if (identity === undefined) return null;
   if (identity === null) {
     // Landing unauthenticated on a sticker URL (`/{id}#{CODE}`) is the primary
-    // onboarding path: the (id, code) pair joins with just a name. Reuse the
-    // QR parser on the current location (any origin works — it's discarded).
+    // (and only advertised) way in: the (id, code) pair joins with just a
+    // name. Reuse the QR parser on the current location (any origin works —
+    // it's discarded).
     const target = binIdFromScan(
       `https://local${location.pathname}${location.search}${location.hash}`,
     );
-    const sticker =
-      target?.code != null ? { binId: target.binId, code: target.code } : null;
-    return <FirstRun sticker={sticker} />;
+    if (target?.code != null) {
+      return <FirstRun sticker={{ binId: target.binId, code: target.code }} />;
+    }
+    // The two unauthenticated routes handle themselves: the unlinked /join
+    // (access-code bootstrap/fallback) and first-boot /setup.
+    if (location.pathname === "/join" || location.pathname === "/setup") {
+      return <Outlet />;
+    }
+    // Everything else: branded landing — no entry form, scan a box to start.
+    return <Landing />;
   }
   return (
     <>

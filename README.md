@@ -24,9 +24,16 @@ where.
   for storage units, basements, and other dead zones.
 - **"Which box is X in"** search over names, labels, and notes — offline,
   fuzzy ("sharpee" finds the Sharpies).
-- **No accounts**: scan any sticker (or enter the shared group access code)
-  and pick a display name — that's the whole onboarding. One deploy hosts
-  many groups (`group_id` on every tenant table).
+- **No accounts**: scanning any sticker once IS the login — pick a display
+  name and you're in. Signed-out visitors on any other URL get a branded
+  landing page (title/subtitle set per group; the shared access code lives
+  only at an unlinked `/join` as the bootstrap path). One deploy hosts many
+  groups (`group_id` on every tenant table).
+- **First-boot setup & admin**: a fresh database greets the first visitor
+  with a setup wizard (group name, landing branding, access code, admin
+  password) that also joins them as the first member. A password-gated admin
+  page handles branding edits, importing pre-printed stickers (`id,code`
+  lines), and device revocation.
 - **Photos done right**: on-device downscale (~300 KB), content-addressed
   (sha256) storage, latest top-down shot automatically becomes the bin's
   primary picture.
@@ -45,12 +52,12 @@ in the browser (IndexedDB), which is what makes offline merge trustworthy
 bun install
 cp .env.example .env
 bun run dev              # web on :3000, API on :3001 (Vite proxies /api)
-bun scripts/create-group.ts "My Camp" "our-access-code"
 ```
 
-Open http://localhost:3000, join with the access code, allocate stickers under
-Print, and scan away. Camera APIs need a secure context — on a phone, use a
-TLS-terminating proxy to your dev machine or test against a deploy.
+Open http://localhost:3000 — a fresh database opens the first-boot setup
+wizard; create your group and you're the first member. Allocate stickers
+under Print and scan away. Camera APIs need a secure context — on a phone,
+use a TLS-terminating proxy to your dev machine or test against a deploy.
 
 Checks: `bun test` (reducer convergence + API integration), `bun run
 typecheck`, `bun run lint`, `bun run build`.
@@ -65,10 +72,9 @@ SOCKET_PATH=/run/bins/bins.sock DATABASE_PATH=/srv/bins/data/bins.db \
   PHOTOS_PATH=/srv/bins/data/photos bun server.ts
 ```
 
-SQLite migrates itself on boot. `BOOTSTRAP_GROUP_NAME` + `BOOTSTRAP_ACCESS_CODE`
-create the first group on an empty database. `.github/workflows/deploy.yml`
-holds the reference release-tree deploy (atomic symlink flip + `/_version`
-health check).
+SQLite migrates itself on boot; the first visit to a fresh instance opens the
+setup wizard. `.github/workflows/deploy.yml` holds the reference release-tree
+deploy (atomic symlink flip + `/_version` health check).
 
 ## How sync works (short version)
 

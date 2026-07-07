@@ -30,8 +30,8 @@ export function normalizeAccessCode(code: string): string {
   return code.trim().toLowerCase();
 }
 
-/** Mint the device row + bearer token — the shared tail of both join paths. */
-async function mintDevice(
+/** Mint the device row + bearer token — the shared tail of every join path. */
+export async function mintDevice(
   group: { id: string; name: string },
   displayName: string,
   deviceId: string,

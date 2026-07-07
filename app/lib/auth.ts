@@ -12,7 +12,25 @@ import {
   getIdentity,
   setMeta,
 } from "./db";
+import { setGeoOptIn } from "./geo";
 import { syncNow } from "./sync";
+
+/**
+ * Persist a freshly minted identity (from setup / sticker join / access-code
+ * join) and kick off the first sync. The shell re-renders into the app the
+ * moment the identity lands in Dexie.
+ */
+export async function adoptIdentity(
+  identity: Identity,
+  geoOk: boolean,
+): Promise<void> {
+  await setMeta(IDENTITY_KEY, identity);
+  setCachedToken(identity.token);
+  await setGeoOptIn(geoOk);
+  // Ask the browser not to evict our replica + unsynced photos.
+  void navigator.storage?.persist?.();
+  void syncNow();
+}
 
 export async function signBackIn(accessCode: string): Promise<void> {
   const identity = await getIdentity();

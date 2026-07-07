@@ -13,7 +13,6 @@ import {
   unlinkSync,
 } from "node:fs";
 import { dirname } from "node:path";
-import { bootstrapGroup } from "./api/bootstrap";
 import { handleApi } from "./api/router";
 
 const SOCKET_PATH = process.env.SOCKET_PATH ?? "/run/bins/bins.sock";
@@ -30,8 +29,6 @@ const BUILD_SHA = (() => {
     return "dev";
   }
 })();
-
-await bootstrapGroup();
 
 function serveAsset(pathname: string): Response | undefined {
   if (pathname === "/" || pathname.includes("..")) return undefined;
