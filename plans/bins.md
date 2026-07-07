@@ -309,7 +309,11 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   ("Keep photos offline": 1 week / 1 month / Forever; default 1 month;
   "Forever" for off-grid event weeks — user request 2026-07-06), else
   evicted (refetch on demand; never touches pending). Originals always drop
-  after upload regardless (nothing displays them).
+  after upload regardless (nothing displays them). PREFETCH (user request
+  2026-07-06): Settings "Download all photos now" (`prefetchAllPhotos`)
+  fetches every missing thumb+display rendition (batches of 4, progress in
+  the button, skips originals/deleted entries) — the "leaving cell coverage"
+  button, best paired with Forever retention.
   Dexie v2 migrates old blob rows. NOTE: nothing displays originals yet —
   archival for future zoom/AI use.
 - [x] **Sticker-only entry, landing page, first-boot setup, admin page**

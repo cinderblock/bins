@@ -209,6 +209,55 @@ export async function getPhotoBlob(
   }
 }
 
+export interface PrefetchProgress {
+  total: number;
+  done: number;
+  failed: number;
+}
+
+/**
+ * Fetch every referenced thumb + display rendition this device is missing,
+ * so the WHOLE photo library renders offline — the "we're about to leave
+ * cell coverage" button (Settings). Originals are skipped: nothing displays
+ * them. Fetched displays count as freshly accessed, so pair this with the
+ * "Forever" retention setting for anything longer than the retention window.
+ */
+export async function prefetchAllPhotos(
+  onProgress?: (progress: PrefetchProgress) => void,
+): Promise<PrefetchProgress> {
+  const wanted = new Map<string, BlobRole>();
+  for (const entry of await db.entries.toArray()) {
+    if (entry.deletedByOpId) continue;
+    if (entry.thumbHash) wanted.set(entry.thumbHash, "thumb");
+    if (entry.photoHash) wanted.set(entry.photoHash, "display");
+  }
+  const have = new Set(
+    (await db.blobs.toArray())
+      .filter((row) => row.bytes !== null)
+      .map((row) => row.hash),
+  );
+  const missing = [...wanted].filter(([hash]) => !have.has(hash));
+  const progress: PrefetchProgress = {
+    total: missing.length,
+    done: 0,
+    failed: 0,
+  };
+  onProgress?.({ ...progress });
+  // Small batches: parallel enough to move, polite enough for a weak uplink.
+  const BATCH = 4;
+  for (let i = 0; i < missing.length; i += BATCH) {
+    await Promise.all(
+      missing.slice(i, i + BATCH).map(async ([hash, role]) => {
+        const blob = await getPhotoBlob(hash, role);
+        if (blob) progress.done++;
+        else progress.failed++;
+      }),
+    );
+    onProgress?.({ ...progress });
+  }
+  return progress;
+}
+
 /**
  * Enforce the local photo-cache policy (see header). Never touches pending
  * rows — unsynced bytes are sacred. Originals are dropped regardless of the

@@ -51,7 +51,9 @@ import {
 import {
   DEFAULT_PHOTO_RETENTION,
   type PhotoRetention,
+  type PrefetchProgress,
   getPhotoRetention,
+  prefetchAllPhotos,
   setPhotoRetention,
 } from "~/lib/photos";
 import { syncNow } from "~/lib/sync";
@@ -93,6 +95,7 @@ export default function Settings() {
   const [retention, setRetention] = useState<PhotoRetention>(
     DEFAULT_PHOTO_RETENTION,
   );
+  const [prefetch, setPrefetch] = useState<PrefetchProgress | null>(null);
   const [rejoinCode, setRejoinCode] = useState("");
   const [rejoining, setRejoining] = useState(false);
   // Re-render when the browser hands us (or consumes) the install prompt.
@@ -111,6 +114,24 @@ export default function Settings() {
       }
     });
   }, []);
+
+  async function downloadAll() {
+    setPrefetch({ total: 0, done: 0, failed: 0 });
+    try {
+      const result = await prefetchAllPhotos(setPrefetch);
+      notifications.show({
+        message:
+          result.failed > 0
+            ? `${result.done} photos downloaded, ${result.failed} failed — try again online`
+            : result.total === 0
+              ? "Every photo is already on this device"
+              : `All ${result.done} photos are on this device`,
+        color: result.failed > 0 ? "yellow" : "green",
+      });
+    } finally {
+      setPrefetch(null);
+    }
+  }
 
   async function rename() {
     if (!identity || !name.trim()) return;
@@ -297,6 +318,20 @@ export default function Settings() {
               for event weeks spent off-grid.
             </Text>
           </div>
+          <Button
+            variant="default"
+            onClick={() => void downloadAll()}
+            loading={prefetch !== null}
+          >
+            {prefetch && prefetch.total > 0
+              ? `Downloading ${prefetch.done + prefetch.failed} / ${prefetch.total}…`
+              : "Download all photos now"}
+          </Button>
+          <Text size="xs" c="dimmed" mt={-8}>
+            Grabs every photo you don't have yet, so the whole library works
+            offline — run this on good wifi before heading off-grid (best with
+            "Forever" above).
+          </Text>
         </Stack>
       </Paper>
 
