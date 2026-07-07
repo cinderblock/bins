@@ -2,8 +2,8 @@
  * Admin page (member-only route, linked from Settings): group config,
  * landing branding, code/password rotation, sticker import for pre-existing
  * printed labels, and device revocation. The admin password rides EVERY
- * request (no admin sessions) and lives only in component state — reloading
- * the page locks it again.
+ * request (no admin sessions); it's remembered per device (lib/admin.ts) so an
+ * admin unlocks once and can re-lock from the header.
  */
 import {
   ActionIcon,
@@ -28,13 +28,16 @@ import {
   IconArrowLeft,
   IconCheck,
   IconCopy,
+  IconLock,
   IconPrinter,
   IconTrash,
 } from "@tabler/icons-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { forgetAdmin, rememberAdmin, useAdminPassword } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { relativeTime } from "~/lib/format";
+import { rememberAccessCode } from "~/lib/invite";
 import { syncNow } from "~/lib/sync";
 
 type Config = {
@@ -73,6 +76,10 @@ function parseImport(text: string): { id: number; code: string }[] {
 
 export default function Admin() {
   const navigate = useNavigate();
+  // Admin unlock is remembered per device (lib/admin.ts). `password` is the
+  // working password (typed or auto-loaded from the remembered value).
+  const remembered = useAdminPassword();
+  const [autoTried, setAutoTried] = useState(false);
   const [password, setPassword] = useState("");
   const [unlocked, setUnlocked] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -113,23 +120,47 @@ export default function Admin() {
     setIntegrations(res.integrations);
   }
 
+  async function doUnlock(pw: string) {
+    const res = await apiJson<{ config: Config }>("/api/admin/verify", {
+      method: "POST",
+      body: JSON.stringify({ adminPassword: pw }),
+    });
+    setConfig(res.config);
+    await refreshDeviceList(pw);
+    await refreshIntegrations(pw);
+    setUnlocked(true);
+  }
+
   async function unlock() {
     setBusy(true);
     try {
-      const res = await apiJson<{ config: Config }>("/api/admin/verify", {
-        method: "POST",
-        body: JSON.stringify({ adminPassword: password }),
-      });
-      setConfig(res.config);
-      await refreshDeviceList(password);
-      await refreshIntegrations(password);
-      setUnlocked(true);
+      await doUnlock(password);
+      await rememberAdmin(password);
     } catch (err) {
       fail(err);
     } finally {
       setBusy(false);
     }
   }
+
+  function lock() {
+    void forgetAdmin();
+    setUnlocked(false);
+    setPassword("");
+    setConfig(null);
+  }
+
+  // Auto-unlock once from the password remembered on this device; if it no
+  // longer verifies (rotated elsewhere), forget it and fall back to the prompt.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run once when the remembered value resolves
+  useEffect(() => {
+    if (autoTried || remembered === undefined) return;
+    setAutoTried(true);
+    if (typeof remembered === "string") {
+      setPassword(remembered);
+      void doUnlock(remembered).catch(() => forgetAdmin());
+    }
+  }, [remembered, autoTried]);
 
   async function saveConfig() {
     if (!config) return;
@@ -147,7 +178,12 @@ export default function Admin() {
         }),
       });
       setConfig(res.config);
-      if (newAdminPassword) setPassword(newAdminPassword);
+      if (newAdminPassword) {
+        setPassword(newAdminPassword);
+        await rememberAdmin(newAdminPassword);
+      }
+      // Cache the rotated code so this device's invite link stays current.
+      if (newAccessCode) await rememberAccessCode(newAccessCode);
       setNewAccessCode("");
       setNewAdminPassword("");
       notifications.show({ message: "Saved", color: "green" });
@@ -278,17 +314,30 @@ export default function Admin() {
       maw={520}
       mx="auto"
     >
-      <Group gap="sm">
-        <ActionIcon
-          variant="default"
-          size="xl"
-          radius="xl"
-          onClick={() => navigate(-1)}
-          aria-label="Back"
-        >
-          <IconArrowLeft />
-        </ActionIcon>
-        <Title order={3}>Admin</Title>
+      <Group justify="space-between">
+        <Group gap="sm">
+          <ActionIcon
+            variant="default"
+            size="xl"
+            radius="xl"
+            onClick={() => navigate(-1)}
+            aria-label="Back"
+          >
+            <IconArrowLeft />
+          </ActionIcon>
+          <Title order={3}>Admin</Title>
+        </Group>
+        {unlocked && (
+          <Button
+            size="xs"
+            variant="light"
+            color="yellow"
+            leftSection={<IconLock size={12} />}
+            onClick={lock}
+          >
+            Lock
+          </Button>
+        )}
       </Group>
 
       {!unlocked ? (
@@ -377,9 +426,7 @@ export default function Admin() {
               </Text>
               <Button
                 leftSection={<IconPrinter size={16} />}
-                onClick={() =>
-                  navigate("/print", { state: { adminPassword: password } })
-                }
+                onClick={() => navigate("/print")}
               >
                 Open sticker sheets
               </Button>

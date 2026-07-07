@@ -19,8 +19,9 @@ import { notifications } from "@mantine/notifications";
 import { IconArrowLeft, IconPrinter } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { renderSVG } from "uqr";
+import { rememberAdmin, useAdminPassword, verifyAdmin } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { db } from "~/lib/db";
 import { syncNow } from "~/lib/sync";
@@ -36,28 +37,24 @@ const printCss = `
 
 export default function Print() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [params, setParams] = useSearchParams();
   const [count, setCount] = useState<number | string>(20);
   const [busy, setBusy] = useState(false);
 
   // Sticker sheets are admin-only: allocation hands out the global bin-ID
-  // sequence. The admin page passes its (already-verified) password via
-  // navigation state; on a direct load we prompt for it here. Never stored —
-  // a reload re-locks, matching the /admin surface.
-  const passedPassword =
-    (location.state as { adminPassword?: string } | null)?.adminPassword ?? "";
-  const [adminPassword, setAdminPassword] = useState(passedPassword);
-  const [unlocked, setUnlocked] = useState(Boolean(passedPassword));
+  // sequence. The admin unlock is remembered per device (lib/admin.ts); on a
+  // direct load with no remembered password we prompt for it here.
+  const remembered = useAdminPassword();
+  const unlocked = typeof remembered === "string";
+  const adminPassword = remembered ?? "";
+  const [unlockPw, setUnlockPw] = useState("");
 
   async function unlock() {
     setBusy(true);
     try {
-      await apiJson("/api/admin/verify", {
-        method: "POST",
-        body: JSON.stringify({ adminPassword }),
-      });
-      setUnlocked(true);
+      await verifyAdmin(unlockPw);
+      await rememberAdmin(unlockPw);
+      setUnlockPw("");
     } catch (err) {
       notifications.show({
         message: err instanceof Error ? err.message : String(err),
@@ -144,17 +141,15 @@ export default function Print() {
             </Text>
             <PasswordInput
               label="Admin password"
-              value={adminPassword}
-              onChange={(e) => setAdminPassword(e.currentTarget.value)}
-              onKeyDown={(e) =>
-                e.key === "Enter" && adminPassword && void unlock()
-              }
+              value={unlockPw}
+              onChange={(e) => setUnlockPw(e.currentTarget.value)}
+              onKeyDown={(e) => e.key === "Enter" && unlockPw && void unlock()}
               autoFocus
             />
             <Button
               onClick={() => void unlock()}
               loading={busy}
-              disabled={!adminPassword}
+              disabled={!unlockPw}
             >
               Unlock
             </Button>

@@ -23,6 +23,7 @@ import { useEffect, useState } from "react";
 import { Navigate } from "react-router";
 import { adoptIdentity } from "~/lib/auth";
 import { IDENTITY_KEY, type Identity, db } from "~/lib/db";
+import { rememberAccessCode } from "~/lib/invite";
 
 /** Member access codes are typed on phones — lowercase, no confusables. */
 function generateAccessCode(): string {
@@ -84,6 +85,8 @@ export default function Setup() {
         throw new Error(body?.error ?? "setup failed");
       }
       await adoptIdentity((await response.json()) as Identity, geoOk);
+      // The operator's device keeps the code so it can share invite links.
+      await rememberAccessCode(accessCode);
     } catch (err) {
       setError(err instanceof Error ? err.message : "setup failed");
     } finally {

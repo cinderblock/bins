@@ -6,7 +6,9 @@ import {
   ActionIcon,
   Alert,
   Button,
+  Code,
   ColorSwatch,
+  CopyButton,
   Divider,
   Group,
   Paper,
@@ -23,6 +25,8 @@ import { notifications } from "@mantine/notifications";
 import {
   IconArchive,
   IconArrowLeft,
+  IconCheck,
+  IconCopy,
   IconDeviceMobilePlus,
   IconPlus,
   IconShieldLock,
@@ -55,6 +59,7 @@ import {
   onInstallStateChange,
   promptInstall,
 } from "~/lib/install";
+import { inviteLink, rememberAccessCode, useAccessCode } from "~/lib/invite";
 import { LABEL_COLORS, labelColor, nextLabelColor } from "~/lib/labels";
 import {
   DEFAULT_PHOTO_RETENTION,
@@ -117,6 +122,8 @@ export default function Settings() {
   const [prefetch, setPrefetch] = useState<PrefetchProgress | null>(null);
   const [rejoinCode, setRejoinCode] = useState("");
   const [rejoining, setRejoining] = useState(false);
+  const cachedCode = useAccessCode();
+  const [codeInput, setCodeInput] = useState("");
   // Re-render when the browser hands us (or consumes) the install prompt.
   const [, setInstallTick] = useState(0);
   useEffect(() => onInstallStateChange(() => setInstallTick((n) => n + 1)), []);
@@ -166,6 +173,7 @@ export default function Settings() {
     setRejoining(true);
     try {
       await signBackIn(rejoinCode);
+      await rememberAccessCode(rejoinCode);
       setRejoinCode("");
       notifications.show({
         message: "Signed back in — syncing queued changes",
@@ -179,6 +187,14 @@ export default function Settings() {
     } finally {
       setRejoining(false);
     }
+  }
+
+  async function saveInviteCode() {
+    const trimmed = codeInput.trim();
+    if (!trimmed) return;
+    await rememberAccessCode(trimmed);
+    setCodeInput("");
+    notifications.show({ message: "Invite link ready", color: "green" });
   }
 
   async function addPlace() {
@@ -439,6 +455,65 @@ export default function Settings() {
             offline — run this on good wifi before heading off-grid (best with
             "Forever" above).
           </Text>
+        </Stack>
+      </Paper>
+
+      <Paper p="md" radius="lg" withBorder>
+        <Stack gap="sm">
+          <Group gap="xs">
+            <IconDeviceMobilePlus size={18} />
+            <Text fw={600}>Invite a device</Text>
+          </Group>
+          <Text size="xs" c="dimmed">
+            Share this link to sign in another phone or laptop — it opens the
+            join page with the group code filled in, so they just add their
+            name. The code rides the link's #fragment and never reaches the
+            server.
+          </Text>
+          {typeof cachedCode === "string" ? (
+            <>
+              <Code block style={{ wordBreak: "break-all" }}>
+                {inviteLink(cachedCode)}
+              </Code>
+              <CopyButton value={inviteLink(cachedCode)}>
+                {({ copied, copy }) => (
+                  <Button
+                    variant={copied ? "light" : "default"}
+                    color={copied ? "green" : undefined}
+                    leftSection={
+                      copied ? <IconCheck size={16} /> : <IconCopy size={16} />
+                    }
+                    onClick={copy}
+                  >
+                    {copied ? "Copied" : "Copy invite link"}
+                  </Button>
+                )}
+              </CopyButton>
+            </>
+          ) : (
+            <Text size="sm" c="dimmed">
+              This device doesn't have the group code (you joined by scanning a
+              sticker). Enter it below to make an invite link.
+            </Text>
+          )}
+          <Group align="flex-end" gap="xs">
+            <PasswordInput
+              label={cachedCode ? "Update the code" : "Group access code"}
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.currentTarget.value)}
+              style={{ flex: 1 }}
+              onKeyDown={(e) =>
+                e.key === "Enter" && codeInput.trim() && void saveInviteCode()
+              }
+            />
+            <Button
+              variant="default"
+              disabled={!codeInput.trim()}
+              onClick={() => void saveInviteCode()}
+            >
+              Save
+            </Button>
+          </Group>
         </Stack>
       </Paper>
 

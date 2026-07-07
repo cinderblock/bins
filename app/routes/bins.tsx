@@ -33,11 +33,17 @@ import {
 } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { LabelChips } from "~/components/LabelChips";
 import { PhotoImg } from "~/components/PhotoImg";
 import { WeightInput } from "~/components/WeightInput";
 import { setBinFields, setBinLabel, setBinLocation } from "~/lib/actions";
+import {
+  forgetAdmin,
+  rememberAdmin,
+  useAdminPassword,
+  verifyAdmin,
+} from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { db } from "~/lib/db";
 import { formatWeight, labelColor } from "~/lib/labels";
@@ -73,14 +79,13 @@ function fail(err: unknown) {
 
 export default function Bins() {
   const navigate = useNavigate();
-  const location = useLocation();
   const labelById = useLabelMap();
 
-  // The admin page can hand us its already-verified password via nav state.
-  const passed =
-    (location.state as { adminPassword?: string } | null)?.adminPassword ?? "";
-  const [adminPassword, setAdminPassword] = useState(passed);
-  const [unlocked, setUnlocked] = useState(Boolean(passed));
+  // Admin unlock is remembered per device (lib/admin.ts): undefined while
+  // loading, null when locked, the password string once unlocked here.
+  const remembered = useAdminPassword();
+  const unlocked = typeof remembered === "string";
+  const adminPassword = remembered ?? "";
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [unlockPw, setUnlockPw] = useState("");
   const [busy, setBusy] = useState(false);
@@ -107,12 +112,8 @@ export default function Bins() {
   async function unlock() {
     setBusy(true);
     try {
-      await apiJson("/api/admin/verify", {
-        method: "POST",
-        body: JSON.stringify({ adminPassword: unlockPw }),
-      });
-      setAdminPassword(unlockPw);
-      setUnlocked(true);
+      await verifyAdmin(unlockPw);
+      await rememberAdmin(unlockPw);
       setUnlockOpen(false);
       setUnlockPw("");
     } catch (err) {
@@ -190,13 +191,15 @@ export default function Bins() {
         </Group>
         {!selecting &&
           (unlocked ? (
-            <Badge
-              color="yellow"
+            <Button
+              size="xs"
               variant="light"
+              color="yellow"
               leftSection={<IconLock size={12} />}
+              onClick={() => void forgetAdmin()}
             >
-              admin
-            </Badge>
+              Lock admin
+            </Button>
           ) : (
             <ActionIcon
               variant="default"

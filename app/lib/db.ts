@@ -139,6 +139,10 @@ export const LAST_SEQ_KEY = "lastSeq";
 export const AUTH_DEAD_KEY = "authDead";
 /** One-time "add to home screen" nudge already shown. */
 export const INSTALL_HINT_KEY = "installHintShown";
+/** Verified group admin password, remembered on this device (see lib/admin.ts). */
+export const ADMIN_PASSWORD_KEY = "adminPassword";
+/** Group access code cached on devices that know it, for invite links (lib/invite.ts). */
+export const ACCESS_CODE_KEY = "accessCode";
 
 export async function getIdentity(): Promise<Identity | undefined> {
   return getMeta<Identity>(IDENTITY_KEY);

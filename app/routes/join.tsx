@@ -20,6 +20,15 @@ import { useState } from "react";
 import { Navigate } from "react-router";
 import { adoptIdentity } from "~/lib/auth";
 import { IDENTITY_KEY, type Identity, db } from "~/lib/db";
+import { rememberAccessCode } from "~/lib/invite";
+
+/** Invite links carry the access code in the fragment (#…); tolerate ?code= too. */
+function codeFromUrl(): string {
+  if (typeof window === "undefined") return "";
+  const hash = window.location.hash.replace(/^#/, "");
+  if (hash) return decodeURIComponent(hash.replace(/^code=/i, ""));
+  return new URLSearchParams(window.location.search).get("code") ?? "";
+}
 
 export default function Join() {
   const identity = useLiveQuery(
@@ -28,7 +37,7 @@ export default function Join() {
     undefined,
   );
   const [displayName, setDisplayName] = useState("");
-  const [accessCode, setAccessCode] = useState("");
+  const [accessCode, setAccessCode] = useState(codeFromUrl);
   const [geoOk, setGeoOk] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +69,8 @@ export default function Join() {
         throw new Error(body?.error ?? "could not join");
       }
       await adoptIdentity((await response.json()) as Identity, geoOk);
+      // Cache the code so this device can hand out invite links too.
+      await rememberAccessCode(accessCode);
     } catch (err) {
       setError(err instanceof Error ? err.message : "could not join");
     } finally {
