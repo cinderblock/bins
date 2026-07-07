@@ -10,6 +10,7 @@ import {
   Group,
   Paper,
   PasswordInput,
+  SegmentedControl,
   Stack,
   Switch,
   Text,
@@ -47,6 +48,12 @@ import {
   onInstallStateChange,
   promptInstall,
 } from "~/lib/install";
+import {
+  DEFAULT_PHOTO_RETENTION,
+  type PhotoRetention,
+  getPhotoRetention,
+  setPhotoRetention,
+} from "~/lib/photos";
 import { syncNow } from "~/lib/sync";
 
 export default function Settings() {
@@ -83,6 +90,9 @@ export default function Settings() {
   const [geoOk, setGeoOk] = useState(false);
   const [newPlace, setNewPlace] = useState("");
   const [storage, setStorage] = useState("");
+  const [retention, setRetention] = useState<PhotoRetention>(
+    DEFAULT_PHOTO_RETENTION,
+  );
   const [rejoinCode, setRejoinCode] = useState("");
   const [rejoining, setRejoining] = useState(false);
   // Re-render when the browser hands us (or consumes) the install prompt.
@@ -94,6 +104,7 @@ export default function Settings() {
   }, [identity]);
   useEffect(() => {
     void getMeta<boolean>(GEO_OPT_IN_KEY).then((v) => setGeoOk(v ?? false));
+    void getPhotoRetention().then(setRetention);
     void navigator.storage?.estimate?.().then((est) => {
       if (est.usage != null) {
         setStorage(`${(est.usage / 1024 / 1024).toFixed(1)} MB used locally`);
@@ -262,6 +273,30 @@ export default function Settings() {
           <Button variant="default" onClick={() => void syncNow()}>
             Sync now
           </Button>
+          <div>
+            <Text size="sm" fw={500} mb={4}>
+              Keep photos offline
+            </Text>
+            <SegmentedControl
+              fullWidth
+              value={retention}
+              onChange={(value) => {
+                setRetention(value as PhotoRetention);
+                void setPhotoRetention(value as PhotoRetention);
+              }}
+              data={[
+                { label: "1 week", value: "week" },
+                { label: "1 month", value: "month" },
+                { label: "Forever", value: "forever" },
+              ]}
+            />
+            <Text size="xs" c="dimmed" mt={4}>
+              How long full-size photos stay on this device after you view them.
+              Thumbnails and each box's latest photo are always kept; anything
+              evicted re-downloads when you next open it online. Pick "Forever"
+              for event weeks spent off-grid.
+            </Text>
+          </div>
         </Stack>
       </Paper>
 

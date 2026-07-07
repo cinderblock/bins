@@ -11,11 +11,14 @@
  *
  * Local cache policy (enforced by prunePhotoCache, run after sync): thumbs
  * stay forever; display bytes stay while they're some bin's primary photo or
- * were accessed in the last 7 days; original bytes are dropped the moment
- * the server confirms the upload. Evicted bytes refetch on demand.
+ * were accessed within the RETENTION window (per-device setting, Settings →
+ * "Keep photos offline"; "forever" disables display eviction for event weeks
+ * where offline access matters more than storage); original bytes are
+ * dropped the moment the server confirms the upload. Evicted bytes refetch
+ * on demand — pruning never loses data, only offline availability.
  */
 import { apiFetch } from "./api";
-import { type BlobRole, db } from "./db";
+import { type BlobRole, db, getMeta, setMeta } from "./db";
 
 const DISPLAY_MAX_EDGE = 1600;
 const DISPLAY_JPEG_QUALITY = 0.8;
@@ -23,10 +26,32 @@ const THUMB_MAX_EDGE = 320;
 const THUMB_QUALITY = 0.7;
 const ORIGINAL_JPEG_QUALITY = 0.9;
 
-/** Keep non-primary display bytes this long after their last view. */
-const DISPLAY_CACHE_TTL_MS = 7 * 24 * 3_600_000;
 /** Don't churn Dexie with a lastAccessAt write on every render. */
 const ACCESS_TOUCH_INTERVAL_MS = 3_600_000;
+
+/** How long non-primary display bytes survive after their last view. */
+export type PhotoRetention = "week" | "month" | "forever";
+export const PHOTO_RETENTION_KEY = "photoRetention";
+export const DEFAULT_PHOTO_RETENTION: PhotoRetention = "month";
+
+const RETENTION_TTL_MS: Record<PhotoRetention, number> = {
+  week: 7 * 24 * 3_600_000,
+  month: 30 * 24 * 3_600_000,
+  forever: Number.POSITIVE_INFINITY,
+};
+
+export async function getPhotoRetention(): Promise<PhotoRetention> {
+  return (
+    (await getMeta<PhotoRetention>(PHOTO_RETENTION_KEY)) ??
+    DEFAULT_PHOTO_RETENTION
+  );
+}
+
+export async function setPhotoRetention(
+  retention: PhotoRetention,
+): Promise<void> {
+  await setMeta(PHOTO_RETENTION_KEY, retention);
+}
 
 export interface Rendition {
   hash: string;
@@ -186,14 +211,17 @@ export async function getPhotoBlob(
 
 /**
  * Enforce the local photo-cache policy (see header). Never touches pending
- * rows — unsynced bytes are sacred.
+ * rows — unsynced bytes are sacred. Originals are dropped regardless of the
+ * retention setting: nothing displays them, so keeping their bytes buys no
+ * offline capability, only storage pressure.
  */
 export async function prunePhotoCache(): Promise<void> {
+  const ttl = RETENTION_TTL_MS[await getPhotoRetention()];
   const primaries = new Set<string>();
   for (const bin of await db.bins.toArray()) {
     if (bin.primaryPhotoHash) primaries.add(bin.primaryPhotoHash);
   }
-  const cutoff = Date.now() - DISPLAY_CACHE_TTL_MS;
+  const cutoff = Date.now() - ttl;
   const rows = await db.blobs.where("status").equals("done").toArray();
   const evict = rows
     .filter((row) => row.bytes !== null)

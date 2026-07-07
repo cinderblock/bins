@@ -304,8 +304,12 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   migration 0003. Upload order thumb→display→original (originals DEFERRED
   behind everything visible; their bytes drop locally once the server
   confirms). Local cache policy (`prunePhotoCache` after each sync cycle):
-  thumbs forever, display bytes kept while primary-of-some-bin OR viewed in
-  the last 7 days, else evicted (refetch on demand; never touches pending).
+  thumbs forever, display bytes kept while primary-of-some-bin OR viewed
+  within the per-device RETENTION window — user-configurable in Settings
+  ("Keep photos offline": 1 week / 1 month / Forever; default 1 month;
+  "Forever" for off-grid event weeks — user request 2026-07-06), else
+  evicted (refetch on demand; never touches pending). Originals always drop
+  after upload regardless (nothing displays them).
   Dexie v2 migrates old blob rows. NOTE: nothing displays originals yet —
   archival for future zoom/AI use.
 - [x] **Sticker-only entry, landing page, first-boot setup, admin page**
