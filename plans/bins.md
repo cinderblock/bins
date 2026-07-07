@@ -391,8 +391,8 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
 - [ ] Phase 4 — per-device unclaimed-ID reserve (offline new-box without
   sticker), print layout for real label stock, location reorder, retired-bin
   browsing, unarchive places UI.
-- [~] **Integration tokens + public API** (user request) — steps 1–4 DONE
-  2026-07-07 (author model A). Migration 0005 adds `kind`/`scope`/
+- [x] **Integration tokens + public API** (user request) — DONE 2026-07-07
+  (author model A). Migration 0005 adds `kind`/`scope`/
   `allowedOrigins`/`tokenPrefix` to `device`; `authenticate()` returns
   `kind`/`scope`/`allowedOrigins` + `canWrite()` gate (push and blob PUT need
   write scope; admin is member-only); `api/v1.ts` read surface (`GET
@@ -406,8 +406,12 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   (pre-auth, allowed if ANY integration lists the origin) + `withCors` on the
   real response (per-token enforcement); applies to `/api/v1/*`, `/api/blobs/*`,
   `/api/sync/{pull,push}`; `*` only honored where an admin set it (read scope
-  only); bearer-in-header so no Allow-Credentials. STILL TODO: (6) integration
-  API tests (scope enforcement, v1 shapes, revoke, secretCode never leaks, CORS).
+  only); bearer-in-header so no Allow-Credentials. (6) Tests DONE 2026-07-07
+  (5 added to api.test.ts, 31 pass): mint/list/scope + hash-only + not in human
+  device list; read token reads v1 but 403s on push/PUT/admin and never sees
+  secretCode; write token authors ops attributed to the integration label;
+  CORS preflight + real-response allowlist (listed echoes origin, unlisted gets
+  nothing); revoke kills the token. Feature COMPLETE.
 - [ ] Phase 5 — AI embellishment: server job (gated on ANTHROPIC_API_KEY) runs
   Claude vision over new contents photos → server-authored `bin.aiItems` ops →
   feeds search for free. Schema/op type not yet defined.

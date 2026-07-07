@@ -28,10 +28,12 @@ function call(
     body?: unknown;
     rawBody?: Uint8Array;
     mime?: string;
+    origin?: string;
   } = {},
 ): Promise<Response> {
   const headers: Record<string, string> = {};
   if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
+  if (opts.origin) headers.Origin = opts.origin;
   let body: BodyInit | undefined;
   if (opts.rawBody) {
     body = opts.rawBody as unknown as BodyInit;
@@ -568,5 +570,198 @@ describe("api", () => {
     expect(get.status).toBe(200);
     expect(get.headers.get("content-type")).toBe("image/jpeg");
     expect(new Uint8Array(await get.arrayBuffer())).toEqual(bytes);
+  });
+
+  // --- Integration tokens + public API ------------------------------------
+
+  const ALLOWED_ORIGIN = "https://app.example.com";
+  let readToken: string;
+  let writeToken: string;
+  let writeIntegrationId: string;
+
+  test("admin mints scoped integration tokens (shown once, hash-only stored)", async () => {
+    const mk = (body: Record<string, unknown>) =>
+      call("POST", "/api/admin/integrations/create", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw", ...body },
+      });
+
+    const read = await mk({ label: "Dashboard", scope: "read" });
+    expect(read.status).toBe(200);
+    const readBody = (await read.json()) as {
+      token: string;
+      integration: { id: string; scope: string; tokenPrefix: string };
+    };
+    readToken = readBody.token;
+    expect(readToken).toMatch(/^bins_[0-9a-f]{8}_[0-9a-f]{64}$/);
+    expect(readBody.integration.scope).toBe("read");
+    // The stored prefix identifies the token we only otherwise see hashed.
+    expect(readToken).toContain(readBody.integration.tokenPrefix);
+
+    const write = await mk({
+      label: "Importer",
+      scope: "write",
+      allowedOrigins: [ALLOWED_ORIGIN],
+    });
+    const writeBody = (await write.json()) as {
+      token: string;
+      integration: { id: string };
+    };
+    writeToken = writeBody.token;
+    writeIntegrationId = writeBody.integration.id;
+
+    // A wildcard CORS origin is indefensible for a write token.
+    const badWildcard = await mk({
+      label: "Nope",
+      scope: "write",
+      allowedOrigins: ["*"],
+    });
+    expect(badWildcard.status).toBe(400);
+
+    // Listed with scope + prefix, never exposing a token or its hash.
+    const list = await call("POST", "/api/admin/integrations", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw" },
+    });
+    const { integrations } = (await list.json()) as {
+      integrations: Record<string, unknown>[];
+    };
+    expect(integrations.map((i) => i.label).sort()).toEqual([
+      "Dashboard",
+      "Importer",
+    ]);
+    for (const i of integrations) {
+      expect(i).not.toHaveProperty("token");
+      expect(i).not.toHaveProperty("tokenHash");
+    }
+
+    // Integrations never appear in the human device list.
+    const devices = await call("POST", "/api/admin/devices", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw" },
+    });
+    const { devices: rows } = (await devices.json()) as {
+      devices: { displayName: string }[];
+    };
+    expect(rows.some((d) => d.displayName === "Dashboard")).toBe(false);
+  });
+
+  test("read token reads /api/v1 but cannot write (and never sees secretCode)", async () => {
+    const bins = await call("GET", "/api/v1/bins", { token: readToken });
+    expect(bins.status).toBe(200);
+    const binsBody = (await bins.json()) as {
+      bins: Record<string, unknown>[];
+    };
+    const ours = binsBody.bins.find((b) => b.id === binId);
+    expect(ours).toBeDefined();
+    // The sticker secret must never ride the public read surface.
+    for (const b of binsBody.bins) expect(b).not.toHaveProperty("secretCode");
+
+    const one = await call("GET", `/api/v1/bins/${binId}`, {
+      token: readToken,
+    });
+    const oneBody = (await one.json()) as {
+      bin: Record<string, unknown>;
+      entries: { kind: string; text: string | null; author: string | null }[];
+    };
+    expect(oneBody.bin).not.toHaveProperty("secretCode");
+    const note = oneBody.entries.find((e) => e.kind === "note");
+    expect(note?.text).toBe("3 tarps, rope");
+    expect(note?.author).toBe("Ada"); // authorship resolves to a display name
+
+    expect(
+      (await call("GET", "/api/v1/locations", { token: readToken })).status,
+    ).toBe(200);
+
+    // Read scope is read-only: push, blob PUT, and admin are all refused.
+    const push = await call("POST", "/api/sync/push", {
+      token: readToken,
+      body: { ops: [] },
+    });
+    expect(push.status).toBe(403);
+    const put = await call("PUT", `/api/blobs/${"0".repeat(64)}`, {
+      token: readToken,
+      rawBody: new TextEncoder().encode("x"),
+    });
+    expect(put.status).toBe(403);
+    const admin = await call("POST", "/api/admin/verify", {
+      token: readToken,
+      body: { adminPassword: "admin-pw" },
+    });
+    expect(admin.status).toBe(403); // members only, before the password check
+  });
+
+  test("write token authors ops through the reducer, attributed to the integration", async () => {
+    const push = await call("POST", "/api/sync/push", {
+      token: writeToken,
+      body: {
+        ops: [
+          {
+            opId: uuid(),
+            type: "entry.addNote",
+            binId,
+            payload: { text: "from the importer" },
+            clientTime: Date.now(),
+          },
+        ],
+      },
+    });
+    expect(push.status).toBe(200);
+    expect(((await push.json()) as { acks: unknown[] }).acks).toHaveLength(1);
+
+    // The note surfaces on the read API attributed to the integration's label.
+    const one = await call("GET", `/api/v1/bins/${binId}`, {
+      token: readToken,
+    });
+    const { entries } = (await one.json()) as {
+      entries: { text: string | null; author: string | null }[];
+    };
+    const mine = entries.find((e) => e.text === "from the importer");
+    expect(mine?.author).toBe("Importer");
+  });
+
+  test("CORS: preflight + real response honor the per-token origin allowlist", async () => {
+    // Preflight (no auth) is allowed because an integration lists the origin.
+    const pre = await call("OPTIONS", "/api/v1/bins", {
+      origin: ALLOWED_ORIGIN,
+    });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get("access-control-allow-origin")).toBe(ALLOWED_ORIGIN);
+
+    // The real response echoes the origin for the token that lists it…
+    const ok = await call("GET", "/api/v1/bins", {
+      token: writeToken,
+      origin: ALLOWED_ORIGIN,
+    });
+    expect(ok.headers.get("access-control-allow-origin")).toBe(ALLOWED_ORIGIN);
+
+    // …but an unlisted origin gets no CORS headers (browser blocks the read),
+    const blocked = await call("GET", "/api/v1/bins", {
+      token: writeToken,
+      origin: "https://evil.example.com",
+    });
+    expect(blocked.headers.get("access-control-allow-origin")).toBeNull();
+    // …and a token with no allowlist (the read token) never gets them either.
+    const noList = await call("GET", "/api/v1/bins", {
+      token: readToken,
+      origin: ALLOWED_ORIGIN,
+    });
+    expect(noList.headers.get("access-control-allow-origin")).toBeNull();
+
+    const preBlocked = await call("OPTIONS", "/api/v1/bins", {
+      origin: "https://evil.example.com",
+    });
+    expect(preBlocked.status).toBe(204);
+    expect(preBlocked.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  test("revoking an integration kills its token immediately", async () => {
+    const revoke = await call("POST", "/api/admin/integrations/revoke", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", integrationId: writeIntegrationId },
+    });
+    expect(revoke.status).toBe(200);
+    const dead = await call("GET", "/api/v1/bins", { token: writeToken });
+    expect(dead.status).toBe(401);
   });
 });
