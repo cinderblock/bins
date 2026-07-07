@@ -401,10 +401,13 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   `integrations` create/list/revoke (token `bins_<prefix>_<secret>`, hash
   stored, shown once) + admin-page "API tokens" section; human device list
   filtered to `kind=member`, integrations kept in `/api/devices` name cache so
-  their writes attribute. typecheck/lint/26 tests green. STILL TODO: (5) CORS
-  using `allowedOrigins` (deferred until real consumer origins known), (6)
-  integration API tests (scope enforcement, v1 shapes, revoke, secretCode
-  never leaks).
+  their writes attribute. (5) CORS DONE 2026-07-07 (`api/cors.ts`):
+  per-integration `allowedOrigins` allowlist drives it — OPTIONS preflight
+  (pre-auth, allowed if ANY integration lists the origin) + `withCors` on the
+  real response (per-token enforcement); applies to `/api/v1/*`, `/api/blobs/*`,
+  `/api/sync/{pull,push}`; `*` only honored where an admin set it (read scope
+  only); bearer-in-header so no Allow-Credentials. STILL TODO: (6) integration
+  API tests (scope enforcement, v1 shapes, revoke, secretCode never leaks, CORS).
 - [ ] Phase 5 — AI embellishment: server job (gated on ANTHROPIC_API_KEY) runs
   Claude vision over new contents photos → server-authored `bin.aiItems` ops →
   feeds search for free. Schema/op type not yet defined.
