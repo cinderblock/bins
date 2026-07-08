@@ -21,8 +21,8 @@ import { type Ctx, serializedTransaction } from "./context";
 const FIRST_BIN_ID = 100;
 
 /**
- * Mint a sticker secret. The tiny modulo bias (256 % 30 ≠ 0) is fine — the
- * codes are deliberately low-security (see shared/ops.ts).
+ * Mint a sticker secret. The alphabet is 32 chars and 256 % 32 === 0, so the
+ * byte→char mapping is uniform — no modulo bias (see shared/ops.ts).
  */
 function generateSecretCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(SECRET_CODE_LENGTH));

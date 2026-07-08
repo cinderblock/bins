@@ -155,7 +155,7 @@ describe("api", () => {
     expect(Math.min(...allocated.map((b) => b.id))).toBeGreaterThanOrEqual(100);
     // Every sticker gets a secret from the confusable-free alphabet.
     for (const { code } of allocated) {
-      expect(code).toMatch(/^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{4}$/);
+      expect(code).toMatch(/^[0-9ABCDEFGHJKMNPRSTUVWXYZ]{4}$/);
     }
     binId = (allocated[0] as { id: number }).id;
 
@@ -247,6 +247,15 @@ describe("api", () => {
       body: { adminPassword: "admin-pw", binId: 999_999 },
     });
     expect(missing.status).toBe(404);
+  });
+
+  test("secret codes fold look-alike glyphs when read", async () => {
+    const { normalizeSecretCode } = await import("../shared/ops");
+    // O/Q → 0, I/L → 1; case- and whitespace-insensitive.
+    expect(normalizeSecretCode("o1lq")).toBe("0110");
+    expect(normalizeSecretCode(" ab0 ")).toBe("AB0");
+    // Idempotent on codes already drawn from the alphabet.
+    expect(normalizeSecretCode("7HX0")).toBe("7HX0");
   });
 
   test("labels + weight: pushed ops materialize on the server and pull", async () => {

@@ -1,12 +1,15 @@
 /**
- * QR sticker sheet: batch-allocate unclaimed bins for this group (server
- * assigns global short IDs), render a printable grid of QR codes. Fresh
- * stickers are claimable offline because the allocations sync into every
+ * Allocate bin IDs + sticker secrets for a group (server assigns the global
+ * short IDs) and either render a printable QR grid or export the raw id/code/
+ * URL rows (TSV) for operators who print their own precise sticker format.
+ * Fresh stickers are claimable offline because the allocations sync into every
  * member's replica as ops.
  */
 import {
   ActionIcon,
   Button,
+  Code,
+  CopyButton,
   Group,
   NumberInput,
   Paper,
@@ -16,7 +19,12 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconArrowLeft, IconPrinter } from "@tabler/icons-react";
+import {
+  IconArrowLeft,
+  IconCheck,
+  IconCopy,
+  IconPrinter,
+} from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
@@ -39,6 +47,7 @@ export default function Print() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [count, setCount] = useState<number | string>(20);
+  const [idDigits, setIdDigits] = useState<number | string>(4);
   const [busy, setBusy] = useState(false);
 
   // Sticker sheets are admin-only: allocation hands out the global bin-ID
@@ -112,6 +121,20 @@ export default function Print() {
       setBusy(false);
     }
   }
+
+  // Rows for the "print your own" export: only bins whose code has synced in.
+  const pad = Math.max(1, Number(idDigits) || 1);
+  const exportRows = ids
+    .map((id) => ({ id, code: codeById.get(id) ?? null }))
+    .filter((r): r is { id: number; code: string } => r.code != null);
+  const exportText = [
+    "id\tcode\turl",
+    ...exportRows.map((r) => {
+      // Upper-cased so the whole URL stays in QR alphanumeric mode = tighter code.
+      const url = `${window.location.origin}/${r.id}#${r.code}`.toUpperCase();
+      return `${String(r.id).padStart(pad, "0")}\t${r.code}\t${url}`;
+    }),
+  ].join("\n");
 
   if (!unlocked) {
     return (
@@ -203,6 +226,46 @@ export default function Print() {
           and scan to claim (works offline once synced).
         </Text>
       </Paper>
+
+      {exportRows.length > 0 && (
+        <Paper className="no-print" p="md" radius="lg" withBorder>
+          <Stack gap="sm">
+            <Text fw={600}>Export for your own sticker format</Text>
+            <Group align="flex-end" gap="sm">
+              <NumberInput
+                label="ID digits"
+                min={1}
+                max={9}
+                value={idDigits}
+                onChange={setIdDigits}
+                w={110}
+              />
+              <CopyButton value={exportText}>
+                {({ copied, copy }) => (
+                  <Button
+                    variant={copied ? "light" : "default"}
+                    color={copied ? "green" : undefined}
+                    leftSection={
+                      copied ? <IconCheck size={16} /> : <IconCopy size={16} />
+                    }
+                    onClick={copy}
+                  >
+                    {copied ? "Copied" : "Copy ID + code + URL"}
+                  </Button>
+                )}
+              </CopyButton>
+            </Group>
+            <Code block style={{ whiteSpace: "pre", overflowX: "auto" }}>
+              {exportText}
+            </Code>
+            <Text size="xs" c="dimmed">
+              Tab-separated for pasting into spreadsheet columns. The padded ID
+              is the big human number, the code is the sticker secret, and the
+              URL is upper-cased so its QR encodes tighter.
+            </Text>
+          </Stack>
+        </Paper>
+      )}
 
       {ids.length > 0 && (
         <div

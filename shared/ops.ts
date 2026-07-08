@@ -32,14 +32,22 @@ const binId = z.number().int().positive();
  * a sticker once is "login" (proof of physical access); a bare `/{id}` typed
  * by hand grants nothing. Deliberately low security: codes are short, stored
  * plaintext (sticker sheets must be re-renderable), and never rotated.
- * Crockford-style alphabet — no 0/1/I/L/O/U confusables.
+ * 32-char base32 alphabet: 0-9 A-Z minus the look-alikes I, L, O, Q. 32
+ * divides 256, so the byte→char pick in api/allocate.ts is unbiased. Reading a
+ * code folds the dropped look-alikes back to their kept twin (see
+ * normalizeSecretCode), so a hand-typed O/I/L/Q still matches.
  */
-export const SECRET_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTVWXYZ";
+export const SECRET_CODE_ALPHABET = "0123456789ABCDEFGHJKMNPRSTUVWXYZ";
 export const SECRET_CODE_LENGTH = 4;
 
-/** Codes compare case-insensitively (people type them off stickers). */
+/**
+ * Normalize a code for comparison: trim, upper-case, and fold ambiguous glyphs
+ * to the alphabet's kept character (O/Q → 0, I/L → 1). Generated/stored codes
+ * only ever use the alphabet above, so this is idempotent on them and lets a
+ * misread hand-typed code still match.
+ */
 export function normalizeSecretCode(code: string): string {
-  return code.trim().toUpperCase();
+  return code.trim().toUpperCase().replace(/[OQ]/g, "0").replace(/[IL]/g, "1");
 }
 
 export const secretCodeSchema = z.string().min(1).max(20);
