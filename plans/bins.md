@@ -175,11 +175,16 @@ As-built deviations from the touchpoint list below:
 
 Original implementation touchpoints (in dependency order):
 
-1. **Code format**: 4 chars from Crockford-style alphabet
-   `23456789ABCDEFGHJKMNPQRSTVWXYZ` (no 0/1/I/L/O/U confusables), generated
-   server-side with `crypto.getRandomValues`. Compare case-insensitively.
-   Stored plaintext (low security by design; needed to re-render sticker
-   sheets).
+1. **Code format**: 4 chars, generated server-side with
+   `crypto.getRandomValues`. Stored plaintext (low security by design; needed
+   to re-render sheets). **Alphabet (user decision 2026-07-06)**: the 32-char
+   set `0123456789ABCDEFGHJKMNPRSTUVWXYZ` (0-9 A-Z minus I L O Q), matching the
+   operator's own hand-generated codes; 32 | 256 so generation is unbiased.
+   `normalizeSecretCode` compares case-insensitively AND folds the dropped
+   look-alikes to their kept twin (O/Q→0, I/L→1) so a misread code still
+   matches (both sides normalized at api/auth.ts join-by-bin). **Own-format
+   export**: `/print` also emits copyable TSV rows (padded id, code, upper-cased
+   URL for tighter QR) for operators who print a precise custom sticker layout.
 2. **Schema**: `bin.secretCode` text NOT NULL (fresh migration; db has no real
    data yet — regenerating migration 0000 is also fine). Also add to
    `BinState` in `shared/reducer.ts` + both store adapters + `db/schema/bin.ts`.
