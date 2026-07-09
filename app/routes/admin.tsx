@@ -631,8 +631,9 @@ export default function Admin() {
           </Paper>
 
           <Alert color="gray" variant="light">
-            The admin password is asked again after a reload — it's never stored
-            on the device.
+            Admin stays unlocked on this device until you Lock it (or the
+            password is rotated elsewhere). The password is kept only in this
+            device's local storage, never sent anywhere without your action.
           </Alert>
         </>
       )}

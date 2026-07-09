@@ -1,15 +1,19 @@
 /**
- * "All boxes" — browse every box in the group. Everyone can open a box and
- * bulk-select boxes to MOVE (relocate) them together. Admins (unlock with the
- * group admin password) additionally see retired boxes and get per-box edit +
- * retire/restore. Retire/restore are server-enforced (api/admin.ts); edit and
- * move ride the normal client ops.
+ * "All boxes" — the one browse surface: every box in the group, with search
+ * ("which box is X in" — MiniSearch over names, external labels, locations,
+ * notes; prefix + fuzzy so "sharpee" finds the Sharpies) and category filter
+ * chips. Everyone can open a box and bulk-select boxes to MOVE (relocate)
+ * them together. Admins (unlock with the group admin password) additionally
+ * see retired boxes and get per-box edit + retire/restore. Retire/restore
+ * are server-enforced (api/admin.ts); edit and move ride the normal client
+ * ops. /search redirects here.
  */
 import {
   ActionIcon,
   Badge,
   Button,
   Checkbox,
+  Chip,
   Group,
   Modal,
   Paper,
@@ -33,8 +37,9 @@ import {
   IconSearch,
 } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import type MiniSearch from "minisearch";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { LabelChips } from "~/components/LabelChips";
 import { PhotoImg } from "~/components/PhotoImg";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
@@ -49,6 +54,7 @@ import {
 import { apiJson } from "~/lib/api";
 import { db } from "~/lib/db";
 import { formatWeight, labelColor } from "~/lib/labels";
+import { type SearchDoc, buildSearchIndex } from "~/lib/search";
 import { syncNow } from "~/lib/sync";
 import { PAGE_MAXW } from "~/lib/ui";
 
@@ -83,7 +89,44 @@ function fail(err: unknown) {
 export default function Bins() {
   useDocumentTitle("All boxes · bins");
   const navigate = useNavigate();
+  const location = useLocation();
   const labelById = useLabelMap();
+
+  // Search-intent entries (the scanner's magnifier icon, the /search
+  // redirect) land with this state so the keyboard pops immediately.
+  const focusSearch = Boolean(
+    (location.state as { focusSearch?: boolean } | null)?.focusSearch,
+  );
+
+  const [query, setQuery] = useState("");
+  const [filterLabel, setFilterLabel] = useState<string | null>(null);
+  const indexRef = useRef<MiniSearch<SearchDoc> | null>(null);
+  const [indexReady, setIndexReady] = useState(0);
+
+  const labels = useLiveQuery(
+    () =>
+      db.labels
+        .orderBy("sortOrder")
+        .filter((l) => !l.archived)
+        .toArray(),
+    [],
+    [],
+  );
+
+  // Rebuild when the replica changes (cheap at this scale).
+  const changeStamp = useLiveQuery(
+    async () => `${await db.bins.count()}:${await db.entries.count()}`,
+    [],
+    "",
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: changeStamp is the rebuild trigger — the index reads the replica directly
+  useEffect(() => {
+    void buildSearchIndex().then((index) => {
+      indexRef.current = index;
+      setIndexReady((n) => n + 1);
+    });
+  }, [changeStamp]);
+  void indexReady; // rerender trigger
 
   // Admin unlock is remembered per device (lib/admin.ts): undefined while
   // loading, null when locked, the password string once unlocked here.
@@ -174,6 +217,24 @@ export default function Bins() {
 
   if (bins === undefined) return null;
 
+  // Text query: MiniSearch relevance order. The index only covers ACTIVE
+  // boxes, so a query hides retired ones even for admins — browse with an
+  // empty query to see those. A category chip then narrows either view.
+  const results =
+    query.trim() && indexRef.current
+      ? indexRef.current.search(query).slice(0, 50)
+      : null;
+  const byId = new Map(bins.map((bin) => [bin.id, bin]));
+  const listed = results
+    ? results.flatMap((r) => {
+        const bin = byId.get(r.id as number);
+        return bin ? [bin] : [];
+      })
+    : bins;
+  const shown = filterLabel
+    ? listed.filter((bin) => bin.labelIds.includes(filterLabel))
+    : listed;
+
   return (
     <Stack
       p="md"
@@ -196,16 +257,6 @@ export default function Bins() {
           <Title order={3}>All boxes</Title>
         </Group>
         <Group gap="xs">
-          <ActionIcon
-            component={Link}
-            to="/search"
-            variant="default"
-            size="xl"
-            radius="xl"
-            aria-label="Search"
-          >
-            <IconSearch />
-          </ActionIcon>
           {!selecting &&
             (unlocked ? (
               <Button
@@ -230,6 +281,31 @@ export default function Bins() {
             ))}
         </Group>
       </Group>
+
+      <TextInput
+        size="lg"
+        placeholder="Which box is it in…"
+        leftSection={<IconSearch size={18} />}
+        value={query}
+        onChange={(e) => setQuery(e.currentTarget.value)}
+        autoFocus={focusSearch}
+      />
+
+      {labels.length > 0 && (
+        <Group gap="xs">
+          {labels.map((label) => (
+            <Chip
+              key={label.id}
+              size="sm"
+              color={labelColor(label.color)}
+              checked={filterLabel === label.id}
+              onChange={(checked) => setFilterLabel(checked ? label.id : null)}
+            >
+              {label.name}
+            </Chip>
+          ))}
+        </Group>
+      )}
 
       {selecting ? (
         <Group justify="space-between">
@@ -259,14 +335,18 @@ export default function Bins() {
         )
       )}
 
-      {bins.length === 0 && (
+      {shown.length === 0 && (
         <Text c="dimmed" ta="center" mt="xl">
-          No boxes yet.
+          {query.trim()
+            ? `Nothing matches "${query}".`
+            : filterLabel
+              ? "No boxes in this category yet."
+              : "No boxes yet."}
         </Text>
       )}
 
       <Stack gap="xs">
-        {bins.map((bin) => {
+        {shown.map((bin) => {
           const retired = bin.status === "retired";
           return (
             <Paper

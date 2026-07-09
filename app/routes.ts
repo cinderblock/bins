@@ -11,7 +11,8 @@ export default [
     index("routes/scanner.tsx"),
     // "/123" — one URL per physical box; also the claim flow for fresh stickers.
     route(":binId", "routes/bin.tsx"),
-    // Browse every box; bulk-move for members, retire/restore + edit for admins.
+    // Browse + search every box; bulk-move for members, retire/restore +
+    // edit for admins. /search is a legacy alias that redirects here.
     route("bins", "routes/bins.tsx"),
     route("search", "routes/search.tsx"),
     route("settings", "routes/settings.tsx"),

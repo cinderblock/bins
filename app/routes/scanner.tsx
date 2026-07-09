@@ -515,7 +515,8 @@ export default function Scanner() {
             </ActionIcon>
             <ActionIcon
               component={Link}
-              to="/search"
+              to="/bins"
+              state={{ focusSearch: true }}
               variant="default"
               size={56}
               radius="xl"
