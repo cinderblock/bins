@@ -410,6 +410,10 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
 - [ ] Deploy — create GitHub repo (push master only — history already clean;
   see `plans/local.md`), register runner + host layout + reverse-proxy block
   per `plans/local.md`; then push & watch CI.
+- [x] Desktop UI cleanup (2026-07-09, user: "make it better") — see the
+  "Desktop UI cleanup" section: PAGE_MAXW page columns, ResponsiveSheet
+  (drawer↔modal), opt-in desktop camera + manual entry + LED release,
+  history-aware back, per-route titles, /bins↔/search cross-links.
 - [ ] Phase 4 — per-device unclaimed-ID reserve (offline new-box without
   sticker), print layout for real label stock, location reorder, retired-bin
   browsing, unarchive places UI.
@@ -439,6 +443,45 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   feeds search for free. Schema/op type not yet defined.
 - [ ] On-device testing (iPhone + Android): camera lifecycle in installed PWA,
   scan-to-bin latency, airplane-mode round-trip on two devices.
+
+## Desktop UI cleanup (2026-07-09) — IMPLEMENTED
+
+Audited the deployed site in desktop Chrome (4K window), then fixed. Phone
+IA unchanged; desktop no longer renders the mobile layout stretched. The
+conventions live in `app/lib/ui.ts`:
+
+- `PAGE_MAXW` (640): every list/detail surface centers at this width —
+  /bins, /search, bin page (header, content, fixed action bar's inner grid,
+  ClaimBin), /print, and the scanner's bottom overlay stack. Settings/admin
+  keep their pre-existing 480/520 centered columns.
+- `ResponsiveSheet` (`app/components/ResponsiveSheet.tsx`): bottom Drawer at
+  ≤48em, centered Modal above. Used by Location/Note/Label sheets and the
+  /bins Move/Edit sheets (renamed MoveSheet/EditSheet). Bin-page lightbox:
+  `fullScreen` only at ≤48em, `size="xl"` centered otherwise; the HERO photo
+  is now clickable (opens the lightbox), not just the strip thumbnails.
+- **Desktop scanner** (`DESKTOP_MEDIA` = hover+fine pointer, device-type not
+  window-size): camera is OPT-IN — the root shows a "Scan a box sticker"
+  card with Start camera + an always-available typed-bin-number input
+  (`ManualBinInput`, shared with the cameraError fallback). A Stop-camera
+  ActionIcon appears while scanning; `useScanner` takes
+  `{enabled, releaseOnExit}` and on desktop stops the stream + clears
+  `srcObject` on exit (webcam LED off). CaptureOverlay likewise stops the
+  stream on close when desktop. Phone behavior byte-identical: auto-start,
+  stream kept alive for the scan → snap rhythm.
+- **IA fixes**: bin-page back arrow is history-back when `history.state.idx
+  > 0`, scanner fallback otherwise (bins/search already used navigate(-1)).
+  /bins header gained a Search icon; /search idle state gained a "Browse all
+  boxes" link. Per-route `useDocumentTitle` everywhere ("All boxes · bins",
+  "#100 Test Box · bins", …); scanner resets to "bins".
+
+Verified on localhost dev (fresh group, allocated stickers, claimed a bin,
+note + search round-trip, sheets-as-modals, print page): all good. NOT
+deployed — commit is local; push triggers the deploy workflow.
+
+Deliberately NOT done (future candidates): merging /bins and /search into
+one browse surface; a desktop root that's a list instead of the scanner
+card; admin-page footer claims the password isn't remembered (it is, per
+device — stale copy, check `admin.tsx`).
 
 ## Findings / gotchas
 
