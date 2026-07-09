@@ -4,10 +4,11 @@
  * Labels write straight through as bin.setLabel ops; weight is buffered behind
  * a Save so typing doesn't emit an op per keystroke.
  */
-import { Button, Divider, Drawer, Stack, Text } from "@mantine/core";
+import { Button, Divider, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useEffect, useState } from "react";
 import { LabelChips } from "~/components/LabelChips";
+import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { WeightInput } from "~/components/WeightInput";
 import { setBinFields, setBinLabel } from "~/lib/actions";
 
@@ -45,14 +46,10 @@ export function LabelSheet({
   const weightChanged = weight !== weightGrams;
 
   return (
-    <Drawer
+    <ResponsiveSheet
       opened={opened}
       onClose={onClose}
-      position="bottom"
-      radius="lg"
-      size="auto"
       title="Categories & weight"
-      padding="md"
     >
       <Stack gap="md" pb="env(safe-area-inset-bottom)">
         <div>
@@ -72,6 +69,6 @@ export function LabelSheet({
           <Button onClick={() => void saveWeight()}>Save weight</Button>
         )}
       </Stack>
-    </Drawer>
+    </ResponsiveSheet>
   );
 }

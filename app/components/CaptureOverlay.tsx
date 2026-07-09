@@ -4,12 +4,14 @@
  * file input remains as the "system camera" escape hatch.
  */
 import { ActionIcon, Button, Group, Text } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { IconCamera, IconPhotoUp, IconX } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import { addPhoto } from "~/lib/actions";
-import { getCameraStream } from "~/lib/camera";
+import { getCameraStream, stopCamera } from "~/lib/camera";
 import { captureFromVideo, processFile } from "~/lib/photos";
+import { DESKTOP_MEDIA } from "~/lib/ui";
 
 export function CaptureOverlay({
   binId,
@@ -24,6 +26,12 @@ export function CaptureOverlay({
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
+
+  // Desktops turn the webcam (and its LED) off when the overlay closes; on
+  // phones the shared stream stays live for the scan → snap rhythm.
+  const isDesktop =
+    useMediaQuery(DESKTOP_MEDIA, false, { getInitialValueInEffect: false }) ??
+    false;
 
   useEffect(() => {
     let cancelled = false;
@@ -41,9 +49,10 @@ export function CaptureOverlay({
       });
     return () => {
       cancelled = true;
-      // Don't stop the stream — the scanner reuses it.
+      if (isDesktop) stopCamera();
+      // On phones, don't stop the stream — the scanner reuses it.
     };
-  }, []);
+  }, [isDesktop]);
 
   async function save(photo: Awaited<ReturnType<typeof captureFromVideo>>) {
     await addPhoto(binId, kind, photo);

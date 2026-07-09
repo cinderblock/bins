@@ -3,10 +3,11 @@
  * freeform entry at the bottom ("somewhere else…"). Places are managed in
  * Settings; bins store the location as plain text so freeform costs nothing.
  */
-import { Button, Drawer, Group, Stack, TextInput } from "@mantine/core";
+import { Button, Group, Stack, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
+import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { setBinLocation } from "~/lib/actions";
 import { db } from "~/lib/db";
 
@@ -43,14 +44,10 @@ export function LocationSheet({
   }
 
   return (
-    <Drawer
+    <ResponsiveSheet
       opened={opened}
       onClose={onClose}
-      position="bottom"
-      radius="lg"
-      size="auto"
       title="Where is this box?"
-      padding="md"
     >
       <Stack gap="xs" pb="env(safe-area-inset-bottom)">
         {places.map((place) => (
@@ -95,6 +92,6 @@ export function LocationSheet({
           </Button>
         )}
       </Stack>
-    </Drawer>
+    </ResponsiveSheet>
   );
 }

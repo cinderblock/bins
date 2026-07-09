@@ -37,6 +37,10 @@ where.
 - **Photos done right**: on-device downscale (~300 KB), content-addressed
   (sha256) storage, latest top-down shot automatically becomes the bin's
   primary picture.
+- **Phone-first, desktop-aware**: phones boot straight into the live
+  scanner; desktops get an opt-in camera (type a bin number instead — the
+  webcam faces you, not the boxes), centered page columns instead of
+  stretched mobile layouts, and dialogs where phones get bottom sheets.
 
 ## Stack
 

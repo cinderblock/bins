@@ -18,6 +18,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
+import { useDocumentTitle } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
   IconArrowLeft,
@@ -33,6 +34,7 @@ import { rememberAdmin, useAdminPassword, verifyAdmin } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { db } from "~/lib/db";
 import { syncNow } from "~/lib/sync";
+import { PAGE_MAXW } from "~/lib/ui";
 
 const printCss = `
 @media print {
@@ -44,6 +46,7 @@ const printCss = `
 `;
 
 export default function Print() {
+  useDocumentTitle("Sticker sheets · bins");
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [count, setCount] = useState<number | string>(20);
@@ -183,7 +186,12 @@ export default function Print() {
   }
 
   return (
-    <Stack p="md" pt="max(var(--mantine-spacing-md), env(safe-area-inset-top))">
+    <Stack
+      p="md"
+      pt="max(var(--mantine-spacing-md), env(safe-area-inset-top))"
+      maw={PAGE_MAXW}
+      mx="auto"
+    >
       <style>{printCss}</style>
       <Group gap="sm" className="no-print">
         <ActionIcon

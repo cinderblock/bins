@@ -23,6 +23,7 @@ import {
   Textarea,
   Title,
 } from "@mantine/core";
+import { useDocumentTitle } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
   IconArrowLeft,
@@ -75,6 +76,7 @@ function parseImport(text: string): { id: number; code: string }[] {
 }
 
 export default function Admin() {
+  useDocumentTitle("Admin · bins");
   const navigate = useNavigate();
   // Admin unlock is remembered per device (lib/admin.ts). `password` is the
   // working password (typed or auto-loaded from the remembered value).

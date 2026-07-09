@@ -8,6 +8,7 @@
 import {
   ActionIcon,
   Badge,
+  Box,
   Button,
   Center,
   Group,
@@ -20,6 +21,7 @@ import {
   Title,
   UnstyledButton,
 } from "@mantine/core";
+import { useDocumentTitle, useMediaQuery } from "@mantine/hooks";
 import type { EntryState } from "@shared/reducer";
 import {
   IconArrowLeft,
@@ -45,6 +47,7 @@ import { db } from "~/lib/db";
 import { relativeTime } from "~/lib/format";
 import { formatWeight, labelColor } from "~/lib/labels";
 import { syncNow } from "~/lib/sync";
+import { PAGE_MAXW, PHONE_MEDIA } from "~/lib/ui";
 
 const ACTION_BAR_HEIGHT = 88;
 
@@ -102,6 +105,18 @@ export default function BinPage() {
   const [labelsOpen, setLabelsOpen] = useState(false);
   const [lightbox, setLightbox] = useState<EntryState | null>(null);
 
+  // The lightbox fills the screen on a phone; on desktop that would be a 4K
+  // modal around a modest image, so it gets a normal centered dialog there.
+  const phone = useMediaQuery(PHONE_MEDIA, true, {
+    getInitialValueInEffect: false,
+  });
+
+  useDocumentTitle(
+    binId !== null
+      ? `#${binId}${bin?.name ? ` ${bin.name}` : ""} · bins`
+      : "bins",
+  );
+
   if (binId === null) {
     return (
       <Center h="100dvh">
@@ -140,14 +155,22 @@ export default function BinPage() {
         justify="space-between"
         p="sm"
         pt="max(var(--mantine-spacing-sm), env(safe-area-inset-top))"
+        maw={PAGE_MAXW}
+        mx="auto"
       >
         <Group gap="sm">
           <ActionIcon
             variant="default"
             size="xl"
             radius="xl"
-            onClick={() => navigate("/")}
-            aria-label="Back to scanner"
+            // Return wherever the box was opened from (all-boxes, search) —
+            // the scanner only when this page is the start of history.
+            onClick={() =>
+              (window.history.state?.idx ?? 0) > 0
+                ? navigate(-1)
+                : navigate("/")
+            }
+            aria-label="Back"
           >
             <IconArrowLeft />
           </ActionIcon>
@@ -169,9 +192,11 @@ export default function BinPage() {
       </Group>
 
       {bin.status === "unclaimed" ? (
-        <ClaimBin binId={bin.id} />
+        <Box maw={PAGE_MAXW} mx="auto">
+          <ClaimBin binId={bin.id} />
+        </Box>
       ) : (
-        <Stack gap="md" px="md">
+        <Stack gap="md" px="md" maw={PAGE_MAXW} mx="auto">
           {/* Location + labels line */}
           <Group gap="xs">
             <IconMapPin size={16} style={{ opacity: 0.6 }} />
@@ -216,14 +241,29 @@ export default function BinPage() {
             </Button>
           </Group>
 
-          {/* Primary photo (latest top-down contents shot) */}
+          {/* Primary photo (latest top-down contents shot) — tap to open */}
           {bin.primaryPhotoHash ? (
-            <PhotoImg
-              hash={bin.primaryPhotoHash}
-              alt={`Contents of bin ${bin.id}`}
-              preferFull
-              style={{ width: "100%", borderRadius: 12, maxHeight: "45dvh" }}
-            />
+            <UnstyledButton
+              onClick={() => {
+                const entry = photos.find(
+                  (e) => e.photoHash === bin.primaryPhotoHash,
+                );
+                if (entry) setLightbox(entry);
+              }}
+              aria-label="Open contents photo"
+            >
+              <PhotoImg
+                hash={bin.primaryPhotoHash}
+                alt={`Contents of bin ${bin.id}`}
+                preferFull
+                style={{
+                  width: "100%",
+                  borderRadius: 12,
+                  maxHeight: "45dvh",
+                  display: "block",
+                }}
+              />
+            </UnstyledButton>
           ) : (
             <Paper p="xl" radius="lg" withBorder>
               <Text c="dimmed" ta="center">
@@ -302,7 +342,7 @@ export default function BinPage() {
           }}
           withBorder
         >
-          <SimpleGrid cols={4} spacing="xs">
+          <SimpleGrid cols={4} spacing="xs" maw={PAGE_MAXW} mx="auto">
             <Button
               h={56}
               variant="filled"
@@ -373,7 +413,9 @@ export default function BinPage() {
       <Modal
         opened={lightbox !== null}
         onClose={() => setLightbox(null)}
-        fullScreen
+        fullScreen={phone}
+        size="xl"
+        centered
         padding="xs"
         title={
           lightbox && (

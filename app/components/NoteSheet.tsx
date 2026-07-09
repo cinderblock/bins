@@ -5,10 +5,11 @@
  * Android (where SpeechRecognition is reliable) an optional mic streams
  * interim results in as a progressive enhancement.
  */
-import { ActionIcon, Button, Drawer, Group, Textarea } from "@mantine/core";
+import { ActionIcon, Button, Group, Textarea } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconMicrophone, IconMicrophoneOff } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
+import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { addNote } from "~/lib/actions";
 
 type SpeechRecognitionLike = {
@@ -100,17 +101,13 @@ export function NoteSheet({
   }
 
   return (
-    <Drawer
+    <ResponsiveSheet
       opened={opened}
       onClose={() => {
         stopListening();
         onClose();
       }}
-      position="bottom"
-      radius="lg"
-      size="auto"
       title="What's in here?"
-      padding="md"
     >
       <Textarea
         data-autofocus
@@ -143,6 +140,6 @@ export function NoteSheet({
           Save note
         </Button>
       </Group>
-    </Drawer>
+    </ResponsiveSheet>
   );
 }

@@ -6,6 +6,7 @@
 import {
   ActionIcon,
   Badge,
+  Button,
   Chip,
   Group,
   Paper,
@@ -13,7 +14,13 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { IconArrowLeft, IconMapPin, IconSearch } from "@tabler/icons-react";
+import { useDocumentTitle } from "@mantine/hooks";
+import {
+  IconArrowLeft,
+  IconBoxMultiple,
+  IconMapPin,
+  IconSearch,
+} from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import type MiniSearch from "minisearch";
 import { useEffect, useRef, useState } from "react";
@@ -22,8 +29,10 @@ import { PhotoImg } from "~/components/PhotoImg";
 import { db } from "~/lib/db";
 import { formatWeight, labelColor } from "~/lib/labels";
 import { type SearchDoc, buildSearchIndex } from "~/lib/search";
+import { PAGE_MAXW } from "~/lib/ui";
 
 export default function Search() {
+  useDocumentTitle("Search · bins");
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [filterLabel, setFilterLabel] = useState<string | null>(null);
@@ -92,6 +101,8 @@ export default function Search() {
       p="md"
       pt="max(var(--mantine-spacing-md), env(safe-area-inset-top))"
       gap="md"
+      maw={PAGE_MAXW}
+      mx="auto"
     >
       <Group gap="sm">
         <ActionIcon
@@ -134,6 +145,19 @@ export default function Search() {
         <Text c="dimmed" ta="center" mt="xl">
           {query.trim() ? `Nothing matches "${query}".` : "No boxes here yet."}
         </Text>
+      )}
+
+      {!query.trim() && !filterLabel && (
+        <Button
+          variant="subtle"
+          color="gray"
+          component={Link}
+          to="/bins"
+          leftSection={<IconBoxMultiple size={16} />}
+          style={{ alignSelf: "center" }}
+        >
+          Browse all boxes
+        </Button>
       )}
 
       <Stack gap="xs">

@@ -13,17 +13,21 @@ import {
   ActionIcon,
   Badge,
   Button,
+  Divider,
   Group,
   Paper,
+  Stack,
   Text,
   TextInput,
 } from "@mantine/core";
+import { useDocumentTitle, useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
   IconBoxMultiple,
   IconBulb,
   IconBulbOff,
   IconCamera,
+  IconCameraOff,
   IconInfoCircle,
   IconSearch,
   IconSettings,
@@ -36,10 +40,16 @@ import wasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url";
 import { BinPeek } from "~/components/BinPeek";
 import { SyncBadge } from "~/components/SyncBadge";
 import { addPhoto } from "~/lib/actions";
-import { getCameraStream, setTorch, torchCapableTrack } from "~/lib/camera";
+import {
+  getCameraStream,
+  setTorch,
+  stopCamera,
+  torchCapableTrack,
+} from "~/lib/camera";
 import { db, getMeta, setMeta } from "~/lib/db";
 import { type ScanTarget, binIdFromScan } from "~/lib/format";
 import { captureFromVideo } from "~/lib/photos";
+import { DESKTOP_MEDIA, PAGE_MAXW } from "~/lib/ui";
 
 // Self-host the ponyfill's wasm: the default fetches from a CDN at runtime,
 // which is useless offline. As a hashed local asset it lands in the service
@@ -58,6 +68,9 @@ const CURRENT_BIN_KEY = "currentBin";
 
 function useScanner(
   videoRef: React.RefObject<HTMLVideoElement | null>,
+  // Desktop scans opt-in (enabled) and must turn the webcam LED off when the
+  // scanner goes away (releaseOnExit); phones keep the stream for reuse.
+  { enabled, releaseOnExit }: { enabled: boolean; releaseOnExit: boolean },
   onHit: (target: ScanTarget) => void,
 ) {
   const [cameraError, setCameraError] = useState(false);
@@ -66,6 +79,8 @@ function useScanner(
   onHitRef.current = onHit;
 
   useEffect(() => {
+    if (!enabled) return;
+    setCameraError(false);
     let stopped = false;
     let lastDetect = 0;
     let lastHit: { value: string; at: number } | null = null;
@@ -145,22 +160,68 @@ function useScanner(
       stopped = true;
       cancelAnimationFrame(rafId);
       document.removeEventListener("visibilitychange", onVisible);
-      // Leave the stream running: bin-page captures reuse it.
+      if (releaseOnExit) {
+        stopCamera();
+        if (videoRef.current) videoRef.current.srcObject = null;
+      }
+      // Otherwise leave the stream running: bin-page captures reuse it.
     };
-  }, [videoRef]);
+  }, [videoRef, enabled, releaseOnExit]);
 
   return { cameraError, torchAvailable };
 }
 
+/** Type-a-number fallback: hand-entered ids go through the same scan path. */
+function ManualBinInput({
+  onSubmit,
+}: {
+  onSubmit: (target: ScanTarget) => void;
+}) {
+  const [value, setValue] = useState("");
+  const target = binIdFromScan(value.trim());
+  return (
+    <Group gap="xs" wrap="nowrap">
+      <TextInput
+        size="lg"
+        inputMode="numeric"
+        placeholder="123"
+        value={value}
+        style={{ flex: 1 }}
+        onChange={(e) => setValue(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && target) onSubmit(target);
+        }}
+      />
+      <Button
+        size="lg"
+        variant="default"
+        disabled={!target}
+        onClick={() => target && onSubmit(target)}
+      >
+        Go
+      </Button>
+    </Group>
+  );
+}
+
 export default function Scanner() {
+  // Other routes set their own titles; reset when landing back on the camera.
+  useDocumentTitle("bins");
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [torchOn, setTorchOn] = useState(false);
-  const [manualId, setManualId] = useState("");
   const [currentBinId, setCurrentBinId] = useState<number | null>(null);
   const [peekOpen, setPeekOpen] = useState(false);
   const [flash, setFlash] = useState(false);
   const [capturing, setCapturing] = useState(false);
+
+  // A desktop's camera faces the user, not the boxes — there the scanner is
+  // opt-in ("Start camera") behind a card that also takes a typed bin number.
+  const isDesktop =
+    useMediaQuery(DESKTOP_MEDIA, false, { getInitialValueInEffect: false }) ??
+    false;
+  const [desktopCameraOn, setDesktopCameraOn] = useState(false);
+  const scanning = !isDesktop || desktopCameraOn;
 
   // Restore the last worked-on bin across visits — collapsed, so returning
   // from search/settings lands on a clean camera with context intact.
@@ -192,9 +253,13 @@ export default function Scanner() {
     }
   }
 
-  const { cameraError, torchAvailable } = useScanner(videoRef, (target) => {
-    void onScan(target);
-  });
+  const { cameraError, torchAvailable } = useScanner(
+    videoRef,
+    { enabled: scanning, releaseOnExit: isDesktop },
+    (target) => {
+      void onScan(target);
+    },
+  );
 
   async function captureContents() {
     const video = videoRef.current;
@@ -236,20 +301,22 @@ export default function Scanner() {
       />
 
       {/* Reticle */}
-      <div
-        style={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -60%)",
-          width: "min(65vw, 65vh)",
-          aspectRatio: "1",
-          border: "3px solid rgba(255,255,255,0.7)",
-          borderRadius: 24,
-          boxShadow: "0 0 0 100vmax rgba(0,0,0,0.35)",
-          pointerEvents: "none",
-        }}
-      />
+      {scanning && (
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -60%)",
+            width: "min(65vw, 65vh)",
+            aspectRatio: "1",
+            border: "3px solid rgba(255,255,255,0.7)",
+            borderRadius: 24,
+            boxShadow: "0 0 0 100vmax rgba(0,0,0,0.35)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
 
       {/* Shutter flash */}
       {flash && (
@@ -294,34 +361,66 @@ export default function Scanner() {
               {torchOn ? <IconBulbOff /> : <IconBulb />}
             </ActionIcon>
           )}
+          {isDesktop && desktopCameraOn && (
+            <ActionIcon
+              variant="default"
+              size="xl"
+              radius="xl"
+              onClick={() => setDesktopCameraOn(false)}
+              aria-label="Stop camera"
+            >
+              <IconCameraOff />
+            </ActionIcon>
+          )}
         </Group>
       </Group>
 
-      {cameraError && (
+      {/* Desktop landing: camera is opt-in, typing a number is first-class */}
+      {isDesktop && !desktopCameraOn && (
+        <Paper
+          p="lg"
+          radius="lg"
+          style={{
+            position: "absolute",
+            top: "28%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "min(90vw, 420px)",
+          }}
+        >
+          <Stack gap="sm">
+            <Text ta="center" fw={600}>
+              Scan a box sticker
+            </Text>
+            <Button
+              size="lg"
+              leftSection={<IconCamera size={20} />}
+              onClick={() => setDesktopCameraOn(true)}
+            >
+              Start camera
+            </Button>
+            <Divider label="or type a bin number" labelPosition="center" />
+            <ManualBinInput onSubmit={(target) => void onScan(target)} />
+          </Stack>
+        </Paper>
+      )}
+
+      {scanning && cameraError && (
         <Paper
           p="md"
           radius="lg"
           style={{
             position: "absolute",
             top: "30%",
-            left: 16,
-            right: 16,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "min(calc(100vw - 32px), 420px)",
           }}
         >
           <Text ta="center" mb="xs">
             Camera unavailable. Type a bin number instead:
           </Text>
-          <TextInput
-            size="lg"
-            inputMode="numeric"
-            placeholder="123"
-            value={manualId}
-            onChange={(e) => setManualId(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              const target = binIdFromScan(manualId);
-              if (e.key === "Enter" && target) void onScan(target);
-            }}
-          />
+          <ManualBinInput onSubmit={(target) => void onScan(target)} />
         </Paper>
       )}
 
@@ -335,96 +434,107 @@ export default function Scanner() {
           padding: 12,
           paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
           background: "linear-gradient(transparent, rgba(0,0,0,0.7))",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
         }}
       >
-        {currentBinId !== null && peekOpen && (
-          <BinPeek binId={currentBinId} onCollapse={() => setPeekOpen(false)} />
-        )}
+        <div
+          style={{
+            width: "100%",
+            maxWidth: PAGE_MAXW,
+            margin: "0 auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          {currentBinId !== null && peekOpen && (
+            <BinPeek
+              binId={currentBinId}
+              onCollapse={() => setPeekOpen(false)}
+            />
+          )}
 
-        {currentBinId !== null && (
-          <Group gap="xs" wrap="nowrap">
-            <Button
-              size="lg"
-              h={60}
-              radius="md"
-              style={{ flex: 1 }}
-              leftSection={<IconCamera size={24} />}
-              onClick={() => void captureContents()}
-              loading={capturing}
-              disabled={cameraError}
-            >
-              Capture contents of #{currentBinId}
-            </Button>
-            {!peekOpen && (
-              <ActionIcon
-                variant="default"
-                size={60}
-                radius="md"
-                onClick={() => setPeekOpen(true)}
-                aria-label="Show bin details"
-              >
-                <IconInfoCircle />
-              </ActionIcon>
-            )}
-          </Group>
-        )}
-
-        {!peekOpen && recentBins.length > 0 && (
-          <Group gap="xs" style={{ overflowX: "auto", flexWrap: "nowrap" }}>
-            {recentBins.map((bin) => (
-              <Badge
-                key={bin.id}
+          {currentBinId !== null && scanning && (
+            <Group gap="xs" wrap="nowrap">
+              <Button
                 size="lg"
-                variant="light"
-                onClick={() => makeCurrent(bin.id)}
-                style={{
-                  cursor: "pointer",
-                  flexShrink: 0,
-                  textTransform: "none",
-                }}
+                h={60}
+                radius="md"
+                style={{ flex: 1 }}
+                leftSection={<IconCamera size={24} />}
+                onClick={() => void captureContents()}
+                loading={capturing}
+                disabled={cameraError}
               >
-                #{bin.id}
-                {bin.name ? ` ${bin.name}` : ""}
-              </Badge>
-            ))}
-          </Group>
-        )}
+                Capture contents of #{currentBinId}
+              </Button>
+              {!peekOpen && (
+                <ActionIcon
+                  variant="default"
+                  size={60}
+                  radius="md"
+                  onClick={() => setPeekOpen(true)}
+                  aria-label="Show bin details"
+                >
+                  <IconInfoCircle />
+                </ActionIcon>
+              )}
+            </Group>
+          )}
 
-        <Group justify="center" gap="xl">
-          <ActionIcon
-            component={Link}
-            to="/bins"
-            variant="default"
-            size={56}
-            radius="xl"
-            aria-label="All boxes"
-          >
-            <IconBoxMultiple />
-          </ActionIcon>
-          <ActionIcon
-            component={Link}
-            to="/search"
-            variant="default"
-            size={56}
-            radius="xl"
-            aria-label="Search"
-          >
-            <IconSearch />
-          </ActionIcon>
-          <ActionIcon
-            component={Link}
-            to="/settings"
-            variant="default"
-            size={56}
-            radius="xl"
-            aria-label="Settings"
-          >
-            <IconSettings />
-          </ActionIcon>
-        </Group>
+          {!peekOpen && recentBins.length > 0 && (
+            <Group gap="xs" style={{ overflowX: "auto", flexWrap: "nowrap" }}>
+              {recentBins.map((bin) => (
+                <Badge
+                  key={bin.id}
+                  size="lg"
+                  variant="light"
+                  onClick={() => makeCurrent(bin.id)}
+                  style={{
+                    cursor: "pointer",
+                    flexShrink: 0,
+                    textTransform: "none",
+                  }}
+                >
+                  #{bin.id}
+                  {bin.name ? ` ${bin.name}` : ""}
+                </Badge>
+              ))}
+            </Group>
+          )}
+
+          <Group justify="center" gap="xl">
+            <ActionIcon
+              component={Link}
+              to="/bins"
+              variant="default"
+              size={56}
+              radius="xl"
+              aria-label="All boxes"
+            >
+              <IconBoxMultiple />
+            </ActionIcon>
+            <ActionIcon
+              component={Link}
+              to="/search"
+              variant="default"
+              size={56}
+              radius="xl"
+              aria-label="Search"
+            >
+              <IconSearch />
+            </ActionIcon>
+            <ActionIcon
+              component={Link}
+              to="/settings"
+              variant="default"
+              size={56}
+              radius="xl"
+              aria-label="Settings"
+            >
+              <IconSettings />
+            </ActionIcon>
+          </Group>
+        </div>
       </div>
     </div>
   );

@@ -17,6 +17,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { useDocumentTitle } from "@mantine/hooks";
 import { IconRefresh } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
@@ -34,6 +35,7 @@ function generateAccessCode(): string {
 }
 
 export default function Setup() {
+  useDocumentTitle("Set up · bins");
   const identity = useLiveQuery(
     async () => ((await db.meta.get(IDENTITY_KEY))?.value as Identity) ?? null,
     [],

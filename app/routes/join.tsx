@@ -15,6 +15,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { useDocumentTitle } from "@mantine/hooks";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { Navigate } from "react-router";
@@ -31,6 +32,7 @@ function codeFromUrl(): string {
 }
 
 export default function Join() {
+  useDocumentTitle("Join · bins");
   const identity = useLiveQuery(
     async () => ((await db.meta.get(IDENTITY_KEY))?.value as Identity) ?? null,
     [],

@@ -21,6 +21,7 @@ import {
   Title,
   UnstyledButton,
 } from "@mantine/core";
+import { useDocumentTitle } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
   IconArchive,
@@ -72,6 +73,7 @@ import {
 import { syncNow } from "~/lib/sync";
 
 export default function Settings() {
+  useDocumentTitle("Settings · bins");
   const navigate = useNavigate();
   const identity = useLiveQuery(
     async () =>

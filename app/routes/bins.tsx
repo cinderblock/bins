@@ -10,7 +10,6 @@ import {
   Badge,
   Button,
   Checkbox,
-  Drawer,
   Group,
   Modal,
   Paper,
@@ -21,6 +20,7 @@ import {
   Title,
   UnstyledButton,
 } from "@mantine/core";
+import { useDocumentTitle } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import type { BinState } from "@shared/reducer";
 import {
@@ -30,12 +30,14 @@ import {
   IconLock,
   IconMapPin,
   IconPencil,
+  IconSearch,
 } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { LabelChips } from "~/components/LabelChips";
 import { PhotoImg } from "~/components/PhotoImg";
+import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { WeightInput } from "~/components/WeightInput";
 import { setBinFields, setBinLabel, setBinLocation } from "~/lib/actions";
 import {
@@ -48,6 +50,7 @@ import { apiJson } from "~/lib/api";
 import { db } from "~/lib/db";
 import { formatWeight, labelColor } from "~/lib/labels";
 import { syncNow } from "~/lib/sync";
+import { PAGE_MAXW } from "~/lib/ui";
 
 function usePlaces() {
   return useLiveQuery(
@@ -78,6 +81,7 @@ function fail(err: unknown) {
 }
 
 export default function Bins() {
+  useDocumentTitle("All boxes · bins");
   const navigate = useNavigate();
   const labelById = useLabelMap();
 
@@ -175,6 +179,8 @@ export default function Bins() {
       p="md"
       pt="max(var(--mantine-spacing-md), env(safe-area-inset-top))"
       gap="md"
+      maw={PAGE_MAXW}
+      mx="auto"
     >
       <Group justify="space-between">
         <Group gap="sm">
@@ -189,28 +195,40 @@ export default function Bins() {
           </ActionIcon>
           <Title order={3}>All boxes</Title>
         </Group>
-        {!selecting &&
-          (unlocked ? (
-            <Button
-              size="xs"
-              variant="light"
-              color="yellow"
-              leftSection={<IconLock size={12} />}
-              onClick={() => void forgetAdmin()}
-            >
-              Lock admin
-            </Button>
-          ) : (
-            <ActionIcon
-              variant="default"
-              size="xl"
-              radius="xl"
-              aria-label="Admin controls"
-              onClick={() => setUnlockOpen(true)}
-            >
-              <IconLock />
-            </ActionIcon>
-          ))}
+        <Group gap="xs">
+          <ActionIcon
+            component={Link}
+            to="/search"
+            variant="default"
+            size="xl"
+            radius="xl"
+            aria-label="Search"
+          >
+            <IconSearch />
+          </ActionIcon>
+          {!selecting &&
+            (unlocked ? (
+              <Button
+                size="xs"
+                variant="light"
+                color="yellow"
+                leftSection={<IconLock size={12} />}
+                onClick={() => void forgetAdmin()}
+              >
+                Lock admin
+              </Button>
+            ) : (
+              <ActionIcon
+                variant="default"
+                size="xl"
+                radius="xl"
+                aria-label="Admin controls"
+                onClick={() => setUnlockOpen(true)}
+              >
+                <IconLock />
+              </ActionIcon>
+            ))}
+        </Group>
       </Group>
 
       {selecting ? (
@@ -409,19 +427,19 @@ export default function Bins() {
         </Stack>
       </Modal>
 
-      <MoveDrawer
+      <MoveSheet
         opened={moveOpen}
         count={selected.size}
         onClose={() => setMoveOpen(false)}
         onPick={moveSelected}
       />
 
-      {editing && <EditDrawer bin={editing} onClose={() => setEditing(null)} />}
+      {editing && <EditSheet bin={editing} onClose={() => setEditing(null)} />}
     </Stack>
   );
 }
 
-function MoveDrawer({
+function MoveSheet({
   opened,
   count,
   onClose,
@@ -439,14 +457,10 @@ function MoveDrawer({
     setFreeform("");
   };
   return (
-    <Drawer
+    <ResponsiveSheet
       opened={opened}
       onClose={onClose}
-      position="bottom"
-      radius="lg"
-      size="auto"
       title={`Move ${count} box${count === 1 ? "" : "es"} to…`}
-      padding="md"
     >
       <Stack gap="xs" pb="env(safe-area-inset-bottom)">
         {places.map((place) => (
@@ -488,11 +502,11 @@ function MoveDrawer({
           Clear location
         </Button>
       </Stack>
-    </Drawer>
+    </ResponsiveSheet>
   );
 }
 
-function EditDrawer({ bin, onClose }: { bin: BinState; onClose: () => void }) {
+function EditSheet({ bin, onClose }: { bin: BinState; onClose: () => void }) {
   const [name, setName] = useState(bin.name ?? "");
   const [label, setLabel] = useState(bin.externalLabel ?? "");
   const [locationName, setLocationName] = useState(bin.locationName ?? "");
@@ -522,15 +536,7 @@ function EditDrawer({ bin, onClose }: { bin: BinState; onClose: () => void }) {
   }
 
   return (
-    <Drawer
-      opened
-      onClose={onClose}
-      position="bottom"
-      radius="lg"
-      size="auto"
-      title={`Edit #${bin.id}`}
-      padding="md"
-    >
+    <ResponsiveSheet opened onClose={onClose} title={`Edit #${bin.id}`}>
       <Stack gap="sm" pb="env(safe-area-inset-bottom)">
         <TextInput
           label="Name"
@@ -564,6 +570,6 @@ function EditDrawer({ bin, onClose }: { bin: BinState; onClose: () => void }) {
           Save
         </Button>
       </Stack>
-    </Drawer>
+    </ResponsiveSheet>
   );
 }
