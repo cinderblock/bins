@@ -478,10 +478,23 @@ Verified on localhost dev (fresh group, allocated stickers, claimed a bin,
 note + search round-trip, sheets-as-modals, print page): all good. NOT
 deployed — commit is local; push triggers the deploy workflow.
 
-Deliberately NOT done (future candidates): merging /bins and /search into
-one browse surface; a desktop root that's a list instead of the scanner
-card; admin-page footer claims the password isn't remembered (it is, per
-device — stale copy, check `admin.tsx`).
+Follow-up round (same day, user: "keep going?"):
+
+- **/search merged into /bins**: All boxes is now the single browse
+  surface — MiniSearch input (relevance-ordered when querying) + category
+  filter chips + the existing bulk-move/admin controls. The near-duplicate
+  row rendering that lived in search.tsx is gone with it. `routes/search
+  .tsx` remains only as a `<Navigate to="/bins" state={{focusSearch}}>`
+  redirect; the scanner's magnifier icon links to /bins with the same
+  state, which autofocuses the input (keyboard pops for search intent).
+  Caveat (commented in bins.tsx): the search index covers ACTIVE boxes
+  only, so an admin's retired boxes drop out while a text query is active.
+- **admin.tsx footer copy fixed**: it claimed the password is re-asked
+  after reload / never stored; reality (lib/admin.ts) is remembered per
+  device until Lock. Copy now says so.
+
+Still deliberately NOT done: a desktop root that's a list instead of the
+scanner card (the opt-in card feels fine so far).
 
 ## Findings / gotchas
 
