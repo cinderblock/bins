@@ -29,14 +29,13 @@
     "dexie": "^4.0.11",
     "dexie-react-hooks": "^1.1.7",
     "drizzle-orm": "^0.45.2",
+    "isbot": "^5",
     "minisearch": "^7.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router": "^7.13.0",
-    "uqr": "^0.1.2",
     "uuid": "^11.1.0",
-    "zod": "^3.24.0",
-    "isbot": "^5"
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

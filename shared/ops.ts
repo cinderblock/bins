@@ -31,7 +31,7 @@ const binId = z.number().int().positive();
  * Per-bin secret codes — the `#CODE` in a sticker QR (`/{id}#{CODE}`). Seeing
  * a sticker once is "login" (proof of physical access); a bare `/{id}` typed
  * by hand grants nothing. Deliberately low security: codes are short, stored
- * plaintext (sticker sheets must be re-renderable), and never rotated.
+ * plaintext (sticker codes must be re-exportable), and never rotated.
  * 32-char base32 alphabet: 0-9 A-Z minus the look-alikes I, L, O, Q. 32
  * divides 256, so the byte→char pick in api/allocate.ts is unbiased. Reading a
  * code folds the dropped look-alikes back to their kept twin (see

@@ -99,7 +99,8 @@ dead zones (storage units, remote sites), merging back to the server later.
   (`effectiveTime = min(clientTime, serverNow + 60s)`) cover the same needs.
 - **SPA mode** (`ssr: false`): offline boot from cached assets; all content
   auth-gated. server.ts serves static + `/api/*` + SPA fallback.
-- **Short IDs**: one global integer sequence (starts at 100) across groups —
+- **Short IDs**: one global integer sequence (starts at 10 — 2-digit IDs are
+  fine, user decision 2026-07-06; only single digits reserved) across groups —
   the URL can't carry a group; the token is the authorization. Stickers are
   batch-allocated per group as server-authored `bin.allocate` ops so fresh
   stickers are claimable offline.
@@ -183,8 +184,11 @@ Original implementation touchpoints (in dependency order):
    `normalizeSecretCode` compares case-insensitively AND folds the dropped
    look-alikes to their kept twin (O/Q→0, I/L→1) so a misread code still
    matches (both sides normalized at api/auth.ts join-by-bin). **Own-format
-   export**: `/print` also emits copyable TSV rows (padded id, code, upper-cased
-   URL for tighter QR) for operators who print a precise custom sticker layout.
+   export only (user decision 2026-07-06)**: `/print` ("Sticker codes") emits
+   copyable TSV rows (zero-padded id — width selectable, never truncated;
+   code; upper-cased URL for tighter QR). The app does NOT render stickers —
+   the built-in QR grid was removed (operator has a precise sticker layout of
+   their own; `uqr` dependency dropped with it).
 2. **Schema**: `bin.secretCode` text NOT NULL (fresh migration; db has no real
    data yet — regenerating migration 0000 is also fine). Also add to
    `BinState` in `shared/reducer.ts` + both store adapters + `db/schema/bin.ts`.

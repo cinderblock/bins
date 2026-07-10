@@ -1,9 +1,9 @@
 /**
- * Allocate bin IDs + sticker secrets for a group (server assigns the global
- * short IDs) and either render a printable QR grid or export the raw id/code/
- * URL rows (TSV) for operators who print their own precise sticker format.
- * Fresh stickers are claimable offline because the allocations sync into every
- * member's replica as ops.
+ * Sticker codes: batch-allocate bin IDs + sticker secrets for this group (the
+ * server assigns the global short IDs) and export the raw id/code/URL rows
+ * (TSV) for the operator's own sticker layout — the app deliberately does NOT
+ * render stickers itself. Fresh stickers are claimable offline because the
+ * allocations sync into every member's replica as ops.
  */
 import {
   ActionIcon,
@@ -20,40 +20,25 @@ import {
 } from "@mantine/core";
 import { useDocumentTitle } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import {
-  IconArrowLeft,
-  IconCheck,
-  IconCopy,
-  IconPrinter,
-} from "@tabler/icons-react";
+import { IconArrowLeft, IconCheck, IconCopy } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { renderSVG } from "uqr";
 import { rememberAdmin, useAdminPassword, verifyAdmin } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { db } from "~/lib/db";
 import { syncNow } from "~/lib/sync";
 import { PAGE_MAXW } from "~/lib/ui";
 
-const printCss = `
-@media print {
-  body * { visibility: hidden; }
-  #sticker-sheet, #sticker-sheet * { visibility: visible; }
-  #sticker-sheet { position: absolute; left: 0; top: 0; width: 100%; }
-  @page { margin: 10mm; }
-}
-`;
-
 export default function Print() {
-  useDocumentTitle("Sticker sheets · bins");
+  useDocumentTitle("Sticker codes · bins");
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [count, setCount] = useState<number | string>(20);
-  const [idDigits, setIdDigits] = useState<number | string>(4);
+  const [idDigits, setIdDigits] = useState<number | string>(2);
   const [busy, setBusy] = useState(false);
 
-  // Sticker sheets are admin-only: allocation hands out the global bin-ID
+  // Sticker codes are admin-only: allocation hands out the global bin-ID
   // sequence. The admin unlock is remembered per device (lib/admin.ts); on a
   // direct load with no remembered password we prompt for it here.
   const remembered = useAdminPassword();
@@ -83,7 +68,7 @@ export default function Print() {
     .filter((n) => Number.isInteger(n) && n > 0);
 
   // Sticker secrets come from the replica (they ride the bin.allocate ops),
-  // which is also what lets old sheets re-render long after allocation.
+  // which is also what lets an old batch re-export long after allocation.
   const codeById = useLiveQuery(
     async () =>
       new Map(
@@ -125,11 +110,14 @@ export default function Print() {
     }
   }
 
-  // Rows for the "print your own" export: only bins whose code has synced in.
+  // Export rows: only bins whose code has synced into the replica. IDs are
+  // zero-padded to the chosen width (never truncated — a 3-digit ID stays 3
+  // digits even when the pad is 2).
   const pad = Math.max(1, Number(idDigits) || 1);
   const exportRows = ids
     .map((id) => ({ id, code: codeById.get(id) ?? null }))
     .filter((r): r is { id: number; code: string } => r.code != null);
+  const pending = ids.length - exportRows.length;
   const exportText = [
     "id\tcode\turl",
     ...exportRows.map((r) => {
@@ -157,13 +145,13 @@ export default function Print() {
           >
             <IconArrowLeft />
           </ActionIcon>
-          <Title order={3}>Sticker sheet</Title>
+          <Title order={3}>Sticker codes</Title>
         </Group>
         <Paper p="md" radius="lg" withBorder>
           <Stack gap="sm">
             <Text size="sm" c="dimmed">
-              Printing sticker sheets allocates new bin numbers, so it needs the
-              admin password (set during first-boot setup).
+              Generating sticker codes allocates new bin numbers, so it needs
+              the admin password (set during first-boot setup).
             </Text>
             <PasswordInput
               label="Admin password"
@@ -192,8 +180,7 @@ export default function Print() {
       maw={PAGE_MAXW}
       mx="auto"
     >
-      <style>{printCss}</style>
-      <Group gap="sm" className="no-print">
+      <Group gap="sm">
         <ActionIcon
           variant="default"
           size="xl"
@@ -203,7 +190,7 @@ export default function Print() {
         >
           <IconArrowLeft />
         </ActionIcon>
-        <Title order={3}>Sticker sheet</Title>
+        <Title order={3}>Sticker codes</Title>
       </Group>
 
       <Paper p="md" radius="lg" withBorder>
@@ -219,26 +206,18 @@ export default function Print() {
           <Button onClick={() => void allocate()} loading={busy}>
             Allocate
           </Button>
-          {ids.length > 0 && (
-            <Button
-              variant="default"
-              leftSection={<IconPrinter size={16} />}
-              onClick={() => window.print()}
-            >
-              Print
-            </Button>
-          )}
         </Group>
         <Text size="xs" c="dimmed" mt="xs">
-          Allocating reserves bin numbers for your group; stick them on boxes
-          and scan to claim (works offline once synced).
+          Allocating reserves bin numbers and secret codes for your group; print
+          them in your own sticker format, stick them on boxes, and scan to
+          claim (works offline once synced).
         </Text>
       </Paper>
 
-      {exportRows.length > 0 && (
-        <Paper className="no-print" p="md" radius="lg" withBorder>
+      {ids.length > 0 && (
+        <Paper p="md" radius="lg" withBorder>
           <Stack gap="sm">
-            <Text fw={600}>Export for your own sticker format</Text>
+            <Text fw={600}>Export</Text>
             <Group align="flex-end" gap="sm">
               <NumberInput
                 label="ID digits"
@@ -257,12 +236,19 @@ export default function Print() {
                       copied ? <IconCheck size={16} /> : <IconCopy size={16} />
                     }
                     onClick={copy}
+                    disabled={exportRows.length === 0}
                   >
                     {copied ? "Copied" : "Copy ID + code + URL"}
                   </Button>
                 )}
               </CopyButton>
             </Group>
+            {pending > 0 && (
+              <Text size="xs" c="yellow">
+                {pending} of {ids.length} codes still syncing in — they'll
+                appear below shortly.
+              </Text>
+            )}
             <Code block style={{ whiteSpace: "pre", overflowX: "auto" }}>
               {exportText}
             </Code>
@@ -273,72 +259,6 @@ export default function Print() {
             </Text>
           </Stack>
         </Paper>
-      )}
-
-      {ids.length > 0 && (
-        <div
-          id="sticker-sheet"
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
-            gap: 8,
-          }}
-        >
-          {ids.map((id) => {
-            const code = codeById.get(id);
-            // No QR without the secret — a bare /{id} sticker grants nothing.
-            // Fragment, not query string: the code never reaches server logs.
-            const url = code ? `${window.location.origin}/${id}#${code}` : null;
-            return (
-              <div
-                key={id}
-                style={{
-                  border: "1px dashed #999",
-                  borderRadius: 8,
-                  padding: 8,
-                  textAlign: "center",
-                  background: "#fff",
-                  color: "#000",
-                  breakInside: "avoid",
-                }}
-              >
-                {url ? (
-                  <div
-                    style={{ width: "100%" }}
-                    // biome-ignore lint/security/noDangerouslySetInnerHtml: uqr generates the SVG locally
-                    dangerouslySetInnerHTML={{
-                      __html: renderSVG(url, { border: 1 }),
-                    }}
-                  />
-                ) : (
-                  <div style={{ padding: "2em 0", color: "#888" }}>
-                    waiting for sync…
-                  </div>
-                )}
-                <div
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: 18,
-                    fontWeight: 700,
-                  }}
-                >
-                  #{id}
-                </div>
-                {/* Human fallback: type the number + this code to join. */}
-                <div
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: 12,
-                    letterSpacing: 2,
-                  }}
-                >
-                  {code ?? ""}
-                </div>
-                {url && <div style={{ fontSize: 9, color: "#555" }}>{url}</div>}
-              </div>
-            );
-          })}
-        </div>
       )}
     </Stack>
   );

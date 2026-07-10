@@ -152,7 +152,7 @@ describe("api", () => {
     expect(alloc.status).toBe(200);
     allocated = ((await alloc.json()) as { bins: typeof allocated }).bins;
     expect(allocated).toHaveLength(3);
-    expect(Math.min(...allocated.map((b) => b.id))).toBeGreaterThanOrEqual(100);
+    expect(Math.min(...allocated.map((b) => b.id))).toBeGreaterThanOrEqual(10);
     // Every sticker gets a secret from the confusable-free alphabet.
     for (const { code } of allocated) {
       expect(code).toMatch(/^[0-9ABCDEFGHJKMNPRSTUVWXYZ]{4}$/);

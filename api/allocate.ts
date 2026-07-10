@@ -1,5 +1,5 @@
 /**
- * Batch short-ID allocation for QR sticker sheets. Allocation is server-
+ * Batch short-ID allocation for QR stickers. Allocation is server-
  * authored (it hands out the global integer sequence) but is emitted as
  * bin.allocate ops, so unclaimed bins reach every member's replica through the
  * one sync stream — which is what makes claiming a fresh sticker work offline.
@@ -17,8 +17,12 @@ import {
 import { applyOp } from "../shared/reducer";
 import { type Ctx, serializedTransaction } from "./context";
 
-/** Short IDs start here — no bin 1; low numbers read as test noise. */
-const FIRST_BIN_ID = 100;
+/**
+ * Short IDs start here: 2-digit IDs are fine (user decision 2026-07-06 — the
+ * operator's sticker format uses them); only single digits are reserved as
+ * test-noise territory.
+ */
+const FIRST_BIN_ID = 10;
 
 /**
  * Mint a sticker secret. The alphabet is 32 chars and 256 % 32 === 0, so the

@@ -422,15 +422,16 @@ export default function Admin() {
 
           <Paper p="md" radius="lg" withBorder>
             <Stack gap="sm">
-              <Text fw={600}>Sticker sheets</Text>
+              <Text fw={600}>Sticker codes</Text>
               <Text size="xs" c="dimmed">
-                Allocate new bin numbers and print a QR sheet to stick on boxes.
+                Allocate new bin numbers + secret codes and export them for your
+                sticker template.
               </Text>
               <Button
                 leftSection={<IconPrinter size={16} />}
                 onClick={() => navigate("/print")}
               >
-                Open sticker sheets
+                Open sticker codes
               </Button>
             </Stack>
           </Paper>
