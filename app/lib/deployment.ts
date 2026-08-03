@@ -18,10 +18,14 @@ export const DEPLOYMENT_KEY = "deployment";
 /** Which surface `/` renders — see api/config.ts for the reasoning. */
 export type HomeView = "scanner" | "browse";
 
+/** Whether the box number is meaningful to humans here — see api/config.ts. */
+export type BoxNumbers = "public" | "internal";
+
 export type Deployment = {
   /** Perimeter-protected: joining needs only a name, stickers carry no code. */
   openAccess: boolean;
   homeView: HomeView;
+  boxNumbers: BoxNumbers;
 };
 
 /**
@@ -31,12 +35,14 @@ export type Deployment = {
 export const DEFAULT_DEPLOYMENT: Deployment = {
   openAccess: false,
   homeView: "scanner",
+  boxNumbers: "public",
 };
 
 export type LandingResponse = {
   needsSetup?: boolean;
   openAccess?: boolean;
   homeView?: string;
+  boxNumbers?: string;
   title?: string;
   subtitle?: string;
 };
@@ -55,6 +61,7 @@ export async function refreshDeployment(): Promise<LandingResponse | null> {
     await setMeta(DEPLOYMENT_KEY, {
       openAccess: body.openAccess === true,
       homeView: body.homeView === "browse" ? "browse" : "scanner",
+      boxNumbers: body.boxNumbers === "internal" ? "internal" : "public",
     } satisfies Deployment);
     return body;
   } catch {

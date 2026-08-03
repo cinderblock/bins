@@ -55,6 +55,7 @@ import {
 } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { db } from "~/lib/db";
+import { useDeployment } from "~/lib/deployment";
 import { formatWeight, labelColor } from "~/lib/labels";
 import { type SearchDoc, buildSearchIndex } from "~/lib/search";
 import { syncNow } from "~/lib/sync";
@@ -97,6 +98,7 @@ export default function Bins() {
   // reached from the scanner still wants a working back arrow.
   const atHome = location.pathname === "/";
   const [creating, setCreating] = useState(false);
+  const numbersInternal = useDeployment()?.boxNumbers === "internal";
   const labelById = useLabelMap();
 
   // Search-intent entries (the scanner's magnifier icon, the /search
@@ -467,8 +469,18 @@ export default function Bins() {
                     )}
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <Group gap={8}>
-                        <Text fw={600}>#{bin.id}</Text>
-                        {bin.name && <Text truncate>{bin.name}</Text>}
+                        {/* Name leads where the number is just a handle;
+                            unnamed boxes still fall back to it. */}
+                        {numbersInternal && bin.name ? (
+                          <Text fw={600} truncate>
+                            {bin.name}
+                          </Text>
+                        ) : (
+                          <>
+                            <Text fw={600}>#{bin.id}</Text>
+                            {bin.name && <Text truncate>{bin.name}</Text>}
+                          </>
+                        )}
                         {retired && (
                           <Badge color="gray" size="sm">
                             retired

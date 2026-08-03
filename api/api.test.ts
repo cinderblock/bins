@@ -855,6 +855,37 @@ describe("open access", () => {
     expect(openStillScanner.homeView).toBe("scanner");
   });
 
+  test("box numbers can be marked internal without touching ids", async () => {
+    const def = (await (await call("GET", "/api/landing")).json()) as {
+      boxNumbers: string;
+    };
+    expect(def.boxNumbers).toBe("public");
+
+    process.env.BOX_NUMBERS = "internal";
+    try {
+      const internal = (await (await call("GET", "/api/landing")).json()) as {
+        boxNumbers: string;
+      };
+      expect(internal.boxNumbers).toBe("internal");
+
+      // Presentation only: ids stay integers from the one monotonic sequence,
+      // because THAT is what guarantees a retired sticker is never reissued.
+      const res = await call("POST", "/api/admin/bins/allocate", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw", count: 2 },
+      });
+      const body = (await res.json()) as { bins: { id: number }[] };
+      const ids = body.bins.map((b) => b.id);
+      expect(ids.every((id) => Number.isInteger(id))).toBe(true);
+      expect(ids[1]).toBe((ids[0] ?? 0) + 1);
+      // And strictly above every id handed out earlier in this suite.
+      expect(ids[0]).toBeGreaterThan(binId);
+    } finally {
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.BOX_NUMBERS;
+    }
+  });
+
   test("a private client joins with only a name", async () => {
     const identity = await withOpenAccess({}, async () => {
       const res = await call("POST", "/api/auth/join-open", {

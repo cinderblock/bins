@@ -44,6 +44,28 @@ export function isOpenAccess(): boolean {
   return envFlag("OPEN_ACCESS");
 }
 
+export type BoxNumbers = "public" | "internal";
+
+/**
+ * Whether the box number means anything to the people using this deployment.
+ *
+ * - `public` (default) — the number is printed on the physical container and
+ *   people say it out loud ("grab bin 47"). It leads the UI.
+ * - `internal` — containers are drawn from a pile of empties and relabeled;
+ *   the id is just the URL handle, and a sequential integer would imply a
+ *   durable property the box doesn't have. The box's NAME leads instead, and
+ *   the number is a quiet fallback for boxes that don't have a name yet.
+ *
+ * This changes presentation only. Ids stay integers from one monotonic
+ * sequence either way — that is what guarantees they are never reused, which
+ * is what makes a leftover sticker identifiable rather than dangerous.
+ */
+export function boxNumbers(): BoxNumbers {
+  return process.env.BOX_NUMBERS?.trim().toLowerCase() === "internal"
+    ? "internal"
+    : "public";
+}
+
 export type HomeView = "scanner" | "browse";
 
 /**

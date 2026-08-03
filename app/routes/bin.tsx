@@ -46,6 +46,7 @@ import { PhotoImg, usePhotoUrl } from "~/components/PhotoImg";
 import { SyncBadge } from "~/components/SyncBadge";
 import { removeEntry } from "~/lib/actions";
 import { db } from "~/lib/db";
+import { useDeployment } from "~/lib/deployment";
 import { relativeTime } from "~/lib/format";
 import { formatWeight, labelColor } from "~/lib/labels";
 import { syncNow } from "~/lib/sync";
@@ -102,6 +103,7 @@ export default function BinPage() {
   const [capture, setCapture] = useState<
     null | "contents_photo" | "item_photo"
   >(null);
+  const numbersInternal = useDeployment()?.boxNumbers === "internal";
   const [noteOpen, setNoteOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
@@ -114,9 +116,11 @@ export default function BinPage() {
   });
 
   useDocumentTitle(
-    binId !== null
-      ? `#${binId}${bin?.name ? ` ${bin.name}` : ""} · bins`
-      : "bins",
+    binId === null
+      ? "bins"
+      : numbersInternal && bin?.name
+        ? `${bin.name} · bins`
+        : `#${binId}${bin?.name ? ` ${bin.name}` : ""} · bins`,
   );
 
   if (binId === null) {
@@ -176,9 +180,16 @@ export default function BinPage() {
           >
             <IconArrowLeft />
           </ActionIcon>
+          {/* Where the number is just a URL handle (containers get relabeled
+              and reused), leading with "#193" implies a durable property the
+              box doesn't have. The NAME leads there, with the number demoted
+              to a quiet subtitle — and still headlining unnamed boxes, since
+              a freshly created one has nothing else to go by. */}
           <div>
             <Group gap={8}>
-              <Title order={3}>#{bin.id}</Title>
+              <Title order={3}>
+                {numbersInternal && bin.name ? bin.name : `#${bin.id}`}
+              </Title>
               {bin.sizeClass && <Badge variant="light">{bin.sizeClass}</Badge>}
               {bin.weightGrams != null && (
                 <Badge variant="light" color="gray">
@@ -187,7 +198,13 @@ export default function BinPage() {
               )}
               {bin.status === "retired" && <Badge color="gray">retired</Badge>}
             </Group>
-            {bin.name && <Text size="sm">{bin.name}</Text>}
+            {numbersInternal
+              ? bin.name && (
+                  <Text size="xs" c="dimmed">
+                    #{bin.id}
+                  </Text>
+                )
+              : bin.name && <Text size="sm">{bin.name}</Text>}
           </div>
         </Group>
         <SyncBadge />

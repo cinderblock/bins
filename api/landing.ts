@@ -9,7 +9,7 @@
  */
 import { asc } from "drizzle-orm";
 import { db, schema } from "../db/client.server";
-import { homeView, isOpenAccess } from "./config";
+import { boxNumbers, homeView, isOpenAccess } from "./config";
 import { json } from "./context";
 
 export async function handleLanding(): Promise<Response> {
@@ -24,11 +24,13 @@ export async function handleLanding(): Promise<Response> {
       needsSetup: true,
       openAccess: isOpenAccess(),
       homeView: homeView(),
+      boxNumbers: boxNumbers(),
     });
   return json({
     needsSetup: false,
     openAccess: isOpenAccess(),
     homeView: homeView(),
+    boxNumbers: boxNumbers(),
     title: group.landingTitle ?? `${group.name} Inventory Management System`,
     subtitle: group.landingSubtitle ?? "Scan a Box to Start",
   });
