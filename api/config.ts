@@ -44,6 +44,27 @@ export function isOpenAccess(): boolean {
   return envFlag("OPEN_ACCESS");
 }
 
+export type HomeView = "scanner" | "browse";
+
+/**
+ * Which surface the app opens on.
+ *
+ * - `scanner` (default) — the camera IS the home screen. Right when the job is
+ *   "work through this pile of boxes": scan, snap, next.
+ * - `browse` — open on the box list + search, with scanning one prominent tap
+ *   away. Right when the job is "which box is the thing in", which is what a
+ *   standing warehouse looks like.
+ *
+ * Deliberately NOT tied to OPEN_ACCESS: a network perimeter has nothing to do
+ * with whether you want a camera or a list first. Two orthogonal facts about a
+ * deployment.
+ */
+export function homeView(): HomeView {
+  return process.env.HOME_VIEW?.trim().toLowerCase() === "browse"
+    ? "browse"
+    : "scanner";
+}
+
 /**
  * Backstop for a proxy misconfiguration: refuse open joins from a client that
  * did not arrive from a private address. This is NOT the perimeter — the

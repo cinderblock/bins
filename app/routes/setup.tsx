@@ -24,6 +24,7 @@ import { useEffect, useState } from "react";
 import { Navigate } from "react-router";
 import { adoptIdentity } from "~/lib/auth";
 import { IDENTITY_KEY, type Identity, db } from "~/lib/db";
+import { refreshDeployment } from "~/lib/deployment";
 import { rememberAccessCode } from "~/lib/invite";
 
 /** Member access codes are typed on phones — lowercase, no confusables. */
@@ -48,15 +49,19 @@ export default function Setup() {
   const [accessCode, setAccessCode] = useState(generateAccessCode);
   const [adminPassword, setAdminPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [openAccess, setOpenAccess] = useState(false);
   const [geoOk, setGeoOk] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // One call answers both questions: is setup still open, and is this a
+  // perimeter-protected deployment (which decides whether an access code is
+  // even a meaningful thing to ask for). Also warms the deployment cache.
   useEffect(() => {
-    void fetch("/api/landing")
-      .then((res) => res.json())
-      .then((body: { needsSetup: boolean }) => setAvailable(body.needsSetup))
-      .catch(() => setAvailable(false));
+    void refreshDeployment().then((body) => {
+      setAvailable(body?.needsSetup === true);
+      setOpenAccess(body?.openAccess === true);
+    });
   }, []);
 
   if (identity === undefined || available === null) return null;
@@ -129,22 +134,35 @@ export default function Setup() {
             onChange={(e) => setLandingSubtitle(e.currentTarget.value)}
           />
           <Divider />
-          <Group gap="xs" align="flex-end">
-            <TextInput
-              label="Member access code"
-              description="The unlisted /join fallback — members normally join by scanning a sticker."
-              value={accessCode}
-              onChange={(e) => setAccessCode(e.currentTarget.value)}
-              style={{ flex: 1 }}
-            />
-            <Button
-              variant="default"
-              onClick={() => setAccessCode(generateAccessCode())}
-              aria-label="Generate a new access code"
-            >
-              <IconRefresh size={16} />
-            </Button>
-          </Group>
+          {/* On a perimeter-protected deployment nothing ever asks for an
+              access code — people join with just a name — so showing the
+              field is noise at best and misleading at worst. One is still
+              generated and stored so the /join route keeps working as a
+              bootstrap; it just isn't the operator's problem. */}
+          {openAccess ? (
+            <Text c="dimmed" size="sm">
+              No access code needed — this deployment is reachable only from the
+              local network, so anyone who can open it joins with just their
+              name.
+            </Text>
+          ) : (
+            <Group gap="xs" align="flex-end">
+              <TextInput
+                label="Member access code"
+                description="The unlisted /join fallback — members normally join by scanning a sticker."
+                value={accessCode}
+                onChange={(e) => setAccessCode(e.currentTarget.value)}
+                style={{ flex: 1 }}
+              />
+              <Button
+                variant="default"
+                onClick={() => setAccessCode(generateAccessCode())}
+                aria-label="Generate a new access code"
+              >
+                <IconRefresh size={16} />
+              </Button>
+            </Group>
+          )}
           <PasswordInput
             label="Admin password"
             description="Gates the admin page (branding, sticker import, devices)."

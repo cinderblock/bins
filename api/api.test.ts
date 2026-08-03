@@ -825,6 +825,36 @@ describe("open access", () => {
     expect(open.openAccess).toBe(true);
   });
 
+  test("home view is advertised and defaults to the scanner", async () => {
+    const def = (await (await call("GET", "/api/landing")).json()) as {
+      homeView: string;
+    };
+    // Unset must stay the historical behavior — a camera-first home.
+    expect(def.homeView).toBe("scanner");
+
+    process.env.HOME_VIEW = "browse";
+    try {
+      const browse = (await (await call("GET", "/api/landing")).json()) as {
+        homeView: string;
+      };
+      expect(browse.homeView).toBe("browse");
+    } finally {
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.HOME_VIEW;
+    }
+
+    // Independent of the trust model: a perimeter says nothing about whether
+    // you want a camera or a list first.
+    const openStillScanner = await withOpenAccess({}, async () => {
+      return (await (await call("GET", "/api/landing")).json()) as {
+        homeView: string;
+        openAccess: boolean;
+      };
+    });
+    expect(openStillScanner.openAccess).toBe(true);
+    expect(openStillScanner.homeView).toBe("scanner");
+  });
+
   test("a private client joins with only a name", async () => {
     const identity = await withOpenAccess({}, async () => {
       const res = await call("POST", "/api/auth/join-open", {

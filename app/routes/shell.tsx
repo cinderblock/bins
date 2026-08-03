@@ -34,12 +34,13 @@ export default function Shell() {
     }
   }, [identity]);
 
-  // Refresh the deploy-time flags whenever we're signed out: they decide
-  // which gate renders below, and a device that joined before the operator
-  // changed the trust model would otherwise keep the stale one.
+  // Refresh the deploy-time flags on EVERY boot, not just while signed out.
+  // They decide which gate and which home surface render, and an already-
+  // joined device would otherwise never learn that the operator changed one.
+  // Cheap, unauthenticated, and a failure leaves the cached value alone.
   useEffect(() => {
-    if (identity === null) void refreshDeployment();
-  }, [identity]);
+    void refreshDeployment();
+  }, []);
 
   if (identity === undefined || deployment === undefined) return null;
   if (identity === null) {

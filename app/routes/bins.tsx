@@ -34,6 +34,7 @@ import {
   IconLock,
   IconMapPin,
   IconPencil,
+  IconQrcode,
   IconSearch,
 } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -90,6 +91,10 @@ export default function Bins() {
   useDocumentTitle("All boxes · bins");
   const navigate = useNavigate();
   const location = useLocation();
+  // This component is BOTH the /bins route and (on browse-home deployments)
+  // the "/" home surface. Test the path, not the deployment setting: /bins
+  // reached from the scanner still wants a working back arrow.
+  const atHome = location.pathname === "/";
   const labelById = useLabelMap();
 
   // Search-intent entries (the scanner's magnifier icon, the /search
@@ -245,18 +250,34 @@ export default function Bins() {
     >
       <Group justify="space-between">
         <Group gap="sm">
-          <ActionIcon
-            variant="default"
-            size="xl"
-            radius="xl"
-            onClick={() => navigate(-1)}
-            aria-label="Back"
-          >
-            <IconArrowLeft />
-          </ActionIcon>
+          {/* No back arrow when this IS the home surface — going "back" from
+              the home screen leaves the app entirely. */}
+          {!atHome && (
+            <ActionIcon
+              variant="default"
+              size="xl"
+              radius="xl"
+              onClick={() => navigate(-1)}
+              aria-label="Back"
+            >
+              <IconArrowLeft />
+            </ActionIcon>
+          )}
           <Title order={3}>All boxes</Title>
         </Group>
         <Group gap="xs">
+          {/* Browse-home deployments open here, so scanning has to be one
+              obvious tap away — opt-in, but never buried. */}
+          {atHome && !selecting && (
+            <Button
+              size="sm"
+              radius="xl"
+              leftSection={<IconQrcode size={18} />}
+              onClick={() => navigate("/scan")}
+            >
+              Scan
+            </Button>
+          )}
           {!selecting &&
             (unlocked ? (
               <Button

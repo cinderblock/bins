@@ -7,8 +7,11 @@ import {
 
 export default [
   layout("routes/shell.tsx", [
-    // "/" — the live QR scanner; the app's home is a camera.
-    index("routes/scanner.tsx"),
+    // "/" — the scanner or the box list, per the deployment's HOME_VIEW.
+    index("routes/home.tsx"),
+    // The scanner's own stable URL, so browse-home deployments can link to it
+    // and so "open the camera" is always a real destination.
+    route("scan", "routes/scanner.tsx"),
     // "/123" — one URL per physical box; also the claim flow for fresh stickers.
     route(":binId", "routes/bin.tsx"),
     // Browse + search every box; bulk-move for members, retire/restore +

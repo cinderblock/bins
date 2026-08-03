@@ -15,17 +15,28 @@ import { db, getMeta, setMeta } from "./db";
 
 export const DEPLOYMENT_KEY = "deployment";
 
+/** Which surface `/` renders — see api/config.ts for the reasoning. */
+export type HomeView = "scanner" | "browse";
+
 export type Deployment = {
   /** Perimeter-protected: joining needs only a name, stickers carry no code. */
   openAccess: boolean;
+  homeView: HomeView;
 };
 
-/** Closed is the safe assumption when we have never heard from the server. */
-export const DEFAULT_DEPLOYMENT: Deployment = { openAccess: false };
+/**
+ * What to assume before the server has ever answered: closed (the safe
+ * direction for access) and scanner-home (the historical behavior).
+ */
+export const DEFAULT_DEPLOYMENT: Deployment = {
+  openAccess: false,
+  homeView: "scanner",
+};
 
 export type LandingResponse = {
   needsSetup?: boolean;
   openAccess?: boolean;
+  homeView?: string;
   title?: string;
   subtitle?: string;
 };
@@ -43,6 +54,7 @@ export async function refreshDeployment(): Promise<LandingResponse | null> {
     const body = (await response.json()) as LandingResponse;
     await setMeta(DEPLOYMENT_KEY, {
       openAccess: body.openAccess === true,
+      homeView: body.homeView === "browse" ? "browse" : "scanner",
     } satisfies Deployment);
     return body;
   } catch {
