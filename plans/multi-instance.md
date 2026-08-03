@@ -260,6 +260,97 @@ is harmless (different origins, and the token authorizes) but it does mean
 box numbers are not globally unique across the two instances — don't build
 anything that assumes they are.
 
+## Work item 6 — structured locations (shelves with slots)
+
+Raised by the user 2026-08-02: a warehouse has pre-labeled shelves, and a
+shelf has *capacity and shape* — "H4 holds 6 banker's boxes, 3 wide by 2
+tall". The flat name list can't express that.
+
+### The constraint that shapes this
+
+**Bins reference locations by NAME, not by id.** `bin.setLocation`'s payload
+is `{ locationName: string | null }` (`shared/ops.ts`), and `db/schema/
+location.ts` says so explicitly: the location table is a *suggestion list*, so
+freeform one-off places need no row. Consequences today:
+
+- Renaming a shelf silently orphans every box on it.
+- "Is H4 full?" means counting a string match, which a typo defeats.
+- Nothing can hang off a location, because nothing points at one.
+
+So structured locations require bins to reference a location **by id**. That
+is a change to a load-bearing op, and it's the bulk of the work here.
+
+### Proposed model
+
+Keep one op and one LWW clock, so a box can never hold two conflicting
+locations:
+
+```jsonc
+// bin.setLocation — payload gains fields; exactly one addressing mode wins
+{
+  "locationId":   "uuid | null",  // structured: points at a location row
+  "locationName": "string | null", // freeform: unchanged, still supported
+  "slot":         "string | null"  // position within the location, e.g. "A2"
+}
+```
+
+Old ops carry only `locationName` and keep parsing unchanged — additive, and
+both modes fold into the same `location` field clock, so a structured set and
+a freeform set compete like any other LWW pair rather than coexisting.
+
+Locations gain shape:
+
+- `parentId` — hierarchy (`Warehouse → Aisle H → Shelf H4`). Flat installs
+  never set it and see no change.
+- `cols` / `rows` — the grid. `H4` with `cols: 3, rows: 2` has six addressable
+  slots; `slot` on the bin is the coordinate. Capacity is `cols × rows`, so
+  "H4 is full" is a count, and the UI can draw the shelf as a 3×2 grid showing
+  which box is where — which is the actually-useful view when hunting for a
+  box, and exactly what a scanning system would populate later.
+
+**Slots are coordinates, not rows.** The alternative — generating six child
+location rows per shelf — is uniform but multiplies the location list by the
+capacity of the building, and every one of those rows is a thing to rename,
+archive, and sync. A coordinate on the bin costs nothing when unused.
+
+### Gotchas to design against
+
+- **Cycles.** Two devices can reparent offline such that A→B and B→A. Any
+  parent walk (breadcrumbs, capacity roll-up) must be depth-capped and
+  cycle-safe, and the reducer must stay order-independent through it. This is
+  the one genuinely dangerous part of adding hierarchy to an LWW op log.
+- **Renames stop being destructive** once bins point at ids — that's the
+  upgrade — but the migration has to map existing `locationName` strings onto
+  rows without inventing locations for typos.
+- Freeform must survive. "Sam's truck", typed once offline, is a legitimate
+  location and must not require a row.
+
+### This does NOT block getting started
+
+The existing flat list already accepts `H4` as a plain name. A warehouse can
+be fully usable — boxes labeled, shelved, and findable — with shelf names as
+locations, and the grid/slot model is an upgrade applied later without
+re-labeling anything. Locations are recorded in the app and changeable at any
+time; only the sticker is permanent.
+
+### Forward compatibility: continuous scanning
+
+The user's eventual goal is a device that continuously recognizes boxes and
+records where they are, shared live with everyone. Two notes so today's model
+doesn't foreclose it:
+
+- **It cannot be the PWA.** iOS Safari has no WebXR AR support, so continuous
+  AR scanning means a native app. That is fine and needs no architectural
+  change: bins already has write-scoped **integration tokens** and a sync
+  push/pull protocol, so a native app is just another op author. This is
+  precisely the case the integration API was built for.
+- **Model it as observations, not edits.** A scanner produces *sightings*
+  ("bin 42 seen at H4 slot A2 at time T"), which are append-only and
+  conflict-free — the same shape as photos and notes — with the current
+  location derived from the latest sighting. Retrofitting that onto an op type
+  that only supports authoritative sets is much harder than leaving room for
+  it now.
+
 ## Things not to do
 
 - Don't add a UI toggle for `OPEN_ACCESS`. The perimeter and the trust model
