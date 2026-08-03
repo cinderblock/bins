@@ -1,6 +1,6 @@
 # Reference deploy: a self-hosted runner on the target host builds the app and
 # flips an atomic release symlink. Register your runner with the `bins` label
-# (or edit runs-on), and adapt APP_ROOT/SOCKET to your host layout.
+# (or edit the matrix), and adapt APP_ROOT/SOCKET to your host layout.
 name: Deploy
 
 on:
@@ -8,18 +8,29 @@ on:
     branches: [master]
   workflow_dispatch:
 
-# Never let two deploys race on the host.
-concurrency:
-  group: deploy
-  cancel-in-progress: false
-
 env:
   APP_ROOT: /srv/bins
   SOCKET: /run/bins/bins.sock
 
 jobs:
   deploy:
-    runs-on: [self-hosted, bins]
+    strategy:
+      # One instance's host being down must never cancel another's deploy.
+      fail-fast: false
+      matrix:
+        # One entry per deployment of this app. Each instance runs its own
+        # self-hosted runner (label = the value here), and each runner lives
+        # on its own host with its own volumes — so APP_ROOT and SOCKET are
+        # identical everywhere and only the label varies. To add a
+        # deployment: register a runner with a new label, add it here.
+        instance: [bins]
+    runs-on: [self-hosted, "${{ matrix.instance }}"]
+    # Per instance, not global: two pushes to the SAME deployment must
+    # serialize (they race on one host's release tree), but two different
+    # deployments have no reason to wait on each other.
+    concurrency:
+      group: deploy-${{ matrix.instance }}
+      cancel-in-progress: false
     defaults:
       run:
         shell: bash
