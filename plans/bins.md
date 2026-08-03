@@ -5,6 +5,10 @@ snap/note/locate). Fully self-contained — no code imports from other repos,
 ever — and **publishable**: tracked files carry zero operator/tenant
 specifics. Those live in untracked `plans/local.md` (read it too if present).
 
+Companion plan: `plans/multi-instance.md` — running a SECOND deployment of
+the same `master` with a different trust model (open-access mode, matrix
+deploy, generic label printing, itemized contents, voice memos).
+
 ## Goal
 
 Fast scan → snap → next-box flow for group storage. Group-agnostic core that

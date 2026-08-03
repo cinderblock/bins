@@ -1,0 +1,294 @@
+# bins — running more than one instance
+
+Companion to `plans/bins.md` (the main living plan). This one covers what the
+codebase needs so a SECOND (third, …) deployment of the same `master` can run
+a different group with a different security posture, without forking and
+without putting operator specifics in tracked files.
+
+Operator-specific hosts/domains/printers for *this* operator's deployments
+live in the untracked `plans/local.md` and `plans/tsl.local.md`.
+
+## Goal
+
+One repo, one `master`, N deployments. Features and fixes land on every
+instance from the same commit. What differs per instance is **configuration
+only**: origin, database, and — new here — the *trust model* (does the
+deployment sit on the public internet, or behind a network perimeter?) and
+whether it can drive a label printer.
+
+## Decisions already made (don't re-ask)
+
+- **Separate deployments, not one multi-group deploy.** `group_id` exists on
+  every tenant table and multi-group works, but two things rule it out here:
+  `/api/landing` can only serve the FIRST group's branding (one origin can't
+  identify a group — documented limitation in `api/landing.ts`), and the whole
+  point is that the instances have *different* security postures. Separate
+  database, separate socket, separate reverse-proxy block, same commit.
+- **The deploy workflow becomes a matrix over instances**, keyed on the
+  self-hosted runner label. Each instance's runner lives on its own host in
+  its own container with its own volumes, so `APP_ROOT` (`/srv/bins`) and
+  `SOCKET` (`/run/bins/bins.sock`) stay IDENTICAL across instances — only the
+  runner label differs. `concurrency` must become per-instance
+  (`deploy-${{ matrix.instance }}`) or the two instances serialize behind
+  each other for no reason.
+- **Trust model is a deploy-time env var, never an admin-UI toggle.** An
+  admin mis-click must not be able to turn the internet-facing instance into
+  an open one. Env only, set in the host's env file.
+
+## Config surface (proposed)
+
+New env vars, all optional, all defaulting to today's behavior:
+
+| Var | Default | Meaning |
+| --- | --- | --- |
+| `OPEN_ACCESS` | off | Deployment is behind a network perimeter. Bare `/{id}` URLs work; signed-out visitors get a name-only join card instead of the Landing; sticker QRs are allocated without secret codes. |
+| `OPEN_ACCESS_REQUIRE_PRIVATE_CLIENT` | on when `OPEN_ACCESS` | Backstop: the open-join endpoint refuses unless the forwarded client IP is in a private range. Defense in depth behind the proxy's own rule. |
+| `LABEL_PRINT_URL` | unset | Generic HTTP endpoint that accepts a **label spec** (JSON, below). When set, the sticker page offers "Print" in addition to the existing export. |
+| `LABEL_PRINT_TOKEN` | unset | Optional bearer for the above. |
+| `TRANSCRIBE_URL` | unset | An **OpenAI-compatible** `/v1/audio/transcriptions` endpoint. When set, voice memos get transcribed; when unset they stay playable-but-untranscribed. |
+| `TRANSCRIBE_TOKEN` | unset | Optional bearer for the above. |
+| `TRANSCRIBE_MODEL` | `whisper-1` | Model name passed through to that endpoint. |
+
+`/api/landing` (already unauthenticated) is the natural place to advertise
+`openAccess` and `labelPrinting` to the client, so the SPA knows which gate
+to show before anyone has a token.
+
+## Work item 1 — `OPEN_ACCESS` mode
+
+Today the ONLY way in is a sticker's `#CODE` fragment (or the unlinked
+`/join` access-code page). An instance on a trusted LAN wants neither.
+
+Three separable behaviors, all under the one flag:
+
+1. **Join with no proof.** New `POST /api/auth/join-open { displayName,
+   deviceId }` → 404 unless `OPEN_ACCESS`, then resolves the single group and
+   calls the existing `mintDevice()`. If the deployment somehow has more than
+   one group, refuse — ambiguous, and this mode is for single-group installs.
+2. **Shell gate.** `app/routes/shell.tsx` currently sends signed-out visitors
+   without a sticker fragment to `<Landing />`. Under open access they get a
+   name-only join card instead (the existing `FirstRun` component, minus the
+   sticker branch), then continue to wherever they were headed.
+3. **Codeless stickers.** `api/allocate.ts` keeps emitting `bin.allocate` ops
+   but with `code: null`, and the sticker export/QR emits a bare `/{id}`.
+   `bin.secretCode` is ALREADY nullable (see the as-built note in
+   `plans/bins.md`), so this needs no migration and no reducer change.
+   `join-by-bin` already refuses a null-code bin, which stays correct.
+
+**Keep the display-name prompt.** It is one screen, once per device, and it
+is the entire basis of op attribution ("who put that there, when"). Dropping
+it to save a tap would make every history entry anonymous forever.
+
+**Keep the admin password.** Retire/restore, allocation, and rotation are
+still privileged even on a trusted network. Only the *access code* becomes
+pointless; `/setup` should auto-generate and hide it under `OPEN_ACCESS`.
+
+**Perimeter is the reverse proxy's job**, not the app's. The app-side private
+-IP check exists only so a proxy misconfiguration is not instantly an open
+door. Whether the forwarded client IP is trustworthy depends on the proxy
+setup — see the operator notes for the concrete rule per instance.
+
+## Work item 2 — label printing
+
+**Revised 2026-08-02** after seeing the target label design. The original
+plan had bins render a finished PNG. That is wrong: the desired label
+includes *generated line art* indicative of the contents, and the layout
+needs the art and the text to negotiate (the art must not swallow the QR).
+A print service that already does that pipeline should keep doing it.
+
+So bins sends a **label spec**, not an image. The repo must not know about
+any particular printer, media size, raster format, or art generator:
+
+```jsonc
+POST <LABEL_PRINT_URL>          // Authorization: Bearer <LABEL_PRINT_TOKEN>
+{
+  "title": "Test Fixtures",      // the box name — the big text
+  "url": "https://host/42",      // exactly what the QR must encode
+  "binId": 42,
+  "contents": ["…", "…"],        // itemized contents, for the small list
+  "labels": ["electronics"],     // category names, as art/style hints
+  "copies": 1
+}
+```
+
+- **bins owns**: what a bin *is* — title, id, the canonical URL, the contents
+  list, categories. Plus batching with per-label status, because a jam
+  halfway through 50 boxes must not be silent.
+- **The print service owns**: media size, orientation and rotation, layout,
+  art generation, dithering, and printer command language. All of it lives
+  behind that one URL.
+
+Rendering stays entirely optional: `LABEL_PRINT_URL` unset means the existing
+TSV/QR export is the only path, which is what pre-printed-sticker operators
+use.
+
+**Design reference** (from the operator's sample, and what the spec has to be
+sufficient to produce): a landscape canvas rotated 90° for a portrait feed —
+box title in very large bold type across the top, contents list smaller down
+the left, generated line art filling the middle, QR in the bottom-left
+corner. Pure 1-bit black and white; no grays, thick strokes, no border.
+
+## Work item 3 — richer contents (sorting / categories / text search)
+
+Some deployments are "which tote is the shade cloth in" (photo + a couple of
+notes is plenty). Others are closer to a warehouse and want to find *items*,
+not boxes. What already exists:
+
+- Many-to-many category labels with colors, filter chips on `/bins`.
+- Optional per-box weight.
+- MiniSearch fuzzy search over names, labels, and notes — offline, merged
+  into `/bins` as the single browse surface.
+
+The real gap is **itemized contents**: a structured list of things in a box,
+each searchable, rather than prose in a note. Two sources feed one list:
+
+- **Manual** — a new op (`bin.setItems` LWW, or append-only `entry.addItem`
+  with tombstones; append-only matches the existing entry machinery and
+  avoids a whole-list clobber when two people edit offline).
+- **Derived** — the unbuilt Phase 5 vision job in `plans/bins.md` already
+  proposes exactly this shape (`bin.aiItems`, server-authored, feeds search
+  for free). Worth pulling forward rather than designing a parallel feature.
+
+Both must fold into the MiniSearch index, and the index must stay a pure
+function of replica state so it rebuilds offline.
+
+Possible additional gap: **hierarchical** categories (labels are flat today).
+Flat + good search covers a surprising amount; only add depth if flat
+demonstrably fails.
+
+## Work item 4 — voice memos
+
+Current state: `NoteSheet` is keyboard-dictation-first (iOS's built-in mic is
+on-device and works offline) with an optional Android `SpeechRecognition`
+stream. There is no audio capture, and `plans/bins.md` deliberately ruled out
+a custom iOS mic feature because live recognition is unreliable in installed
+PWAs.
+
+A *recorded* memo dodges that entirely and fits the existing architecture:
+
+1. `MediaRecorder` captures audio in the capture overlay, next to the photo
+   button. No recognition in the browser, so no online requirement.
+2. The audio becomes a **content-addressed blob** in the existing blob
+   outbox — the same retry-safe, upload-later path photos use. This is the
+   whole reason the design works offline in a storage unit.
+3. The op references the blob (an entry kind alongside `contents_photo` /
+   note), so it appears in history immediately with a "transcribing…" state.
+4. **Server-side transcription** when the blob lands. The transcript becomes
+   the entry's text, syncs to every replica, and feeds search for free.
+
+### Speak the OpenAI transcription API, don't invent a shape
+
+`TRANSCRIBE_URL` should point at an **OpenAI-compatible
+`POST /v1/audio/transcriptions`** (multipart: `file`, `model`; returns
+`{ text }`). That one decision buys a lot:
+
+- It is the de-facto standard. Speaches (née faster-whisper-server),
+  whisper.cpp's `whisper-server`, LocalAI, vLLM, and OpenAI itself all
+  implement it. A self-hoster points the var at whichever they have.
+- It means **there is no service to write** — the "transcription service" is
+  someone else's container plus a URL. Nothing to maintain, nothing to
+  security-patch, no bespoke protocol to document.
+- An operator can start with a hosted API and move to a local GPU (or the
+  reverse) by changing one env var.
+
+Note the deliberate contrast with the label endpoint (work item 2), where a
+bespoke spec IS right — no standard exists for "print a label with generated
+art". Here one exists. Use it.
+
+### Transcription must never be on the critical path
+
+The transcript is an **enrichment that may never arrive**. Deployments
+without a `TRANSCRIBE_URL` are a supported configuration, and even where one
+is set the service is a separate machine that will be down sometimes.
+
+- Never block the blob upload or the op on it. Queue, retry with backoff,
+  give up gracefully.
+- The UI must distinguish the states honestly: *waiting to upload* (offline,
+  the memo is only on this device) vs *uploaded, transcribing* vs
+  *transcribed* vs *no transcription available*. Collapsing these into one
+  spinner will produce bug reports that are really just a device in a dead
+  zone.
+- A memo recorded offline can't be transcribed until the device syncs. That
+  is inherent, not a defect — but it means the *audio* has to be the durable
+  artifact and the text merely derived from it.
+
+Note the cache-policy consequence: audio blobs are small, but the existing
+`prunePhotoCache` policy is photo-shaped. Audio should follow the "thumb"
+tier (keep forever) or be dropped locally once transcribed — decide before
+shipping, not after replicas fill up.
+
+## Work item 5 — per-deployment URL scheme for boxes
+
+Raised by the user 2026-08-02. Today the sticker URL is hardcoded as
+`{origin}/{id}#{CODE}`, with `binIdFromScan` also tolerating `?CODE` and
+`code=` for hand-typed input. Under `OPEN_ACCESS` it becomes `{origin}/{id}`.
+That is already two schemes, so the concept should be explicit rather than
+implied by a flag.
+
+What can legitimately vary per deployment:
+
+- **Secret or not** — `/{id}#{CODE}` vs `/{id}`. Falls out of `OPEN_ACCESS`.
+- **Zero-padding** — `/{id}` vs `/0042`. The sticker export already offers a
+  selectable pad width; the parser must strip leading zeros either way (it
+  should be checked that it does).
+- **Path prefix** — `/{id}` vs `/b/{id}`. Only matters if the origin is
+  shared with other content. Probably not worth building until it is.
+
+What must NOT vary: the parser has to keep accepting every historical form,
+because stickers are physical and outlive config changes. Anything encoded on
+a sticker is permanent — a scheme change must be additive to the parser, never
+a replacement. This is the single most important constraint in this section.
+
+**The real tension is QR density, and it deserves attention before any
+stickers get printed.** The `id` is 2–4 characters; the ORIGIN dominates the
+encoded length. A short host keeps the QR coarse-moduled and scannable from a
+distance in bad light, which is the entire point of the sticker. Two things
+work against making that a per-deployment knob:
+
+- `plans/bins.md` locks **one origin per deployment** — manifest scope,
+  service worker registration, and sticker URLs must all agree, or the
+  installed PWA breaks. A short alias used *only* for stickers would land
+  scanners on an origin whose service worker and stored identity are
+  different. Don't.
+- So the lever is not a URL-scheme setting at all: it is **choosing a short
+  hostname when the deployment is created**. A LAN-only deployment can afford
+  a much shorter host than a public one, and that decision is effectively
+  permanent once stickers are on boxes.
+
+Also note IDs come from one global sequence *per database*. Separate
+deployments have separate databases, so both will hand out a box `#10`. That
+is harmless (different origins, and the token authorizes) but it does mean
+box numbers are not globally unique across the two instances — don't build
+anything that assumes they are.
+
+## Things not to do
+
+- Don't add a UI toggle for `OPEN_ACCESS`. The perimeter and the trust model
+  must be configured together, by whoever configures the proxy.
+- Don't let `LABEL_PRINT_URL` be reachable from client code with the token —
+  the POST happens server-side.
+- Don't fork the repo per instance, and don't add instance names to tracked
+  files. If something can't be expressed as config, it's a design bug.
+- Don't drop the display-name prompt in open-access mode (kills attribution).
+- Don't build browser-side speech recognition for offline memos — record the
+  audio and transcribe it server-side.
+
+## Decisions from the user (2026-08-02)
+
+- **Itemized contents**: build the **manual op first** — it's the durable
+  data model — then let the vision job author into the same list later.
+- **Transcription**: a **local model on the host**, reached through the
+  generic `TRANSCRIBE_URL`. Instances without one leave memos playable but
+  untranscribed; the transcript is an enrichment, never a requirement.
+- **Label**: **one label per media sheet**, spec-based (work item 2).
+- **Runner labels**: leave the existing instance's label alone; the new
+  instance gets its own. Renaming a working runner to gain symmetry is a bad
+  trade.
+
+## Open questions for the user
+
+1. **Sticker scheme is permanent.** Confirm the QR encodes a bare `/{id}` on
+   open-access instances before any stickers are printed — a change after the
+   fact means re-stickering every box (see work item 5).
+2. **Contents list on the label** — printed labels are a *snapshot*, but box
+   contents change constantly. Print the contents list at all, or leave the
+   label to title + art + QR and let the QR be the source of truth?
