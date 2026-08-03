@@ -44,6 +44,40 @@ export function isOpenAccess(): boolean {
   return envFlag("OPEN_ACCESS");
 }
 
+/**
+ * A label-printing service that accepts a LABEL SPEC (title / url / lines),
+ * not pixels. Unset = no printing offered; the sticker-code export stays the
+ * only path, which is what pre-printed-sticker operators use.
+ *
+ * The repo stays printer-agnostic on purpose: media size, layout, artwork,
+ * dithering and printer command language all live behind this URL. bins only
+ * knows what a bin IS.
+ */
+export function labelPrintUrl(): string | null {
+  return process.env.LABEL_PRINT_URL?.trim() || null;
+}
+
+/** Optional bearer for the above. Server-side only — never sent to a client. */
+export function labelPrintToken(): string | null {
+  return process.env.LABEL_PRINT_TOKEN?.trim() || null;
+}
+
+/**
+ * The origin a printed QR must encode.
+ *
+ * In the browser, sticker URLs derive from `window.location.origin` — one
+ * origin per deployment is load-bearing (manifest scope, service worker,
+ * stored identity), so there is nothing to choose. Server-side there is no
+ * such window, and a URL printed onto a physical label is permanent, so this
+ * prefers the explicitly configured origin over anything a request header
+ * claims. A spoofed Host must not end up on a sticker.
+ */
+export function publicOrigin(fallback: string): string {
+  const configured = process.env.PUBLIC_BASE_URL?.trim();
+  if (!configured) return fallback.replace(/\/+$/, "");
+  return configured.replace(/\/+$/, "");
+}
+
 export type BoxNumbers = "public" | "internal";
 
 /**

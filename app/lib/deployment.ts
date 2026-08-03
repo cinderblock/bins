@@ -26,6 +26,8 @@ export type Deployment = {
   openAccess: boolean;
   homeView: HomeView;
   boxNumbers: BoxNumbers;
+  /** A label printer is configured, so the app may offer "Print label". */
+  labelPrinting: boolean;
 };
 
 /**
@@ -36,6 +38,7 @@ export const DEFAULT_DEPLOYMENT: Deployment = {
   openAccess: false,
   homeView: "scanner",
   boxNumbers: "public",
+  labelPrinting: false,
 };
 
 export type LandingResponse = {
@@ -43,6 +46,7 @@ export type LandingResponse = {
   openAccess?: boolean;
   homeView?: string;
   boxNumbers?: string;
+  labelPrinting?: boolean;
   title?: string;
   subtitle?: string;
 };
@@ -62,6 +66,7 @@ export async function refreshDeployment(): Promise<LandingResponse | null> {
       openAccess: body.openAccess === true,
       homeView: body.homeView === "browse" ? "browse" : "scanner",
       boxNumbers: body.boxNumbers === "internal" ? "internal" : "public",
+      labelPrinting: body.labelPrinting === true,
     } satisfies Deployment);
     return body;
   } catch {

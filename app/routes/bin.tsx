@@ -23,6 +23,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useDocumentTitle, useMediaQuery } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
 import type { EntryState } from "@shared/reducer";
 import {
   IconArchive,
@@ -31,6 +32,7 @@ import {
   IconMapPin,
   IconNote,
   IconPackage,
+  IconPrinter,
   IconTag,
   IconTrash,
 } from "@tabler/icons-react";
@@ -45,6 +47,8 @@ import { NoteSheet } from "~/components/NoteSheet";
 import { PhotoImg, usePhotoUrl } from "~/components/PhotoImg";
 import { SyncBadge } from "~/components/SyncBadge";
 import { removeEntry } from "~/lib/actions";
+import { useAdminPassword } from "~/lib/admin";
+import { apiJson } from "~/lib/api";
 import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
 import { relativeTime } from "~/lib/format";
@@ -103,7 +107,41 @@ export default function BinPage() {
   const [capture, setCapture] = useState<
     null | "contents_photo" | "item_photo"
   >(null);
-  const numbersInternal = useDeployment()?.boxNumbers === "internal";
+  const deployment = useDeployment();
+  const numbersInternal = deployment?.boxNumbers === "internal";
+  const adminPassword = useAdminPassword();
+  // Printing burns label stock and the endpoint is admin-gated like
+  // allocation, so the button only appears once admin is unlocked.
+  const canPrintLabel =
+    deployment?.labelPrinting === true && typeof adminPassword === "string";
+  const [printing, setPrinting] = useState(false);
+
+  async function printLabel() {
+    if (typeof adminPassword !== "string" || binId === null) return;
+    setPrinting(true);
+    try {
+      const result = await apiJson<{ title: string; printed: number }>(
+        "/api/admin/bins/label",
+        {
+          method: "POST",
+          body: JSON.stringify({ adminPassword, binId, includeDetails: false }),
+        },
+      );
+      notifications.show({
+        message: `Printing label for "${result.title}"`,
+        color: "green",
+      });
+    } catch (err) {
+      // Surface the printer's own words — "out of paper" beats "failed".
+      notifications.show({
+        message: err instanceof Error ? err.message : String(err),
+        color: "red",
+      });
+    } finally {
+      setPrinting(false);
+    }
+  }
+
   const [noteOpen, setNoteOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
@@ -207,7 +245,25 @@ export default function BinPage() {
               : bin.name && <Text size="sm">{bin.name}</Text>}
           </div>
         </Group>
-        <SyncBadge />
+        <Group gap="xs">
+          {/* Only where a printer is configured AND admin is unlocked (label
+              printing consumes stock and the endpoint is admin-gated like
+              allocation). Print AFTER naming the box — the title is the
+              headline, so an unnamed box prints "Box 193". */}
+          {canPrintLabel && bin.status !== "unclaimed" && (
+            <Button
+              size="xs"
+              variant="light"
+              radius="xl"
+              loading={printing}
+              leftSection={<IconPrinter size={16} />}
+              onClick={() => void printLabel()}
+            >
+              Label
+            </Button>
+          )}
+          <SyncBadge />
+        </Group>
       </Group>
 
       {/* A retired box means the contents are gone and, where containers get

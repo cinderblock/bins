@@ -886,6 +886,82 @@ describe("open access", () => {
     }
   });
 
+  test("label printing is off unless a printer URL is configured", async () => {
+    const landing = (await (await call("GET", "/api/landing")).json()) as {
+      labelPrinting: boolean;
+    };
+    expect(landing.labelPrinting).toBe(false);
+
+    // The endpoint refuses rather than pretending to print.
+    const off = await call("POST", "/api/admin/bins/label", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", binId },
+    });
+    expect(off.status).toBe(501);
+  });
+
+  test("label print posts a spec to the configured printer", async () => {
+    const seen: { url: string; body: unknown }[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      seen.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+      return new Response(JSON.stringify({ success: true }), { status: 200 });
+    }) as unknown as typeof fetch;
+    process.env.LABEL_PRINT_URL = "http://labelpi.test/api/label";
+    process.env.PUBLIC_BASE_URL = "https://store.example.org";
+
+    try {
+      const res = await call("POST", "/api/admin/bins/label", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw", binId, copies: 2 },
+      });
+      expect(res.status).toBe(200);
+      expect(seen).toHaveLength(1);
+      const sent = seen[0]?.body as {
+        title: string;
+        url: string;
+        copies: number;
+      };
+      // The SPEC is what crosses the wire — no pixels, no TSPL.
+      expect(sent.title).toBe("Kitchen");
+      expect(sent.copies).toBe(2);
+      // Canonical origin from config, not from a request header.
+      expect(sent.url.startsWith("HTTPS://STORE.EXAMPLE.ORG/")).toBe(true);
+      // The sticker secret rides the FRAGMENT so it stays out of server logs.
+      expect(sent.url).toContain("#");
+    } finally {
+      globalThis.fetch = realFetch;
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.LABEL_PRINT_URL;
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.PUBLIC_BASE_URL;
+    }
+  });
+
+  test("a printer error is reported, not swallowed", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response("out of paper", { status: 503 })) as unknown as typeof fetch;
+    process.env.LABEL_PRINT_URL = "http://labelpi.test/api/label";
+    try {
+      const res = await call("POST", "/api/admin/bins/label", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw", binId },
+      });
+      expect(res.status).toBe(502);
+      const body = (await res.json()) as { error: string };
+      // The printer's own words reach the person holding the box.
+      expect(body.error).toContain("out of paper");
+    } finally {
+      globalThis.fetch = realFetch;
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.LABEL_PRINT_URL;
+    }
+  });
+
   test("a private client joins with only a name", async () => {
     const identity = await withOpenAccess({}, async () => {
       const res = await call("POST", "/api/auth/join-open", {

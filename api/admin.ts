@@ -14,6 +14,7 @@ import { type CanonicalOp, secretCodeSchema } from "../shared/ops";
 import { applyOp } from "../shared/reducer";
 import { allocateBins, allocateSchema } from "./allocate";
 import { normalizeAccessCode } from "./auth";
+import { publicOrigin } from "./config";
 import {
   type Ctx,
   error,
@@ -21,6 +22,7 @@ import {
   serializedTransaction,
   sha256Hex,
 } from "./context";
+import { handleLabelPrint, labelSchema } from "./label";
 
 type GroupRow = typeof schema.group.$inferSelect;
 
@@ -203,6 +205,14 @@ export async function handleAdmin(
         .where(eq(schema.group.id, group.id));
     }
     return json({ config: configOf({ ...group, ...updates }) });
+  }
+
+  if (path === "/api/admin/bins/label") {
+    const parsed = labelSchema.safeParse(body);
+    if (!parsed.success) return error(400, "invalid label request");
+    // The QR origin comes from config, not the request — see publicOrigin.
+    const origin = publicOrigin(new URL(req.url).origin);
+    return handleLabelPrint(ctx, parsed.data, origin);
   }
 
   if (path === "/api/admin/bins/allocate") {
