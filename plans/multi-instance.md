@@ -351,6 +351,87 @@ doesn't foreclose it:
   that only supports authoritative sets is much harder than leaving room for
   it now.
 
+## Work item 7 — box lifecycle: permanent vs reusable containers
+
+Raised by the user 2026-08-02, and it invalidates an assumption baked into
+the current model.
+
+### Two different things are being tracked
+
+- **Permanent** (the original assumption): the container is the tracked
+  object. A pre-made sticker carries a serial that never changes, so the bin
+  id IS the physical tote's identity. Stickers are batch-allocated ahead of
+  time and adopted by claim-on-first-scan. Retirement is rare and privileged.
+- **Reusable**: the container is a commodity drawn from a pile of empties.
+  What is actually tracked is *a batch of stuff currently living in some box*.
+  You fill a box, THEN create the record, THEN print one sticker. When it is
+  emptied the box rejoins the pile and its record is done.
+
+The second inverts the order of operations, which is why three current
+behaviors are wrong for it:
+
+1. **Batch allocation is the wrong primitive.** `/print` hands out a sheet of
+   ids up front. Reusable-container sites want "create this box now, print its
+   one label now".
+2. **Allocation is admin-gated**, correctly, because handing out the global id
+   sequence is a provisioning action. Where boxes are created constantly by
+   everyone, that gate is in the way.
+3. **Claim-on-first-scan has nothing to adopt** — no unclaimed sticker exists
+   before the box does.
+
+### What must NOT change: ids are never reused
+
+The global monotonic sequence already guarantees this and it has to stay.
+If box 52 is emptied and that physical box later carries sticker 193, a
+leftover 52 sticker must resolve to "emptied on «date»", never to someone
+else's contents. Reuse would silently mis-attribute real inventory.
+
+This is also why **"delete" should mean archive**: the op log is append-only,
+the history is worth keeping ("what was in that box last year?"), and the id
+stays burned. `bin.retire` is already exactly this primitive — it needs
+different *permissions* and *wording*, not a different mechanism.
+
+### Stale stickers are a real hazard here
+
+A physical box can end up wearing two stickers if the old one isn't peeled.
+Scanning the dead one must say so plainly — "This box was emptied on «date».
+Remove this sticker." — rather than showing an empty box page that looks like
+a data-loss bug. Cheap to build, and it is the failure mode this workflow
+generates most.
+
+### Decided 2026-08-02 — and the proposed config flag was DROPPED
+
+A `BOX_LIFECYCLE = permanent | reusable` flag was proposed here. The user's
+answers dissolved the need for it, which is worth recording so nobody
+reintroduces it:
+
+- **Emptying = archive, hidden by default.** Already exactly what
+  `bin.retire` does: retired boxes drop out of `/bins` and out of the search
+  index unless an admin unlocks. No change needed.
+- **Creating and emptying stay ADMIN-GATED** (user decision, against the
+  recommendation to open them up — an admin device stays unlocked in practice,
+  so the gate is not friction). No permission change needed.
+- **No id on the printed label at all** — title, art, QR only. That is a label
+  *template* decision living on the printer side, not a deployment mode.
+
+What is left is three changes, none of which need a flag because none of them
+are wrong anywhere:
+
+1. **"New box"** — mint ONE id and go straight to it, instead of only being
+   able to batch-allocate a sticker sheet. Useful everywhere;
+   `plans/bins.md` Phase 4 already wanted an offline new-box path. Admin-gated,
+   matching allocate.
+2. **Stale-sticker handling** — scanning a retired box currently shows a small
+   grey "retired" badge, which reads like a data bug. It must say plainly that
+   the box was emptied, when, and that the sticker should come off. This is the
+   failure mode a reusable-container workflow generates most.
+3. **Label template omits the id** (work item 2's spec already carries `title`
+   and `url`; the renderer simply doesn't draw a number).
+
+The app UI still leads with `#id`, deliberately: in-app the id is a useful
+handle that disambiguates two boxes with the same title. It is only redundant
+on the label, where the QR already carries it.
+
 ## Things not to do
 
 - Don't add a UI toggle for `OPEN_ACCESS`. The perimeter and the trust model

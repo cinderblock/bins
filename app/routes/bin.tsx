@@ -7,6 +7,7 @@
  */
 import {
   ActionIcon,
+  Alert,
   Badge,
   Box,
   Button,
@@ -24,6 +25,7 @@ import {
 import { useDocumentTitle, useMediaQuery } from "@mantine/hooks";
 import type { EntryState } from "@shared/reducer";
 import {
+  IconArchive,
   IconArrowLeft,
   IconCamera,
   IconMapPin,
@@ -190,6 +192,28 @@ export default function BinPage() {
         </Group>
         <SyncBadge />
       </Group>
+
+      {/* A retired box means the contents are gone and, where containers get
+          reused, the physical box is back in the pile wearing a dead sticker.
+          Say that outright: a small grey "retired" badge on an empty-looking
+          page reads like lost data, and someone will file it as a bug or,
+          worse, start putting things in a box the system thinks is empty.
+          The record is kept on purpose — the id is never reissued, so this
+          page is exactly how a stale sticker gets identified. */}
+      {bin.status === "retired" && (
+        <Box maw={PAGE_MAXW} mx="auto" px="md" pb="xs">
+          <Alert color="orange" variant="light" icon={<IconArchive />}>
+            <Text fw={600} size="sm">
+              This box was emptied.
+            </Text>
+            <Text size="sm">
+              Its contents were checked out and the record is kept for history.
+              If this sticker is still on a physical box, peel it off — the box
+              is available again, and a new one gets a new sticker.
+            </Text>
+          </Alert>
+        </Box>
+      )}
 
       {bin.status === "unclaimed" ? (
         <Box maw={PAGE_MAXW} mx="auto">

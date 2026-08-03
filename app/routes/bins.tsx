@@ -34,6 +34,7 @@ import {
   IconLock,
   IconMapPin,
   IconPencil,
+  IconPlus,
   IconQrcode,
   IconSearch,
 } from "@tabler/icons-react";
@@ -95,6 +96,7 @@ export default function Bins() {
   // the "/" home surface. Test the path, not the deployment setting: /bins
   // reached from the scanner still wants a working back arrow.
   const atHome = location.pathname === "/";
+  const [creating, setCreating] = useState(false);
   const labelById = useLabelMap();
 
   // Search-intent entries (the scanner's magnifier icon, the /search
@@ -220,6 +222,36 @@ export default function Bins() {
     }
   }
 
+  /**
+   * Mint one box and go straight to it. Deliberately NOT the sticker-sheet
+   * flow: that pre-allocates ids for stickers you will apply later, which is
+   * right when containers carry permanent serials and wrong when you fill a
+   * box first and label it after.
+   *
+   * Syncs before navigating — the bin page reads the replica, and without the
+   * pull it would land on a box that doesn't exist locally yet.
+   */
+  async function createBox() {
+    setCreating(true);
+    try {
+      const response = await apiJson<{ bins: { id: number }[] }>(
+        "/api/admin/bins/allocate",
+        {
+          method: "POST",
+          body: JSON.stringify({ adminPassword, count: 1 }),
+        },
+      );
+      const created = response.bins[0];
+      if (!created) throw new Error("server allocated nothing");
+      await syncNow();
+      navigate(`/${created.id}`);
+    } catch (err) {
+      fail(err);
+    } finally {
+      setCreating(false);
+    }
+  }
+
   if (bins === undefined) return null;
 
   // Text query: MiniSearch relevance order. The index only covers ACTIVE
@@ -266,6 +298,23 @@ export default function Bins() {
           <Title order={3}>All boxes</Title>
         </Group>
         <Group gap="xs">
+          {/* Where boxes are containers drawn from a pile of empties, "start
+              a new box" is the everyday act, not batch-allocating a sticker
+              sheet. Mints ONE id and goes straight to it so you can name it
+              and shoot its contents while it's still open in front of you.
+              Admin-gated, matching /api/admin/bins/allocate. */}
+          {unlocked && !selecting && (
+            <Button
+              size="sm"
+              radius="xl"
+              variant="light"
+              loading={creating}
+              leftSection={<IconPlus size={18} />}
+              onClick={() => void createBox()}
+            >
+              New box
+            </Button>
+          )}
           {/* Browse-home deployments open here, so scanning has to be one
               obvious tap away — opt-in, but never buried. */}
           {atHome && !selecting && (

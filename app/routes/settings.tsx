@@ -52,6 +52,7 @@ import {
   resetLocalData,
   setMeta,
 } from "~/lib/db";
+import { useDeployment } from "~/lib/deployment";
 import { GEO_OPT_IN_KEY, setGeoOptIn } from "~/lib/geo";
 import {
   canPromptInstall,
@@ -60,7 +61,6 @@ import {
   onInstallStateChange,
   promptInstall,
 } from "~/lib/install";
-import { useDeployment } from "~/lib/deployment";
 import { inviteLink, rememberAccessCode, useAccessCode } from "~/lib/invite";
 import { LABEL_COLORS, labelColor, nextLabelColor } from "~/lib/labels";
 import {
