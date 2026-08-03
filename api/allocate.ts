@@ -15,6 +15,7 @@ import {
   SECRET_CODE_LENGTH,
 } from "../shared/ops";
 import { applyOp } from "../shared/reducer";
+import { isOpenAccess } from "./config";
 import { type Ctx, serializedTransaction } from "./context";
 
 /**
@@ -49,7 +50,7 @@ export const allocateSchema = z.object({
 export async function allocateBins(
   ctx: Ctx,
   count: number,
-): Promise<{ id: number; code: string }[]> {
+): Promise<{ id: number; code: string | null }[]> {
   return serializedTransaction(async () => {
     const store = new DrizzleStateStore(ctx.groupId);
     // The ID sequence is global across groups (URLs can't carry a group).
@@ -59,11 +60,14 @@ export async function allocateBins(
     });
     let nextId = Math.max((top?.id ?? 0) + 1, FIRST_BIN_ID);
 
-    const allocated: { id: number; code: string }[] = [];
+    const allocated: { id: number; code: string | null }[] = [];
     const now = Date.now();
     for (let i = 0; i < count; i++) {
       const binId = nextId++;
-      const code = generateSecretCode();
+      // Perimeter-protected deployments print bare `/{id}` stickers — the
+      // network is the proof of access, so a per-bin secret would be
+      // ceremony with no security benefit.
+      const code = isOpenAccess() ? null : generateSecretCode();
       const op: CanonicalOp = {
         opId: uuidv7(),
         type: "bin.allocate",

@@ -27,6 +27,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import { rememberAdmin, useAdminPassword, verifyAdmin } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { db } from "~/lib/db";
+import { useDeployment } from "~/lib/deployment";
 import { syncNow } from "~/lib/sync";
 import { PAGE_MAXW } from "~/lib/ui";
 
@@ -81,6 +82,11 @@ export default function Print() {
     new Map<number, string | null>(),
   );
 
+  // Perimeter-protected deployments print bare `/{id}` stickers, so the code
+  // column is dropped from the export entirely rather than left blank.
+  const codeless = useDeployment()?.openAccess === true;
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+
   async function allocate() {
     setBusy(true);
     try {
@@ -110,20 +116,26 @@ export default function Print() {
     }
   }
 
-  // Export rows: only bins whose code has synced into the replica. IDs are
-  // zero-padded to the chosen width (never truncated — a 3-digit ID stays 3
-  // digits even when the pad is 2).
+  // Export rows: only bins whose allocate op has reached the replica. The
+  // test is PRESENCE, not a non-null code — a perimeter-protected deployment
+  // allocates stickers with no secret at all, and treating those as "still
+  // syncing" would leave the export permanently empty. IDs are zero-padded to
+  // the chosen width (never truncated — a 3-digit ID stays 3 digits even when
+  // the pad is 2).
   const pad = Math.max(1, Number(idDigits) || 1);
   const exportRows = ids
-    .map((id) => ({ id, code: codeById.get(id) ?? null }))
-    .filter((r): r is { id: number; code: string } => r.code != null);
+    .filter((id) => codeById.has(id))
+    .map((id) => ({ id, code: codeById.get(id) ?? null }));
   const pending = ids.length - exportRows.length;
   const exportText = [
-    "id\tcode\turl",
+    codeless ? "id\turl" : "id\tcode\turl",
     ...exportRows.map((r) => {
       // Upper-cased so the whole URL stays in QR alphanumeric mode = tighter code.
-      const url = `${window.location.origin}/${r.id}#${r.code}`.toUpperCase();
-      return `${String(r.id).padStart(pad, "0")}\t${r.code}\t${url}`;
+      const url = (
+        r.code ? `${origin}/${r.id}#${r.code}` : `${origin}/${r.id}`
+      ).toUpperCase();
+      const id = String(r.id).padStart(pad, "0");
+      return codeless ? `${id}\t${url}` : `${id}\t${r.code ?? ""}\t${url}`;
     }),
   ].join("\n");
 

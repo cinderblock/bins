@@ -9,15 +9,19 @@
  */
 import { asc } from "drizzle-orm";
 import { db, schema } from "../db/client.server";
+import { isOpenAccess } from "./config";
 import { json } from "./context";
 
 export async function handleLanding(): Promise<Response> {
   const group = await db.query.group.findFirst({
     orderBy: [asc(schema.group.createdAt)],
   });
-  if (!group) return json({ needsSetup: true });
+  // `openAccess` rides the one endpoint a signed-out visitor can already
+  // reach, so the SPA knows which gate to render before it has any token.
+  if (!group) return json({ needsSetup: true, openAccess: isOpenAccess() });
   return json({
     needsSetup: false,
+    openAccess: isOpenAccess(),
     title: group.landingTitle ?? `${group.name} Inventory Management System`,
     subtitle: group.landingSubtitle ?? "Scan a Box to Start",
   });

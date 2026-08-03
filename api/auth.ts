@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "../db/client.server";
 import { normalizeSecretCode, secretCodeSchema } from "../shared/ops";
+import { isOpenAccess, openJoinAllowed } from "./config";
 import { type Ctx, error, json, sha256Hex } from "./context";
 
 const displayName = z.string().min(1).max(100);
@@ -25,6 +26,8 @@ const joinByBinSchema = z.object({
   displayName,
   deviceId,
 });
+
+const joinOpenSchema = z.object({ displayName, deviceId });
 
 export function normalizeAccessCode(code: string): string {
   return code.trim().toLowerCase();
@@ -103,6 +106,36 @@ export async function handleJoinByBin(req: Request): Promise<Response> {
     where: eq(schema.group.id, bin.groupId),
   });
   if (!group) return error(403, "unknown bin or code");
+
+  return mintDevice(group, displayName, deviceId);
+}
+
+/**
+ * Join with nothing but a name. Only exists when the deployment declares
+ * itself perimeter-protected (OPEN_ACCESS) — otherwise it 404s, so a closed
+ * deployment doesn't even advertise the route.
+ *
+ * Single-group only: with no access code and no sticker there is nothing in
+ * the request that could select between groups, and silently picking one
+ * would put a member (and their ops) in the wrong tenant.
+ */
+export async function handleJoinOpen(req: Request): Promise<Response> {
+  if (!isOpenAccess()) return error(404, "no such endpoint");
+  if (!openJoinAllowed(req)) return error(403, "not on a trusted network");
+
+  const parsed = joinOpenSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return error(400, "invalid join request");
+  const { displayName, deviceId } = parsed.data;
+
+  // NOT 409: the client treats that as a device-id collision and retries with
+  // a fresh uuid, which would never help here.
+  const groups = await db.query.group.findMany({
+    columns: { id: true, name: true },
+  });
+  if (groups.length === 0) return error(503, "not set up yet");
+  const group = groups[0];
+  if (groups.length > 1 || !group)
+    return error(503, "open join needs exactly one group");
 
   return mintDevice(group, displayName, deviceId);
 }

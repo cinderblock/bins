@@ -18,10 +18,16 @@ import { useState } from "react";
 import { adoptIdentity } from "~/lib/auth";
 import type { Identity } from "~/lib/db";
 
+/**
+ * Either the person is holding a sticker (`sticker`), or the deployment is
+ * perimeter-protected and being on the network is itself the proof
+ * (`sticker: null`). Both paths mint the same device token and both still ask
+ * for a name — that name is what every photo and note is attributed to.
+ */
 export function FirstRun({
   sticker,
 }: {
-  sticker: { binId: number; code: string };
+  sticker: { binId: number; code: string } | null;
 }) {
   const [displayName, setDisplayName] = useState("");
   const [geoOk, setGeoOk] = useState(true);
@@ -35,16 +41,18 @@ export function FirstRun({
       // Retry once with a fresh uuid on the (theoretical) device-id collision.
       let response: Response | null = null;
       for (let attempt = 0; attempt < 2; attempt++) {
-        response = await fetch("/api/auth/join-by-bin", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            binId: sticker.binId,
-            code: sticker.code,
-            displayName: displayName.trim(),
-            deviceId: crypto.randomUUID(),
-          }),
-        });
+        response = await fetch(
+          sticker ? "/api/auth/join-by-bin" : "/api/auth/join-open",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...(sticker ? { binId: sticker.binId, code: sticker.code } : {}),
+              displayName: displayName.trim(),
+              deviceId: crypto.randomUUID(),
+            }),
+          },
+        );
         if (response.status !== 409) break;
       }
       if (!response || !response.ok) {
@@ -67,8 +75,9 @@ export function FirstRun({
         <Stack>
           <Title order={2}>bins</Title>
           <Text c="dimmed" size="sm">
-            You scanned bin #{sticker.binId} — that's your ticket in. Just add a
-            name (shown next to your photos and notes).
+            {sticker
+              ? `You scanned bin #${sticker.binId} — that's your ticket in. Just add a name (shown next to your photos and notes).`
+              : "Add a name to get started — it's shown next to your photos and notes."}
           </Text>
           <TextInput
             label="Your name"

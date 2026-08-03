@@ -1,5 +1,11 @@
 import { handleAdmin } from "./admin";
-import { handleDevices, handleJoin, handleJoinByBin, handleMe } from "./auth";
+import {
+  handleDevices,
+  handleJoin,
+  handleJoinByBin,
+  handleJoinOpen,
+  handleMe,
+} from "./auth";
 import { handleBlob } from "./blobs";
 /**
  * Tiny hand-rolled API router — the whole surface is small enough that a
@@ -27,6 +33,9 @@ export async function handleApi(req: Request, url: URL): Promise<Response> {
       return await handleJoin(req);
     if (path === "/api/auth/join-by-bin" && method === "POST")
       return await handleJoinByBin(req);
+    // 404s unless the deployment declares itself perimeter-protected.
+    if (path === "/api/auth/join-open" && method === "POST")
+      return await handleJoinOpen(req);
     if (path === "/api/landing" && method === "GET")
       return await handleLanding();
     if (path === "/api/setup" && method === "POST")

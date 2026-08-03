@@ -192,7 +192,10 @@ export const serverOpSchema = z.discriminatedUnion("type", [
     binId,
     // The bin's sticker secret rides the op so it reaches every member's
     // replica through normal sync (sticker-sheet re-render, URL sharing).
-    payload: z.object({ code: secretCodeSchema }),
+    // Null on perimeter-protected deployments (OPEN_ACCESS), where stickers
+    // carry no secret and the QR is a bare `/{id}`. Nullable rather than
+    // absent so old ops keep parsing unchanged.
+    payload: z.object({ code: secretCodeSchema.nullable() }),
   }),
   // Retiring/restoring a bin flips its status. Server-authored (never pushed):
   // it's an admin action, gated by the group's admin password on the

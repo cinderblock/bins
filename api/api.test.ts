@@ -29,11 +29,14 @@ function call(
     rawBody?: Uint8Array;
     mime?: string;
     origin?: string;
+    /** Simulates what a reverse proxy would set (see api/config.ts). */
+    xff?: string;
   } = {},
 ): Promise<Response> {
   const headers: Record<string, string> = {};
   if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
   if (opts.origin) headers.Origin = opts.origin;
+  if (opts.xff) headers["X-Forwarded-For"] = opts.xff;
   let body: BodyInit | undefined;
   if (opts.rawBody) {
     body = opts.rawBody as unknown as BodyInit;
@@ -772,5 +775,131 @@ describe("api", () => {
     expect(revoke.status).toBe(200);
     const dead = await call("GET", "/api/v1/bins", { token: writeToken });
     expect(dead.status).toBe(401);
+  });
+});
+
+/**
+ * OPEN_ACCESS: a deployment that declares itself perimeter-protected. The env
+ * is restored after every test so the flag can never leak into the suite
+ * above — which is the whole reason api/config.ts reads it per call.
+ */
+describe("open access", () => {
+  function withOpenAccess<T>(
+    env: { requirePrivate?: boolean },
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    process.env.OPEN_ACCESS = "1";
+    if (env.requirePrivate === false)
+      process.env.OPEN_ACCESS_REQUIRE_PRIVATE_CLIENT = "0";
+    return fn().finally(() => {
+      // `delete`, not `= undefined` — assigning undefined to process.env
+      // stores the STRING "undefined", which is not the same as unset and
+      // silently disabled the private-client backstop when this was written.
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.OPEN_ACCESS;
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.OPEN_ACCESS_REQUIRE_PRIVATE_CLIENT;
+    });
+  }
+
+  test("the endpoint does not exist on a closed deployment", async () => {
+    const res = await call("POST", "/api/auth/join-open", {
+      body: { displayName: "Nobody", deviceId: crypto.randomUUID() },
+      xff: "10.0.0.5",
+    });
+    // 404, not 403: a closed deployment doesn't advertise the route at all.
+    expect(res.status).toBe(404);
+  });
+
+  test("landing advertises the mode so the SPA can pick its gate", async () => {
+    const closed = (await (await call("GET", "/api/landing")).json()) as {
+      openAccess: boolean;
+    };
+    expect(closed.openAccess).toBe(false);
+
+    const open = await withOpenAccess({}, async () => {
+      return (await (await call("GET", "/api/landing")).json()) as {
+        openAccess: boolean;
+      };
+    });
+    expect(open.openAccess).toBe(true);
+  });
+
+  test("a private client joins with only a name", async () => {
+    const identity = await withOpenAccess({}, async () => {
+      const res = await call("POST", "/api/auth/join-open", {
+        body: { displayName: "Warehouse iPad", deviceId: crypto.randomUUID() },
+        xff: "10.0.0.5",
+      });
+      expect(res.status).toBe(200);
+      return (await res.json()) as { token: string; displayName: string };
+    });
+    expect(identity.displayName).toBe("Warehouse iPad");
+
+    // The minted token is a normal member token.
+    const me = await call("GET", "/api/auth/me", { token: identity.token });
+    expect(me.status).toBe(200);
+  });
+
+  test("a public client is refused even with the flag on", async () => {
+    const res = await withOpenAccess({}, () =>
+      call("POST", "/api/auth/join-open", {
+        body: { displayName: "Internet", deviceId: crypto.randomUUID() },
+        xff: "203.0.113.7",
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  test("a missing forwarded header is refused, not assumed local", async () => {
+    // The backstop exists to catch a proxy that isn't setting the header;
+    // treating "no header" as trusted would defeat it entirely.
+    const res = await withOpenAccess({}, () =>
+      call("POST", "/api/auth/join-open", {
+        body: { displayName: "Unknown", deviceId: crypto.randomUUID() },
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  test("the private-client backstop can be turned off deliberately", async () => {
+    const res = await withOpenAccess({ requirePrivate: false }, () =>
+      call("POST", "/api/auth/join-open", {
+        body: { displayName: "VPN user", deviceId: crypto.randomUUID() },
+        xff: "203.0.113.7",
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  test("stickers allocate with no secret, and a bare id still grants nothing", async () => {
+    const codeless = await withOpenAccess({}, async () => {
+      const res = await call("POST", "/api/admin/bins/allocate", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw", count: 2 },
+      });
+      expect(res.status).toBe(200);
+      return (await res.json()) as { bins: { id: number; code: null }[] };
+    });
+    expect(codeless.bins).toHaveLength(2);
+    for (const bin of codeless.bins) expect(bin.code).toBeNull();
+
+    // The load-bearing property: a codeless bin must not become a way in.
+    // join-by-bin requires a stored secret, so there is no code — not even
+    // an empty one — that opens it.
+    const first = codeless.bins[0];
+    expect(first).toBeDefined();
+    for (const attempt of ["", "0000", "NULL"]) {
+      const res = await call("POST", "/api/auth/join-by-bin", {
+        body: {
+          binId: first?.id,
+          code: attempt,
+          displayName: "Chancer",
+          deviceId: crypto.randomUUID(),
+        },
+        xff: "203.0.113.7",
+      });
+      expect(res.status).not.toBe(200);
+    }
   });
 });
