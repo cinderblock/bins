@@ -35,6 +35,7 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
+import { PushToggle } from "~/components/PushToggle";
 import { SuggestionQueue } from "~/components/SuggestionQueue";
 import { forgetAdmin, rememberAdmin, useAdminPassword } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
@@ -376,6 +377,10 @@ export default function Admin() {
         <>
           {/* First: the only section with someone waiting on the other end. */}
           <SuggestionQueue adminPassword={password} authors={authors} />
+
+          {/* Right under the queue it feeds: the reason to want a
+              notification is visible immediately above the switch. */}
+          <PushToggle adminPassword={password} />
 
           {config && (
             <Paper p="md" radius="lg" withBorder>

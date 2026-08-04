@@ -1325,3 +1325,286 @@ describe("open access", () => {
     }
   });
 });
+
+/**
+ * Web push. The whole point is that a suggestion reaches a human who isn't
+ * looking at the app, so these tests run the REAL encryption path against a
+ * throwaway HTTP server standing in for a push service — mocking the library
+ * would prove only that the mock was called.
+ */
+
+/**
+ * Web push. Delivery goes through an injected transport (see
+ * api/push.ts `setPushTransport`): `web-push` speaks HTTPS only, so a local
+ * stand-in can't receive a real send, and the RFC 8291 encryption is the
+ * library's job anyway. What's ours — and what these cover — is who gets
+ * notified, what the notification says, which failures retire a subscription,
+ * and that a push service can never break a sync.
+ */
+const nodeCrypto = await import("node:crypto");
+const { eq: eqCol } = await import("drizzle-orm");
+const { setPushTransport, notifyGroupAdmins } = await import("./push");
+
+/** Plausible subscription keys — the shape a browser hands back. */
+function subscriptionKeys() {
+  const ecdh = nodeCrypto.createECDH("prime256v1");
+  ecdh.generateKeys();
+  return {
+    p256dh: ecdh.getPublicKey().toString("base64url"),
+    auth: nodeCrypto.randomBytes(16).toString("base64url"),
+  };
+}
+
+const VAPID = {
+  publicKey:
+    "BJxGkuzMJ9wJvFYFrHhBvhP0kJqYyDqmuHU9nJlkGvVJhF_1qBqZmBHqaKJgOaGZlLQO0R0-fxPJVXfKPRTgAOA",
+  privateKey: "sVsm3vNL6JHnyDl8HDCVGZ0dCfMEB_l8sFHFqJHrpFI",
+};
+
+function withVapid<T>(fn: () => Promise<T>): Promise<T> {
+  process.env.VAPID_PUBLIC_KEY = VAPID.publicKey;
+  process.env.VAPID_PRIVATE_KEY = VAPID.privateKey;
+  process.env.VAPID_SUBJECT = "mailto:ops@example.org";
+  return fn().finally(() => {
+    // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+    delete process.env.VAPID_PUBLIC_KEY;
+    // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+    delete process.env.VAPID_PRIVATE_KEY;
+    // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+    delete process.env.VAPID_SUBJECT;
+    setPushTransport(null);
+  });
+}
+
+describe("push notifications", () => {
+  test("with no keys configured, push is simply absent", async () => {
+    const status = (await (
+      await call("GET", "/api/push/status", { token: tokenA })
+    ).json()) as { configured: boolean; subscribed: boolean };
+    expect(status.configured).toBe(false);
+
+    const sub = await call("POST", "/api/admin/push/subscribe", {
+      token: tokenA,
+      body: {
+        adminPassword: "admin-pw",
+        subscription: {
+          endpoint: "https://push.example.org/x",
+          keys: subscriptionKeys(),
+        },
+      },
+    });
+    expect(sub.status).toBe(404);
+    // The landing payload is how the client knows not to offer the switch.
+    const landing = (await (await call("GET", "/api/landing")).json()) as {
+      pushPublicKey: string | null;
+    };
+    expect(landing.pushPublicKey).toBeNull();
+  });
+
+  test("subscribing needs the admin password; unsubscribing needs only your own token", async () => {
+    await withVapid(async () => {
+      const landing = (await (await call("GET", "/api/landing")).json()) as {
+        pushPublicKey: string | null;
+      };
+      expect(landing.pushPublicKey).toBe(VAPID.publicKey);
+
+      const endpoint = "https://push.example.org/device-a";
+      // Member token alone: refused before anything is stored.
+      const denied = await call("POST", "/api/admin/push/subscribe", {
+        token: tokenA,
+        body: { subscription: { endpoint, keys: subscriptionKeys() } },
+      });
+      expect(denied.status).toBe(400);
+      expect(
+        await db.query.pushSubscription.findMany({
+          where: eqCol(schema.pushSubscription.endpoint, endpoint),
+        }),
+      ).toHaveLength(0);
+
+      const ok = await call("POST", "/api/admin/push/subscribe", {
+        token: tokenA,
+        body: {
+          adminPassword: "admin-pw",
+          subscription: { endpoint, keys: subscriptionKeys() },
+        },
+      });
+      expect(ok.status).toBe(200);
+
+      // Re-subscribing on the same browser REPLACES — endpoints are unique.
+      await call("POST", "/api/admin/push/subscribe", {
+        token: tokenA,
+        body: {
+          adminPassword: "admin-pw",
+          subscription: { endpoint, keys: subscriptionKeys() },
+        },
+      });
+      expect(
+        await db.query.pushSubscription.findMany({
+          where: eqCol(schema.pushSubscription.endpoint, endpoint),
+        }),
+      ).toHaveLength(1);
+
+      const status = (await (
+        await call("GET", "/api/push/status", { token: tokenA })
+      ).json()) as { subscribed: boolean };
+      expect(status.subscribed).toBe(true);
+
+      // Silencing yourself carries no admin password at all.
+      const off = await call("POST", "/api/push/unsubscribe", {
+        token: tokenA,
+      });
+      expect(off.status).toBe(200);
+      const after = (await (
+        await call("GET", "/api/push/status", { token: tokenA })
+      ).json()) as { subscribed: boolean };
+      expect(after.subscribed).toBe(false);
+    });
+  });
+
+  test("a suggestion notifies subscribed admins, but never its own author", async () => {
+    await withVapid(async () => {
+      const sent: { endpoint: string; payload: string }[] = [];
+      setPushTransport(async (subscription, payload) => {
+        sent.push({ endpoint: subscription.endpoint, payload });
+      });
+      try {
+        // Device A is watching; device B is about to suggest something.
+        for (const [token, suffix] of [
+          [tokenA, "a"],
+          [tokenB, "b"],
+        ] as const) {
+          await call("POST", "/api/admin/push/subscribe", {
+            token,
+            body: {
+              adminPassword: "admin-pw",
+              subscription: {
+                endpoint: `https://push.example.org/${suffix}`,
+                keys: subscriptionKeys(),
+              },
+            },
+          });
+        }
+
+        const push = await call("POST", "/api/sync/push", {
+          token: tokenB,
+          body: {
+            ops: [
+              {
+                opId: uuid(),
+                type: "bin.suggest",
+                binId,
+                payload: { fields: { name: "Notify me" }, note: null },
+                clientTime: Date.now(),
+              },
+            ],
+          },
+        });
+        expect(push.status).toBe(200);
+        // Delivery is fire-and-forget so a slow push service can't stall a
+        // sync — let the un-awaited send settle before asserting.
+        await new Promise((r) => setTimeout(r, 50));
+
+        // Exactly one: device A. The author is skipped — nobody needs
+        // notifying about the thing they just did.
+        expect(sent).toHaveLength(1);
+        expect(sent[0]?.endpoint).toBe("https://push.example.org/a");
+        const payload = JSON.parse(sent[0]?.payload ?? "{}") as {
+          title: string;
+          body: string;
+          url: string;
+        };
+        expect(payload.title).toBe("Suggested edit");
+        expect(payload.body).toContain(`#${binId}`);
+        expect(payload.body).toContain("Notify me");
+        // Tapping it must land on the page that can act on it.
+        expect(payload.url).toBe("/admin");
+      } finally {
+        await db.delete(schema.pushSubscription);
+      }
+    });
+  });
+
+  test("a push service failure never breaks the sync that triggered it", async () => {
+    await withVapid(async () => {
+      setPushTransport(async () => {
+        throw new Error("push service on fire");
+      });
+      try {
+        await call("POST", "/api/admin/push/subscribe", {
+          token: tokenA,
+          body: {
+            adminPassword: "admin-pw",
+            subscription: {
+              endpoint: "https://push.example.org/burning",
+              keys: subscriptionKeys(),
+            },
+          },
+        });
+        const opId = uuid();
+        const push = await call("POST", "/api/sync/push", {
+          token: tokenB,
+          body: {
+            ops: [
+              {
+                opId,
+                type: "bin.suggest",
+                binId,
+                payload: { fields: { name: "Still works" }, note: null },
+                clientTime: Date.now(),
+              },
+            ],
+          },
+        });
+        // The op is what matters; the notification is a courtesy.
+        expect(push.status).toBe(200);
+        expect(
+          await db.query.suggestion.findFirst({
+            where: eqCol(schema.suggestion.id, opId),
+          }),
+        ).toBeDefined();
+        await new Promise((r) => setTimeout(r, 50));
+        // A transient failure keeps the subscription — the next one may work.
+        expect(
+          await db.query.pushSubscription.findMany({
+            where: eqCol(
+              schema.pushSubscription.endpoint,
+              "https://push.example.org/burning",
+            ),
+          }),
+        ).toHaveLength(1);
+      } finally {
+        await db.delete(schema.pushSubscription);
+      }
+    });
+  });
+
+  test("a push service saying the endpoint is gone deletes the subscription", async () => {
+    await withVapid(async () => {
+      const endpoint = "https://push.example.org/dead";
+      setPushTransport(async () => {
+        // 410 Gone: permission revoked, app uninstalled, keypair rotated.
+        throw Object.assign(new Error("gone"), { statusCode: 410 });
+      });
+      await call("POST", "/api/admin/push/subscribe", {
+        token: tokenA,
+        body: {
+          adminPassword: "admin-pw",
+          subscription: { endpoint, keys: subscriptionKeys() },
+        },
+      });
+      const group = await db.query.group.findFirst();
+      await notifyGroupAdmins(group?.id ?? "", null, {
+        title: "t",
+        body: "b",
+        url: "/admin",
+        tag: "t",
+      });
+      // Dead endpoints are the only way these rows are ever cleaned up.
+      expect(
+        await db.query.pushSubscription.findMany({
+          where: eqCol(schema.pushSubscription.endpoint, endpoint),
+        }),
+      ).toHaveLength(0);
+    });
+  });
+});

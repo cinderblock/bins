@@ -89,6 +89,40 @@ export function publicOrigin(fallback: string): string {
   return configured.replace(/\/+$/, "");
 }
 
+/**
+ * Web-push (VAPID) credentials. All three must be set or push is simply off —
+ * a half-configured keypair would let devices subscribe to notifications that
+ * could never be delivered, which is worse than no button at all.
+ *
+ * Generate once per deployment and keep them: `bun scripts/generate-vapid.ts`.
+ * Rotating the keypair invalidates every existing subscription (browsers bind
+ * a subscription to the key that created it), so the server drops stale rows
+ * as the push service rejects them.
+ *
+ * The SUBJECT is a contact the push service can reach if a deployment
+ * misbehaves — `mailto:` or an https URL, per RFC 8292.
+ */
+export function vapidKeys(): {
+  publicKey: string;
+  privateKey: string;
+  subject: string;
+} | null {
+  const publicKey = process.env.VAPID_PUBLIC_KEY?.trim();
+  const privateKey = process.env.VAPID_PRIVATE_KEY?.trim();
+  const subject = process.env.VAPID_SUBJECT?.trim();
+  if (!publicKey || !privateKey || !subject) return null;
+  return { publicKey, privateKey, subject };
+}
+
+/**
+ * The public half, for the browser's `pushManager.subscribe`. Safe to serve
+ * unauthenticated — it is a public key, and holding it grants nothing: the
+ * subscribe endpoint is still behind the admin password.
+ */
+export function pushPublicKey(): string | null {
+  return vapidKeys()?.publicKey ?? null;
+}
+
 export type BoxNumbers = "public" | "internal";
 
 /**

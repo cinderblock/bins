@@ -5,4 +5,5 @@ export * from "./bin";
 export * from "./location";
 export * from "./label";
 export * from "./suggestion";
+export * from "./push";
 export * from "./photo";

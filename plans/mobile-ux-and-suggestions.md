@@ -119,14 +119,31 @@ Reported, verbatim:
         `SuggestionQueue` approve button *in the browser*. Not a known
         defect — the Chrome automation could not reliably deliver clicks or
         see portal content (see gotchas). Worth one manual pass on a phone.
-- [ ] **Phase 3 — PWA push for admins** (user asked for it alongside the
-      in-app badge; not started). Sketch: VAPID keypair in env, a
-      `push_subscription` table keyed by device, `POST /api/push/subscribe`,
-      a service-worker `push` handler that opens `/admin`, and a send on
-      `bin.suggest` ingest to every device in the group whose admin has
-      subscribed. Needs a decision on who counts as "an admin to notify" —
-      the app has no admin *identity*, only a shared password, so
-      subscription has to be opt-in from a device that has unlocked admin.
+- [x] **Phase 3 — PWA push for admins** — DONE 2026-08-04.
+  - Who is "an admin to notify" (the open question): a device that proved it
+    knows the admin password AND asked. Subscribing goes through
+    `POST /api/admin/push/subscribe` (behind `requireAdmin`); unsubscribing
+    is `POST /api/push/unsubscribe` with only the device's own token, scoped
+    to its own `deviceId` — you can always silence yourself.
+  - `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`; all three or
+    push is off. `bun scripts/generate-vapid.ts` emits a pair. The public key
+    rides `/api/landing` (`pushPublicKey`) and doubles as the feature flag —
+    `PushToggle` renders nothing without it.
+  - `push_subscription` table (migration 0009), NOT op-driven and deliberately
+    so: an endpoint is one browser's secret, and replicating it would hand
+    every member's replica the ability to notify that person.
+  - Delivery is fire-and-forget from the push-ingest path (`api/sync.ts`),
+    outside the transaction, skipping the author's own device. A dead
+    endpoint (404/410) deletes the row — the only cleanup these rows get;
+    anything else is transient and the row stays.
+  - Service worker: `public/push-sw.js` pulled in by `workbox.importScripts`
+    rather than converting the build to `injectManifest`. The generated SW is
+    load-bearing (precache + navigation fallback) and already caused one
+    "permanently blank app after a deploy"; two listeners aren't worth owning
+    the whole thing. Verified in `build/client/sw.js`.
+  - Only suggestions notify. Everything else a member changes applies itself,
+    so there is nothing waiting on a human — a notification for it would be
+    noise, and noise is how people turn notifications off.
 
 ## Merging phase 2
 
@@ -214,8 +231,19 @@ identity) but worth confirming it's the intent.
   few calls. Screenshots are the only trustworthy oracle. For anything
   server-shaped, curl against the dev API beats driving the UI.
 - The dev database `data/bins.db` now has admin password `test-admin` (set
-  during verification) and bins 101/102 are claimed by throwaway "Verifier"
-  devices. Gitignored dev data, but don't be confused by it.
+  during verification) and bins 101/102/103 are claimed by throwaway
+  "Verifier"/"Suggester" devices. Gitignored dev data, but don't be confused
+  by it.
+- **`web-push` only speaks HTTPS** (`https.request`, hard-coded), so a local
+  `Bun.serve` stand-in can never receive a real delivery — it fails
+  ECONNREFUSED against port 443. That's why `api/push.ts` exports
+  `setPushTransport`: the tests inject a transport and assert OUR logic (who
+  gets notified, what the payload says, 410 retires a row, a failure can't
+  break the sync) instead of re-testing RFC 8291 encryption. The library's
+  crypto path was smoke-tested separately under Bun and works.
+- Web push needs a secure context: `https://` or `http://localhost`. A
+  deployment reached by LAN IP over plain http can't offer notifications at
+  all, regardless of VAPID keys.
 
 ## Things not to do
 

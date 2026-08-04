@@ -15,6 +15,7 @@ import {
 } from "../shared/ops";
 import { applyOp } from "../shared/reducer";
 import { type Ctx, error, json, serializedTransaction } from "./context";
+import { notifyGroupAdmins } from "./push";
 
 async function latestSeqFor(groupId: string): Promise<number> {
   const row = await db.query.op.findFirst({
@@ -36,6 +37,8 @@ export async function handlePush(req: Request, ctx: Ctx): Promise<Response> {
     const store = new DrizzleStateStore(ctx.groupId);
     const acks: PushResponse["acks"] = [];
     const rejected: { opId: string; error: string }[] = [];
+    /** Suggestions ingested in THIS push — what admins get notified about. */
+    const suggested: { binId: number; name: string | null }[] = [];
 
     // Idempotency: any op we've already ingested just re-acks its seq.
     const existing = await db.query.op.findMany({
@@ -99,16 +102,47 @@ export async function handlePush(req: Request, ctx: Ctx): Promise<Response> {
         effectiveTime,
       };
       await applyOp(store, canonical);
+      if (wireOp.type === "bin.suggest") {
+        suggested.push({
+          binId: wireOp.binId,
+          name: wireOp.payload.fields.name ?? null,
+        });
+      }
       acks.push({ opId: wireOp.opId, seq });
     }
 
     const latestSeq = await latestSeqFor(ctx.groupId);
-    return { acks, rejected, latestSeq } satisfies PushResponse & {
+    return { acks, rejected, latestSeq, suggested } satisfies PushResponse & {
       rejected: unknown;
+      suggested: unknown;
     };
   });
 
-  return json(result);
+  // A suggestion is the one op that needs a HUMAN to act before it does
+  // anything, so it's the one worth interrupting someone for. Outside the
+  // transaction and un-awaited: a push service must never hold a database
+  // write open, and must never be able to fail a sync.
+  if (result.suggested.length > 0) {
+    const { binId, name } = result.suggested[0] as {
+      binId: number;
+      name: string | null;
+    };
+    const more = result.suggested.length - 1;
+    void notifyGroupAdmins(ctx.groupId, ctx.deviceId, {
+      title:
+        more > 0
+          ? `${result.suggested.length} suggested edits`
+          : "Suggested edit",
+      body:
+        (name ? `Box #${binId}: rename to "${name}"` : `Box #${binId}`) +
+        (more > 0 ? ` and ${more} more` : ""),
+      url: "/admin",
+      tag: "bins-suggestion",
+    });
+  }
+
+  const { suggested: _suggested, ...response } = result;
+  return json(response);
 }
 
 export async function handlePull(req: Request, ctx: Ctx): Promise<Response> {

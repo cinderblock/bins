@@ -23,6 +23,7 @@ import {
   sha256Hex,
 } from "./context";
 import { handleLabelPreview, handleLabelPrint, labelSchema } from "./label";
+import { handleSubscribe } from "./push";
 
 type GroupRow = typeof schema.group.$inferSelect;
 
@@ -371,6 +372,16 @@ export async function handleAdmin(
       return { imported, skipped };
     });
     return json(result);
+  }
+
+  // Turning notifications ON proves you know the admin password — that IS the
+  // admin identity here (there are no admin accounts). Turning them off needs
+  // only your own token: /api/push/unsubscribe.
+  if (path === "/api/admin/push/subscribe") {
+    return handleSubscribe(
+      ctx,
+      (body as { subscription?: unknown })?.subscription,
+    );
   }
 
   if (path === "/api/admin/suggestions") {

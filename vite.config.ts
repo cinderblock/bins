@@ -44,6 +44,9 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Push + notificationclick handlers, kept OUT of the generated SW so
+        // this stays a generateSW build (see public/push-sw.js for why).
+        importScripts: ["/push-sw.js"],
         globPatterns: ["**/*.{js,css,svg,png,ico,woff2,wasm}"],
         // React Router SPA mode writes index.html AFTER the client bundle
         // closes, so the glob can't see it — add it explicitly (revision

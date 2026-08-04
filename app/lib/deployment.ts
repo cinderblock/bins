@@ -32,6 +32,11 @@ export type Deployment = {
   labelPrinting: boolean;
   /** An image provider is configured, so artwork may be offered. */
   labelArt: boolean;
+  /**
+   * VAPID public key, or null when this deployment has no web-push configured.
+   * Doubles as the feature flag — there is nothing to offer without it.
+   */
+  pushPublicKey: string | null;
 };
 
 /**
@@ -45,6 +50,7 @@ export const DEFAULT_DEPLOYMENT: Deployment = {
   boxNumbers: "public",
   labelPrinting: false,
   labelArt: false,
+  pushPublicKey: null,
 };
 
 export type LandingResponse = {
@@ -54,6 +60,7 @@ export type LandingResponse = {
   boxNumbers?: string;
   labelPrinting?: boolean;
   labelArt?: boolean;
+  pushPublicKey?: string | null;
   title?: string;
   subtitle?: string;
 };
@@ -76,6 +83,10 @@ export async function refreshDeployment(): Promise<LandingResponse | null> {
       boxNumbers: body.boxNumbers === "internal" ? "internal" : "public",
       labelPrinting: body.labelPrinting === true,
       labelArt: body.labelArt === true,
+      pushPublicKey:
+        typeof body.pushPublicKey === "string" && body.pushPublicKey
+          ? body.pushPublicKey
+          : null,
     } satisfies Deployment);
     return body;
   } catch {

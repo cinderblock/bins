@@ -15,6 +15,7 @@ import { handleBlob } from "./blobs";
 import { type Ctx, authenticate, canWrite, error } from "./context";
 import { handlePreflight, isCorsPath, withCors } from "./cors";
 import { handleLanding } from "./landing";
+import { handlePushStatus, handleUnsubscribe } from "./push";
 import { handleSetup } from "./setup";
 import { handlePull, handlePush } from "./sync";
 import { handleV1 } from "./v1";
@@ -77,6 +78,12 @@ async function dispatch(
   }
   if (path === "/api/sync/pull" && method === "GET")
     return await handlePull(req, ctx);
+  // Silencing yourself needs no admin password — see api/push.ts. (Turning
+  // notifications ON does, and lives under /api/admin/push/subscribe.)
+  if (path === "/api/push/status" && method === "GET")
+    return await handlePushStatus(ctx);
+  if (path === "/api/push/unsubscribe" && method === "POST")
+    return await handleUnsubscribe(ctx);
   // Admin is member-only: an integration credential never administers a group.
   if (path.startsWith("/api/admin/") && method === "POST") {
     if (ctx.kind !== "member") return error(403, "members only");

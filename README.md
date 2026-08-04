@@ -35,6 +35,16 @@ where.
   password) that also joins them as the first member. A password-gated admin
   page handles branding edits, importing pre-printed stickers (`id,code`
   lines), and device revocation.
+- **Suggested edits**: anyone can change what's *in* a box — photos, notes,
+  location, categories, weight — and it applies instantly. A box's identity
+  (name, size, external label) is how the whole group finds it again, so
+  those changes queue for an admin instead: one sheet, which saves directly
+  if you've unlocked admin and otherwise sends a proposal with an optional
+  "why". Works offline like everything else; approving competes on the normal
+  merge clocks, so approving a stale suggestion can't clobber a newer name.
+- **Notifications (optional)**: with VAPID keys configured, admins can opt in
+  to a web-push notification when a suggestion arrives — the one event that
+  waits on a human. Off entirely without keys.
 - **Photos done right**: on-device downscale (~300 KB), content-addressed
   (sha256) storage, latest top-down shot automatically becomes the bin's
   primary picture.
@@ -88,6 +98,14 @@ SOCKET_PATH=/run/bins/bins.sock DATABASE_PATH=/srv/bins/data/bins.db \
 SQLite migrates itself on boot; the first visit to a fresh instance opens the
 setup wizard. `.github/workflows/deploy.yml` holds the reference release-tree
 deploy (atomic symlink flip + `/_version` health check).
+
+Optional extras are all env-gated and off by default — see `.env.example`.
+For push notifications, generate a keypair once and keep it in the
+environment (rotating it silently unsubscribes every admin):
+
+```sh
+bun scripts/generate-vapid.ts
+```
 
 ## How sync works (short version)
 
