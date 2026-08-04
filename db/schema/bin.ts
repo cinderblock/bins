@@ -30,6 +30,12 @@ export const bin = sqliteTable(
     /** Total weight in grams (canonical unit; UI renders lb/kg). */
     weightGrams: integer("weight_grams"),
     locationName: text("location_name"),
+    /** Structured location — see shared/reducer.ts; shares one clock with
+        locationName so a box is only ever in one place. */
+    locationId: text("location_id"),
+    /** Opaque position within that location ("A2"). Not validated against the
+        location's grid: the reducer must stay order-independent. */
+    slot: text("slot"),
     /** Category label ids this bin carries (derived set; see shared/reducer.ts). */
     labelIds: text("label_ids", { mode: "json" }).$type<string[]>(),
     /** Derived: latest non-deleted contents_photo hash (see shared/reducer.ts). */

@@ -102,7 +102,19 @@ export const clientOpSchema = z.discriminatedUnion("type", [
     ...opBase,
     type: z.literal("bin.setLocation"),
     binId,
-    payload: z.object({ locationName: z.string().max(200).nullable() }),
+    // A box has ONE location. `locationName` is the freeform form ("Sam's
+    // truck", typed once offline); `locationId` points at a configured place;
+    // `slot` is an opaque position within it ("A2"). All three ride one op and
+    // one clock so a box can never end up holding two conflicting locations.
+    //
+    // `slot` is deliberately NOT validated against the location's grid: the
+    // reducer must stay order-independent, and a location.upsert resizing a
+    // shelf can arrive before or after the bin.setLocation that used it.
+    payload: z.object({
+      locationName: z.string().max(200).nullable(),
+      locationId: z.string().uuid().nullable().optional(),
+      slot: z.string().max(40).nullable().optional(),
+    }),
   }),
   z.object({
     ...opBase,
@@ -152,10 +164,20 @@ export const clientOpSchema = z.discriminatedUnion("type", [
   z.object({
     ...opBase,
     type: z.literal("location.upsert"),
+    // Places are DATA, never code: a deployment's shelving is configured in
+    // the app and synced like everything else, so no particular site's layout
+    // is ever baked into this repo.
+    //
+    // `parentId` nests places (building → aisle → shelf). `cols`/`rows`
+    // describe a shelf's grid, which is what lets the UI draw it and count
+    // capacity; null means "just a place", which is all most locations are.
     payload: z.object({
       locationId: z.string().uuid(),
       name: z.string().min(1).max(200),
       sortOrder: z.number().int(),
+      parentId: z.string().uuid().nullable().optional(),
+      cols: z.number().int().min(1).max(64).nullable().optional(),
+      rows: z.number().int().min(1).max(64).nullable().optional(),
     }),
   }),
   z.object({

@@ -39,6 +39,13 @@ export interface BinState {
   weightGrams: number | null;
   locationName: string | null;
   /**
+   * Structured location: the configured place this box sits in, and an opaque
+   * position within it ("A2"). Shares ONE clock with locationName, so a box
+   * always has exactly one location — setting either form clears the other.
+   */
+  locationId: string | null;
+  slot: string | null;
+  /**
    * Category label ids this bin carries (many-to-many). DERIVED from the
    * per-label booleans in `fieldClocks` under `label:<id>` keys — kept SORTED
    * so the array is order-independent (a convergence requirement). Set by
@@ -87,6 +94,11 @@ export interface LocationState {
   id: string;
   name: string;
   sortOrder: number;
+  /** Nests places (building → aisle → shelf). Null = top level. */
+  parentId: string | null;
+  /** Grid of a shelf, when it has one. Null = an unstructured place. */
+  cols: number | null;
+  rows: number | null;
   archived: boolean;
   fieldClocks: Record<string, string>;
 }
@@ -144,6 +156,8 @@ function newBin(id: number, time: number): BinState {
     externalLabel: null,
     weightGrams: null,
     locationName: null,
+    locationId: null,
+    slot: null,
     labelIds: [],
     primaryPhotoHash: null,
     primaryThumbHash: null,
@@ -230,8 +244,14 @@ export async function applyOp(
     case "bin.setLocation": {
       const bin = await touchBin(store, op);
       const clock = clockOf(op);
+      // One clock for the whole location, and every field is assigned — never
+      // merged. A structured place replaces a freeform one and vice versa, so
+      // a box cannot end up claiming to be in two places at once. The clock
+      // key stays `locationName` so writes from older clients still compete.
       if (wins(clock, bin.fieldClocks.locationName)) {
         bin.locationName = op.payload.locationName;
+        bin.locationId = op.payload.locationId ?? null;
+        bin.slot = op.payload.slot ?? null;
         bin.fieldClocks.locationName = clock;
       }
       await store.putBin(bin);
@@ -332,12 +352,21 @@ export async function applyOp(
         id: locationId,
         name,
         sortOrder,
+        parentId: null,
+        cols: null,
+        rows: null,
         archived: false,
         fieldClocks: {},
       };
       if (wins(clock, location.fieldClocks.value)) {
         location.name = name;
         location.sortOrder = sortOrder;
+        // Assigned, not merged — an upsert describes the whole place, so a
+        // shelf that loses its grid actually loses it rather than keeping a
+        // stale one from an earlier write.
+        location.parentId = op.payload.parentId ?? null;
+        location.cols = op.payload.cols ?? null;
+        location.rows = op.payload.rows ?? null;
         location.fieldClocks.value = clock;
       }
       await store.putLocation(location);
@@ -354,6 +383,9 @@ export async function applyOp(
           id: locationId,
           name: "",
           sortOrder: 0,
+          parentId: null,
+          cols: null,
+          rows: null,
           archived,
           fieldClocks: { archived: clock },
         });

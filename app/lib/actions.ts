@@ -27,15 +27,32 @@ export async function setBinFields(binId: number, fields: BinFields) {
   });
 }
 
+/**
+ * Put a box somewhere. A box has ONE location, so every call states the whole
+ * thing: pass a freeform name, or a configured place (with an optional slot),
+ * or nothing to clear it. Omitting a field clears it rather than leaving a
+ * stale half of a previous location behind.
+ */
 export async function setBinLocation(
   binId: number,
-  locationName: string | null,
+  location:
+    | string
+    | null
+    | { locationId: string | null; slot?: string | null; name?: string | null },
 ) {
+  const payload =
+    typeof location === "string" || location === null
+      ? { locationName: location, locationId: null, slot: null }
+      : {
+          locationName: location.name ?? null,
+          locationId: location.locationId,
+          slot: location.slot ?? null,
+        };
   await enqueueOp({
     ...stamp(),
     type: "bin.setLocation",
     binId,
-    payload: { locationName },
+    payload,
   });
 }
 

@@ -30,6 +30,8 @@ export class DrizzleStateStore implements StateStore {
       externalLabel: row.externalLabel,
       weightGrams: row.weightGrams,
       locationName: row.locationName,
+      locationId: row.locationId,
+      slot: row.slot,
       labelIds: row.labelIds ?? [],
       primaryPhotoHash: row.primaryPhotoHash,
       primaryThumbHash: row.primaryThumbHash,
@@ -140,6 +142,9 @@ export class DrizzleStateStore implements StateStore {
       id: row.id,
       name: row.name,
       sortOrder: row.sortOrder,
+      parentId: row.parentId,
+      cols: row.cols,
+      rows: row.rows,
       archived: row.archived,
       fieldClocks: row.fieldClocks,
     };

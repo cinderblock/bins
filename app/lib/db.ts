@@ -139,6 +139,30 @@ db.version(4).upgrade((tx) =>
     }),
 );
 
+/**
+ * Structured locations. Backfill explicit nulls rather than leaving the fields
+ * absent, so replica rows have the same shape as freshly-reduced ones — code
+ * reading `bin.locationId` gets null, never undefined, whatever a device's
+ * history is.
+ */
+db.version(5).upgrade(async (tx) => {
+  await tx
+    .table("bins")
+    .toCollection()
+    .modify((row: Record<string, unknown>) => {
+      if (row.locationId === undefined) row.locationId = null;
+      if (row.slot === undefined) row.slot = null;
+    });
+  await tx
+    .table("locations")
+    .toCollection()
+    .modify((row: Record<string, unknown>) => {
+      if (row.parentId === undefined) row.parentId = null;
+      if (row.cols === undefined) row.cols = null;
+      if (row.rows === undefined) row.rows = null;
+    });
+});
+
 export async function getMeta<T>(key: string): Promise<T | undefined> {
   const row = await db.meta.get(key);
   return row?.value as T | undefined;

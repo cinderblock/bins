@@ -530,3 +530,124 @@ describe("reducer convergence", () => {
     expect(snapshot).toContain('"archived":true');
   });
 });
+
+describe("structured locations", () => {
+  const shelf = "00000000-0000-4000-8000-00000000aa01";
+  const aisle = "00000000-0000-4000-8000-00000000aa02";
+
+  test("a place, its grid and its parent converge in any order", async () => {
+    const snapshot = await expectConvergence([
+      op({
+        type: "location.upsert",
+        effectiveTime: 1000,
+        payload: { locationId: aisle, name: "Aisle H", sortOrder: 0 },
+      }),
+      op({
+        type: "location.upsert",
+        effectiveTime: 2000,
+        payload: {
+          locationId: shelf,
+          name: "H4",
+          sortOrder: 1,
+          parentId: aisle,
+          cols: 3,
+          rows: 2,
+        },
+      }),
+    ]);
+    expect(snapshot).toContain('"name":"H4"');
+    expect(snapshot).toContain('"cols":3');
+    expect(snapshot).toContain('"rows":2');
+  });
+
+  test("a box in a slot converges, and re-upsert can drop a grid", async () => {
+    // An upsert describes the WHOLE place, so a shelf that loses its grid
+    // really loses it rather than keeping a stale one from an earlier write.
+    const snapshot = await expectConvergence([
+      op({
+        type: "location.upsert",
+        effectiveTime: 1000,
+        payload: {
+          locationId: shelf,
+          name: "H4",
+          sortOrder: 0,
+          cols: 3,
+          rows: 2,
+        },
+      }),
+      op({
+        type: "location.upsert",
+        effectiveTime: 3000,
+        payload: { locationId: shelf, name: "H4", sortOrder: 0 },
+      }),
+      op({
+        type: "bin.setLocation",
+        effectiveTime: 2000,
+        payload: { locationName: null, locationId: shelf, slot: "A2" },
+      }),
+    ]);
+    expect(snapshot).toContain('"slot":"A2"');
+    expect(snapshot).toContain('"cols":null');
+  });
+
+  test("freeform and structured locations compete, never coexist", async () => {
+    // The whole reason they share one clock: a box must never be able to claim
+    // it is both on shelf H4 and in Sam's truck.
+    const snapshot = await expectConvergence([
+      op({
+        type: "bin.setLocation",
+        effectiveTime: 1000,
+        payload: { locationName: "Sam truck", locationId: null, slot: null },
+      }),
+      op({
+        type: "bin.setLocation",
+        effectiveTime: 2000,
+        payload: { locationName: null, locationId: shelf, slot: "B1" },
+      }),
+    ]);
+    expect(snapshot).toContain(`"locationId":"${shelf}"`);
+    expect(snapshot).toContain('"slot":"B1"');
+    expect(snapshot).toContain('"locationName":null');
+  });
+
+  test("the older freeform write wins if it lands later, and clears the slot", async () => {
+    const snapshot = await expectConvergence([
+      op({
+        type: "bin.setLocation",
+        effectiveTime: 1000,
+        payload: { locationName: null, locationId: shelf, slot: "B1" },
+      }),
+      op({
+        type: "bin.setLocation",
+        effectiveTime: 2000,
+        payload: { locationName: "Sam truck" },
+      }),
+    ]);
+    expect(snapshot).toContain('"locationName":"Sam truck"');
+    expect(snapshot).toContain('"locationId":null');
+    expect(snapshot).toContain('"slot":null');
+  });
+
+  test("a box placed before its shelf exists still converges", async () => {
+    // Offline reality: someone shelves a box on a device that hasn't yet
+    // received the location.upsert that created the shelf.
+    await expectConvergence([
+      op({
+        type: "bin.setLocation",
+        effectiveTime: 1000,
+        payload: { locationName: null, locationId: shelf, slot: "C1" },
+      }),
+      op({
+        type: "location.upsert",
+        effectiveTime: 2000,
+        payload: {
+          locationId: shelf,
+          name: "H4",
+          sortOrder: 0,
+          cols: 3,
+          rows: 2,
+        },
+      }),
+    ]);
+  });
+});

@@ -16,6 +16,11 @@ export const location = sqliteTable(
       .references(() => group.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
+    /** Nests places (building -> aisle -> shelf). Null = top level. */
+    parentId: text("parent_id"),
+    /** Grid of a shelf, when it has one. Null = an unstructured place. */
+    cols: integer("cols"),
+    rows: integer("rows"),
     archived: integer("archived", { mode: "boolean" }).notNull().default(false),
     fieldClocks: text("field_clocks", { mode: "json" })
       .notNull()
