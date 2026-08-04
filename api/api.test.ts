@@ -1008,6 +1008,40 @@ describe("open access", () => {
     }
   });
 
+  test("landing says needsSetup so a fresh open server can reach /setup", async () => {
+    // Regression: the shell's open-access branch offers a name-only join
+    // card, and on a database with no group that join can only fail with
+    // "not set up yet". The client routes on needsSetup to avoid that dead
+    // end, so the flag has to be present alongside openAccess.
+    const body = await withOpenAccess({}, async () => {
+      return (await (await call("GET", "/api/landing")).json()) as {
+        needsSetup: boolean;
+        openAccess: boolean;
+      };
+    });
+    expect(body.openAccess).toBe(true);
+    expect(typeof body.needsSetup).toBe("boolean");
+  });
+
+  test("join-open re-registers a device the server has forgotten", async () => {
+    // A revoked device (or one whose database was rebuilt) has no access code
+    // to offer on this kind of deployment — none exists. Re-joining by name
+    // is the only way back, so it must work for an already-known name.
+    const identity = await withOpenAccess({}, async () => {
+      const res = await call("POST", "/api/auth/join-open", {
+        body: {
+          displayName: "Reconnecting iPad",
+          deviceId: crypto.randomUUID(),
+        },
+        xff: "10.0.0.9",
+      });
+      expect(res.status).toBe(200);
+      return (await res.json()) as { token: string };
+    });
+    const me = await call("GET", "/api/auth/me", { token: identity.token });
+    expect(me.status).toBe(200);
+  });
+
   test("a private client joins with only a name", async () => {
     const identity = await withOpenAccess({}, async () => {
       const res = await call("POST", "/api/auth/join-open", {

@@ -176,8 +176,10 @@ export default function Settings() {
   async function rejoin() {
     setRejoining(true);
     try {
-      await signBackIn(rejoinCode);
-      await rememberAccessCode(rejoinCode);
+      // No code exists on a perimeter-protected deployment — the network is
+      // the credential. Passing null re-joins by name alone.
+      await signBackIn(openAccess ? null : rejoinCode);
+      if (!openAccess) await rememberAccessCode(rejoinCode);
       setRejoinCode("");
       notifications.show({
         message: "Signed back in — syncing queued changes",
@@ -256,19 +258,24 @@ export default function Settings() {
             <Text size="sm">
               The server no longer accepts this device's key, so changes are
               piling up locally ({pendingOps + pendingBlobs} waiting — nothing
-              is lost). Enter the group access code to reconnect.
+              is lost).{" "}
+              {openAccess
+                ? "Reconnect to sign back in."
+                : "Enter the group access code to reconnect."}
             </Text>
             <Group gap="xs" align="flex-end">
-              <PasswordInput
-                label="Group access code"
-                value={rejoinCode}
-                onChange={(e) => setRejoinCode(e.currentTarget.value)}
-                style={{ flex: 1 }}
-              />
+              {!openAccess && (
+                <PasswordInput
+                  label="Group access code"
+                  value={rejoinCode}
+                  onChange={(e) => setRejoinCode(e.currentTarget.value)}
+                  style={{ flex: 1 }}
+                />
+              )}
               <Button
                 onClick={() => void rejoin()}
                 loading={rejoining}
-                disabled={!rejoinCode}
+                disabled={!openAccess && !rejoinCode}
               >
                 Sign back in
               </Button>

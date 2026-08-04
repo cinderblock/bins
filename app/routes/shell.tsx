@@ -5,7 +5,7 @@
  */
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect } from "react";
-import { Outlet, useLocation } from "react-router";
+import { Navigate, Outlet, useLocation } from "react-router";
 import { FirstRun } from "~/components/FirstRun";
 import { InstallHint } from "~/components/InstallHint";
 import { Landing } from "~/components/Landing";
@@ -59,6 +59,12 @@ export default function Shell() {
     if (location.pathname === "/join" || location.pathname === "/setup") {
       return <Outlet />;
     }
+    // A server with no group yet has exactly one useful destination. This has
+    // to come BEFORE the open-access branch: that branch offers a name-only
+    // join card, and on a fresh database that join can only ever fail with
+    // "not set up yet" — a dead end with no way to reach the wizard, because
+    // the redirect used to live only in <Landing>, which open access skips.
+    if (deployment.needsSetup) return <Navigate to="/setup" replace />;
     // Perimeter-protected deployment: reaching the app at all is the proof of
     // access, so ask for a name instead of showing a dead-end landing page.
     if (deployment.openAccess) return <FirstRun sticker={null} />;

@@ -22,6 +22,8 @@ export type HomeView = "scanner" | "browse";
 export type BoxNumbers = "public" | "internal";
 
 export type Deployment = {
+  /** No group exists yet — the only useful destination is /setup. */
+  needsSetup: boolean;
   /** Perimeter-protected: joining needs only a name, stickers carry no code. */
   openAccess: boolean;
   homeView: HomeView;
@@ -37,6 +39,7 @@ export type Deployment = {
  * direction for access) and scanner-home (the historical behavior).
  */
 export const DEFAULT_DEPLOYMENT: Deployment = {
+  needsSetup: false,
   openAccess: false,
   homeView: "scanner",
   boxNumbers: "public",
@@ -67,6 +70,7 @@ export async function refreshDeployment(): Promise<LandingResponse | null> {
     if (!response.ok) return null;
     const body = (await response.json()) as LandingResponse;
     await setMeta(DEPLOYMENT_KEY, {
+      needsSetup: body.needsSetup === true,
       openAccess: body.openAccess === true,
       homeView: body.homeView === "browse" ? "browse" : "scanner",
       boxNumbers: body.boxNumbers === "internal" ? "internal" : "public",

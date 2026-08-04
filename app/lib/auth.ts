@@ -32,20 +32,32 @@ export async function adoptIdentity(
   void syncNow();
 }
 
-export async function signBackIn(accessCode: string): Promise<void> {
+/**
+ * Re-register this device after the server stopped accepting its key (revoked
+ * from the admin page, or the database was rebuilt).
+ *
+ * `accessCode` is null on perimeter-protected deployments, which have no code
+ * anyone knows — the setup wizard generates one and hides it. Asking for it
+ * there would strand the device permanently, demanding a secret that does not
+ * exist. Being on the network is the credential, exactly as it is for a first
+ * join.
+ */
+export async function signBackIn(accessCode: string | null): Promise<void> {
   const identity = await getIdentity();
   if (!identity) throw new Error("not joined on this device");
+  const endpoint =
+    accessCode === null ? "/api/auth/join-open" : "/api/auth/join";
 
   // Prefer the old deviceId — if the server deleted the row, re-registering
   // it keeps authorship labels continuous. 409 = the id is still registered
   // (we must not adopt a live device), so retry with a fresh one.
   let response: Response | null = null;
   for (const deviceId of [identity.deviceId, crypto.randomUUID()]) {
-    response = await fetch("/api/auth/join", {
+    response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        accessCode,
+        ...(accessCode === null ? {} : { accessCode }),
         displayName: identity.displayName,
         deviceId,
       }),
