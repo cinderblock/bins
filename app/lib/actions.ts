@@ -1,4 +1,4 @@
-import type { BinFields, ClientOp } from "@shared/ops";
+import type { BinFields, ClientOp, SuggestFields } from "@shared/ops";
 /**
  * Op constructors — the only place client ops are built. Each stamps uuidv7 +
  * clientTime + the cached geofix and hands off to the sync engine (optimistic
@@ -24,6 +24,25 @@ export async function setBinFields(binId: number, fields: BinFields) {
     type: "bin.setFields",
     binId,
     payload: fields,
+  });
+}
+
+/**
+ * Propose a change to a box's identity fields instead of making it. Queues and
+ * syncs like any other op (so it works offline); an admin decides it later via
+ * /api/admin/suggestions/resolve. Pass only the fields being changed — an
+ * absent key means "leave this alone", which is what the admin sees too.
+ */
+export async function suggestBinEdit(
+  binId: number,
+  fields: SuggestFields,
+  note: string | null,
+) {
+  await enqueueOp({
+    ...stamp(),
+    type: "bin.suggest",
+    binId,
+    payload: { fields, note },
   });
 }
 

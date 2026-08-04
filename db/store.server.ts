@@ -10,6 +10,7 @@ import type {
   LabelState,
   LocationState,
   StateStore,
+  SuggestionState,
 } from "../shared/reducer";
 import { db, schema } from "./client.server";
 
@@ -175,5 +176,35 @@ export class DrizzleStateStore implements StateStore {
       .insert(schema.label)
       .values(values)
       .onConflictDoUpdate({ target: schema.label.id, set: values });
+  }
+
+  async getSuggestion(id: string): Promise<SuggestionState | undefined> {
+    const row = await db.query.suggestion.findFirst({
+      where: and(
+        eq(schema.suggestion.id, id),
+        eq(schema.suggestion.groupId, this.groupId),
+      ),
+    });
+    if (!row) return undefined;
+    return {
+      id: row.id,
+      binId: row.binId,
+      deviceId: row.deviceId,
+      fields: row.fields,
+      note: row.note,
+      status: row.status as SuggestionState["status"],
+      createdAt: row.createdAt,
+      resolvedAt: row.resolvedAt,
+      resolvedByOpId: row.resolvedByOpId,
+      fieldClocks: row.fieldClocks,
+    };
+  }
+
+  async putSuggestion(suggestion: SuggestionState): Promise<void> {
+    const values = { ...suggestion, groupId: this.groupId };
+    await db
+      .insert(schema.suggestion)
+      .values(values)
+      .onConflictDoUpdate({ target: schema.suggestion.id, set: values });
   }
 }

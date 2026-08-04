@@ -384,6 +384,76 @@ describe("reducer convergence", () => {
     expect(snapshot).toContain('"weightGrams":7000');
   });
 
+  test("suggestion: verdict arriving before the proposal converges", async () => {
+    // The interesting order on a replica: an admin's approval can be pulled
+    // before the member's own suggestion has been pushed from their phone.
+    const suggestionId = fakeUuid();
+    const ops = [
+      op({
+        opId: suggestionId,
+        type: "bin.suggest",
+        deviceId: "device-a",
+        effectiveTime: 100,
+        payload: {
+          fields: { name: "Wine glasses", sizeClass: "L" },
+          note: "sticker says WG",
+        },
+      }),
+      op({
+        type: "suggestion.resolve",
+        deviceId: null,
+        effectiveTime: 200,
+        payload: { suggestionId, accepted: true },
+      }),
+      // The field change an accept authors is an ORDINARY op — it must lose to
+      // a newer edit, so approving something stale can't clobber the present.
+      op({
+        type: "bin.setFields",
+        deviceId: null,
+        effectiveTime: 200,
+        payload: { name: "Wine glasses", sizeClass: "L" },
+      }),
+      op({
+        type: "bin.setFields",
+        deviceId: "device-b",
+        effectiveTime: 300,
+        payload: { name: "Stemware" },
+      }),
+    ] as CanonicalOp[];
+    const snapshot = await expectConvergence(ops);
+    expect(snapshot).toContain('"status":"accepted"');
+    expect(snapshot).toContain('"note":"sticker says WG"');
+    // The suggestion is recorded as accepted, but the newer name still stands.
+    expect(snapshot).toContain('"name":"Stemware"');
+    expect(snapshot).toContain('"sizeClass":"L"');
+  });
+
+  test("suggestion: two admins racing a verdict settle on one (LWW)", async () => {
+    const suggestionId = fakeUuid();
+    const ops = [
+      op({
+        opId: suggestionId,
+        type: "bin.suggest",
+        effectiveTime: 100,
+        payload: { fields: { name: "Tarps" }, note: null },
+      }),
+      op({
+        type: "suggestion.resolve",
+        deviceId: null,
+        effectiveTime: 200,
+        payload: { suggestionId, accepted: true },
+      }),
+      op({
+        type: "suggestion.resolve",
+        deviceId: null,
+        effectiveTime: 300,
+        payload: { suggestionId, accepted: false },
+      }),
+    ] as CanonicalOp[];
+    const snapshot = await expectConvergence(ops);
+    expect(snapshot).toContain('"status":"rejected"');
+  });
+
   test("locations: upsert/rename/archive converge", async () => {
     const locationId = fakeUuid();
     const ops = [

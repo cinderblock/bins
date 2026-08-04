@@ -32,6 +32,7 @@ import {
   IconMapPin,
   IconNote,
   IconPackage,
+  IconPencil,
   IconPrinter,
   IconTag,
   IconTrash,
@@ -41,6 +42,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { CaptureOverlay } from "~/components/CaptureOverlay";
 import { ClaimBin } from "~/components/ClaimBin";
+import { EditBoxSheet } from "~/components/EditBoxSheet";
 import { LabelSheet } from "~/components/LabelSheet";
 import { LabelPrintSheet } from "~/components/LabelSheet.print";
 import { LocationSheet } from "~/components/LocationSheet";
@@ -54,6 +56,7 @@ import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
 import { relativeTime } from "~/lib/format";
 import { formatWeight, labelColor } from "~/lib/labels";
+import { usePendingSuggestions } from "~/lib/suggestions";
 import { syncNow } from "~/lib/sync";
 import { PAGE_MAXW, PHONE_MEDIA } from "~/lib/ui";
 
@@ -120,6 +123,10 @@ export default function BinPage() {
   const [noteOpen, setNoteOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
   const [labelsOpen, setLabelsOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  // An unlocked admin edits identity fields directly; everyone else suggests.
+  const canEditDirectly = typeof adminPassword === "string";
+  const pendingSuggestions = usePendingSuggestions(binId ?? 0);
   const [lightbox, setLightbox] = useState<EntryState | null>(null);
 
   // The lightbox fills the screen on a phone; on desktop that would be a 4K
@@ -219,6 +226,22 @@ export default function BinPage() {
                 )
               : bin.name && <Text size="sm">{bin.name}</Text>}
           </div>
+          {/* Naming and sizing a box used to be reachable only from the
+              all-boxes list, behind the admin password — so nobody found it.
+              It lives next to the name it changes now; what the button DOES
+              still depends on who you are (see EditBoxSheet). */}
+          {bin.status !== "unclaimed" && (
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="lg"
+              radius="xl"
+              onClick={() => setEditOpen(true)}
+              aria-label={canEditDirectly ? "Edit box" : "Suggest a change"}
+            >
+              <IconPencil size={18} />
+            </ActionIcon>
+          )}
         </Group>
         <Group gap="xs">
           {/* Only where a printer is configured AND admin is unlocked (label
@@ -268,6 +291,35 @@ export default function BinPage() {
         </Box>
       ) : (
         <Stack gap="md" px="md" maw={PAGE_MAXW} mx="auto">
+          {/* Say a proposal is in flight, so the next person doesn't file the
+              same one — and so the person who sent it can see it landed. */}
+          {pendingSuggestions.length > 0 && (
+            <Alert
+              variant="light"
+              color="blue"
+              p="xs"
+              icon={<IconPencil size={18} />}
+            >
+              <Group justify="space-between" wrap="nowrap" gap="xs">
+                <Text size="sm">
+                  {pendingSuggestions.length === 1
+                    ? "A change to this box is waiting for an admin."
+                    : `${pendingSuggestions.length} changes to this box are waiting for an admin.`}
+                </Text>
+                {canEditDirectly && (
+                  <Button
+                    size="compact-sm"
+                    variant="light"
+                    component={Link}
+                    to="/admin"
+                  >
+                    Review
+                  </Button>
+                )}
+              </Group>
+            </Alert>
+          )}
+
           {/* Location + labels line */}
           <Group gap="xs">
             <IconMapPin size={16} style={{ opacity: 0.6 }} />
@@ -488,6 +540,13 @@ export default function BinPage() {
         weightGrams={bin.weightGrams}
         opened={labelsOpen}
         onClose={() => setLabelsOpen(false)}
+      />
+
+      <EditBoxSheet
+        bin={bin}
+        canEditDirectly={canEditDirectly}
+        opened={editOpen}
+        onClose={() => setEditOpen(false)}
       />
 
       {/* Lightbox */}

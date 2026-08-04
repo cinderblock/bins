@@ -33,8 +33,9 @@ import {
   IconPrinter,
   IconTrash,
 } from "@tabler/icons-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
+import { SuggestionQueue } from "~/components/SuggestionQueue";
 import { forgetAdmin, rememberAdmin, useAdminPassword } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { relativeTime } from "~/lib/format";
@@ -98,6 +99,12 @@ export default function Admin() {
   const [newOrigins, setNewOrigins] = useState("");
   /** The just-minted token, shown once until the operator dismisses it. */
   const [freshToken, setFreshToken] = useState<string | null>(null);
+
+  // deviceId -> name, so a suggestion in the queue shows who sent it.
+  const authors = useMemo(
+    () => Object.fromEntries(devices.map((d) => [d.id, d.displayName])),
+    [devices],
+  );
 
   function fail(err: unknown) {
     notifications.show({
@@ -367,6 +374,9 @@ export default function Admin() {
         </Paper>
       ) : (
         <>
+          {/* First: the only section with someone waiting on the other end. */}
+          <SuggestionQueue adminPassword={password} authors={authors} />
+
           {config && (
             <Paper p="md" radius="lg" withBorder>
               <Stack gap="sm">

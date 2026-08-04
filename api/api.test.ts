@@ -252,6 +252,126 @@ describe("api", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("suggested edits: member proposes, admin approves, box changes", async () => {
+    const { eq } = await import("drizzle-orm");
+    const suggestionId = uuid();
+    const nameOf = async () =>
+      (await db.query.bin.findFirst({ where: eq(schema.bin.id, binId) }))?.name;
+    const before = await nameOf();
+
+    // A member pushes the proposal like any other op — no admin password.
+    const push = await call("POST", "/api/sync/push", {
+      token: tokenB,
+      body: {
+        ops: [
+          {
+            opId: suggestionId,
+            type: "bin.suggest",
+            binId,
+            payload: {
+              fields: { name: "Wine glasses", sizeClass: "L" },
+              note: "the lid says WG",
+            },
+            clientTime: Date.now(),
+          },
+        ],
+      },
+    });
+    expect(push.status).toBe(200);
+    // Proposing must NOT touch the box.
+    expect(await nameOf()).toBe(before as string | null);
+
+    // The queue is admin-gated: a member token alone gets nothing.
+    const denied = await call("POST", "/api/admin/suggestions", {
+      token: tokenB,
+      body: {},
+    });
+    expect(denied.status).toBe(400);
+
+    const queue = (await (
+      await call("POST", "/api/admin/suggestions", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw" },
+      })
+    ).json()) as {
+      suggestions: {
+        id: string;
+        status: string;
+        note: string | null;
+        current: { name: string | null } | null;
+      }[];
+    };
+    const row = queue.suggestions.find((s) => s.id === suggestionId);
+    expect(row?.status).toBe("pending");
+    expect(row?.note).toBe("the lid says WG");
+    // The queue carries the box's CURRENT values for the before → after diff.
+    expect(row?.current?.name).toBe(before as string | null);
+
+    const approve = await call("POST", "/api/admin/suggestions/resolve", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", suggestionId, accepted: true },
+    });
+    expect(approve.status).toBe(200);
+    expect(await nameOf()).toBe("Wine glasses");
+
+    // Deciding twice is a 409, not a second verdict op.
+    const again = await call("POST", "/api/admin/suggestions/resolve", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", suggestionId, accepted: false },
+    });
+    expect(again.status).toBe(409);
+
+    // Both halves reach other devices through ordinary pull.
+    const pull = (await (
+      await call("GET", "/api/sync/pull?since=0", { token: tokenB })
+    ).json()) as { ops: { type: string; payload: unknown }[] };
+    expect(pull.ops.some((o) => o.type === "bin.suggest")).toBe(true);
+    expect(pull.ops.some((o) => o.type === "suggestion.resolve")).toBe(true);
+  });
+
+  test("suggested edits: dismissing records the verdict and changes nothing", async () => {
+    const { eq } = await import("drizzle-orm");
+    const suggestionId = uuid();
+    await call("POST", "/api/sync/push", {
+      token: tokenB,
+      body: {
+        ops: [
+          {
+            opId: suggestionId,
+            type: "bin.suggest",
+            binId,
+            payload: { fields: { name: "Nope" }, note: null },
+            clientTime: Date.now(),
+          },
+        ],
+      },
+    });
+    const reject = await call("POST", "/api/admin/suggestions/resolve", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", suggestionId, accepted: false },
+    });
+    expect(reject.status).toBe(200);
+    const bin = await db.query.bin.findFirst({
+      where: eq(schema.bin.id, binId),
+    });
+    expect(bin?.name).toBe("Wine glasses");
+    const row = await db.query.suggestion.findFirst({
+      where: eq(schema.suggestion.id, suggestionId),
+    });
+    expect(row?.status).toBe("rejected");
+
+    // An unknown suggestion is a 404, never a stub decision.
+    const missing = await call("POST", "/api/admin/suggestions/resolve", {
+      token: tokenA,
+      body: {
+        adminPassword: "admin-pw",
+        suggestionId: crypto.randomUUID(),
+        accepted: true,
+      },
+    });
+    expect(missing.status).toBe(404);
+  });
+
   test("secret codes fold look-alike glyphs when read", async () => {
     const { normalizeSecretCode } = await import("../shared/ops");
     // O/Q → 0, I/L → 1; case- and whitespace-insensitive.

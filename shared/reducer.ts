@@ -78,6 +78,39 @@ export interface LocationState {
   fieldClocks: Record<string, string>;
 }
 
+export type SuggestionStatus = "pending" | "accepted" | "rejected";
+
+/**
+ * A proposed edit to a box's identity fields, awaiting an admin.
+ *
+ * Two ops write this row from opposite ends and may arrive in either order:
+ * `bin.suggest` (the member's proposal — fills the descriptive fields) and
+ * `suggestion.resolve` (the admin's verdict — sets status). A resolve that
+ * lands first leaves a STUB whose fields the suggest fills in later without
+ * touching the verdict, exactly like the entry.remove tombstone.
+ */
+export interface SuggestionState {
+  /** = the opId of the bin.suggest op. */
+  id: string;
+  binId: number;
+  /** Author of the suggestion; null until its op arrives (resolve-first stub). */
+  deviceId: string | null;
+  /** Proposed values. `undefined` = field not part of this suggestion. */
+  fields: {
+    name?: string | null;
+    sizeClass?: string | null;
+    externalLabel?: string | null;
+  };
+  note: string | null;
+  status: SuggestionStatus;
+  createdAt: number;
+  resolvedAt: number | null;
+  /** opId of the suggestion.resolve that decided it. */
+  resolvedByOpId: string | null;
+  /** Only `status` is contended (two admins racing) — LWW like everything. */
+  fieldClocks: Record<string, string>;
+}
+
 /** A group-defined category label — the same op-driven shape as a location. */
 export interface LabelState {
   id: string;
@@ -104,6 +137,8 @@ export interface StateStore {
   putLocation(location: LocationState): Promise<void>;
   getLabel(id: string): Promise<LabelState | undefined>;
   putLabel(label: LabelState): Promise<void>;
+  getSuggestion(id: string): Promise<SuggestionState | undefined>;
+  putSuggestion(suggestion: SuggestionState): Promise<void>;
 }
 
 /** Clock strings compare lexicographically as (effectiveTime, opId) tuples. */
@@ -236,6 +271,58 @@ export async function applyOp(
         bin.fieldClocks.status = clock;
       }
       await store.putBin(bin);
+      return;
+    }
+
+    case "bin.suggest": {
+      // The proposal half. A resolve may already have created a stub — keep
+      // its verdict and clocks, fill in what only the suggest knows.
+      // Deliberately does NOT touch the bin: a proposal is not a change to the
+      // box, and bumping updatedAt would reorder the "recently touched" list
+      // for something nobody has agreed to yet.
+      const existing = await store.getSuggestion(op.opId);
+      await store.putSuggestion({
+        id: op.opId,
+        binId: op.binId,
+        deviceId: op.deviceId,
+        fields: op.payload.fields,
+        note: op.payload.note ?? null,
+        status: existing?.status ?? "pending",
+        createdAt: op.effectiveTime,
+        resolvedAt: existing?.resolvedAt ?? null,
+        resolvedByOpId: existing?.resolvedByOpId ?? null,
+        fieldClocks: existing?.fieldClocks ?? {},
+      });
+      return;
+    }
+
+    case "suggestion.resolve": {
+      // The verdict half. LWW on `status` so two admins deciding the same
+      // suggestion on two devices converge; an accept's field change is a
+      // separate bin.setFields op competing on its own clocks, so a later
+      // reject records the decision without silently reverting the box.
+      const clock = clockOf(op);
+      const existing = await store.getSuggestion(op.payload.suggestionId);
+      const suggestion: SuggestionState = existing ?? {
+        // Stub: the suggest hasn't been seen yet on this replica.
+        id: op.payload.suggestionId,
+        binId: op.binId,
+        deviceId: null,
+        fields: {},
+        note: null,
+        status: "pending",
+        createdAt: op.effectiveTime,
+        resolvedAt: null,
+        resolvedByOpId: null,
+        fieldClocks: {},
+      };
+      if (wins(clock, suggestion.fieldClocks.status)) {
+        suggestion.status = op.payload.accepted ? "accepted" : "rejected";
+        suggestion.resolvedAt = op.effectiveTime;
+        suggestion.resolvedByOpId = op.opId;
+        suggestion.fieldClocks.status = clock;
+      }
+      await store.putSuggestion(suggestion);
       return;
     }
 
