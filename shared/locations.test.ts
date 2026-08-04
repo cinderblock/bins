@@ -124,11 +124,13 @@ describe("slots", () => {
     expect(slotCapacity({ ...shelf, rows: null })).toBeNull();
   });
 
-  test("names read the way people say them out loud", () => {
-    expect(slotName(0, 0)).toBe("A1");
-    expect(slotName(2, 1)).toBe("B3");
+  test("slots are numbered, not lettered — shelves already own the letters", () => {
+    // A shelf is called "H4"; a slot inside it called "A1" would read as a
+    // second shelf name. "H4 slot 5" is what someone actually says.
+    expect(slotName(0, 0, 3)).toBe("1");
+    expect(slotName(2, 1, 3)).toBe("6");
     // A 3-wide, 2-tall shelf, in reading order.
-    expect(slotNames(shelf)).toEqual(["A1", "A2", "A3", "B1", "B2", "B3"]);
+    expect(slotNames(shelf)).toEqual(["1", "2", "3", "4", "5", "6"]);
   });
 
   test("a place with no grid offers no slots", () => {

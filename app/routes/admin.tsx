@@ -36,6 +36,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { PushToggle } from "~/components/PushToggle";
+import { ShelfBuilder } from "~/components/ShelfBuilder";
 import { SuggestionQueue } from "~/components/SuggestionQueue";
 import { forgetAdmin, rememberAdmin, useAdminPassword } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
@@ -434,6 +435,10 @@ export default function Admin() {
               </Stack>
             </Paper>
           )}
+
+          <Paper p="md" radius="lg" withBorder>
+            <ShelfBuilder />
+          </Paper>
 
           <Paper p="md" radius="lg" withBorder>
             <Stack gap="sm">

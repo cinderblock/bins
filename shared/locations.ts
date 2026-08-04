@@ -114,15 +114,20 @@ export function slotCapacity(location: LocationNode): number | null {
 }
 
 /**
- * Slot names, row-major: A1, A2, A3 / B1, B2, B3.
+ * Slot names, numbered 1..n in reading order.
  *
- * Letters for rows and numbers for columns because that is how people read a
- * shelf out loud. The stored slot is just this string — the grid can be
- * resized later without rewriting any box's location, which is why the
- * reducer never validates one against the other.
+ * NOT letter-grid coordinates like "A1": the shelves themselves are already
+ * named things like "H4" or "A4", so a slot called "A1" inside shelf "A4"
+ * reads as a second shelf name and invites confusion out loud. "H4 slot 5" is
+ * unambiguous. The grid still exists — it is how the UI lays the slots out —
+ * the name is just the position within it.
+ *
+ * The stored slot is only this string. A shelf can be resized later without
+ * rewriting any box's location, which is why the reducer never validates one
+ * against the other.
  */
-export function slotName(col: number, row: number): string {
-  return `${String.fromCharCode(65 + row)}${col + 1}`;
+export function slotName(col: number, row: number, cols: number): string {
+  return String(row * cols + col + 1);
 }
 
 /** Every slot a location offers, in reading order. Empty when it has no grid. */
@@ -131,7 +136,7 @@ export function slotNames(location: LocationNode): string[] {
   if (!cols || !rows) return [];
   const names: string[] = [];
   for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) names.push(slotName(col, row));
+    for (let col = 0; col < cols; col++) names.push(slotName(col, row, cols));
   }
   return names;
 }

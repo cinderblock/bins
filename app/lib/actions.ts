@@ -151,15 +151,34 @@ export async function addPhoto(
   await enqueueOp(op);
 }
 
+/**
+ * Create or update a place.
+ *
+ * An upsert describes the WHOLE place — parent and grid included — so omitting
+ * them clears them rather than leaving a stale half behind. That mirrors the
+ * reducer, which assigns rather than merges.
+ */
 export async function upsertLocation(
   locationId: string,
   name: string,
   sortOrder: number,
+  shape?: {
+    parentId?: string | null;
+    cols?: number | null;
+    rows?: number | null;
+  },
 ) {
   await enqueueOp({
     ...stamp(),
     type: "location.upsert",
-    payload: { locationId, name, sortOrder },
+    payload: {
+      locationId,
+      name,
+      sortOrder,
+      parentId: shape?.parentId ?? null,
+      cols: shape?.cols ?? null,
+      rows: shape?.rows ?? null,
+    },
   });
 }
 
