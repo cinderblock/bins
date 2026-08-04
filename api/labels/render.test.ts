@@ -132,3 +132,85 @@ describe("label rendering", () => {
     expect(meta.width).toBe(FOUR_BY_SIX.widthPx);
   });
 });
+
+/**
+ * Decode a QR straight out of a rendered label.
+ *
+ * zxing's wasm build reaches for a couple of DOM globals purely to describe
+ * where it found a barcode. Nothing here needs a real DOM, so a minimal shim
+ * lets the decoder run under Bun.
+ */
+class DOMRectShim {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  constructor(x = 0, y = 0, width = 0, height = 0) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+    this.height = height;
+  }
+  get top() {
+    return this.y;
+  }
+  get left() {
+    return this.x;
+  }
+  get right() {
+    return this.x + this.width;
+  }
+  get bottom() {
+    return this.y + this.height;
+  }
+  toJSON() {
+    return { ...this };
+  }
+}
+
+async function decodeQr(png: Buffer): Promise<string[]> {
+  (globalThis as Record<string, unknown>).DOMRectReadOnly ??= DOMRectShim;
+  const { BarcodeDetector } = await import("barcode-detector/ponyfill");
+  const detector = new BarcodeDetector({ formats: ["qr_code"] });
+  // Copy into a plain Uint8Array: Buffer's ArrayBufferLike isn't a BlobPart.
+  const bytes = new Uint8Array(png);
+  const found = await detector.detect(new Blob([bytes], { type: "image/png" }));
+  return found.map((f) => f.rawValue);
+}
+
+describe("the printed QR", () => {
+  test("actually scans, and points at the box it labels", async () => {
+    // The single most important property of a label: a sticker that scans to
+    // the wrong box — or doesn't scan — is worse than no sticker at all. This
+    // decodes the real rendered pixels, so it also catches a QR rendered too
+    // small, too dense, or mangled by the layout.
+    const url = "HTTPS://STORE.EXAMPLE.ORG/193#7HX6";
+    const png = await renderLabel(
+      { template: "qr", title: "Test Fixtures", url },
+      FOUR_BY_SIX,
+    );
+    expect(await decodeQr(png)).toEqual([url]);
+  });
+
+  test("survives a long title squeezing the layout", async () => {
+    const url = "HTTPS://STORE.EXAMPLE.ORG/1042";
+    const png = await renderLabel(
+      {
+        template: "qr",
+        title: "Assorted Pneumatic Fittings And Spare Manifold Hardware",
+        url,
+        lines: ["Shelf H4"],
+      },
+      FOUR_BY_SIX,
+    );
+    expect(await decodeQr(png)).toEqual([url]);
+  });
+
+  test("the art template prints no scannable code at all", async () => {
+    const png = await renderLabel(
+      { template: "art", title: "Costumes", url: "HTTPS://EXAMPLE/1" },
+      FOUR_BY_SIX,
+    );
+    expect(await decodeQr(png)).toEqual([]);
+  });
+});
