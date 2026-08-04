@@ -22,7 +22,7 @@ import {
   serializedTransaction,
   sha256Hex,
 } from "./context";
-import { handleLabelPrint, labelSchema } from "./label";
+import { handleLabelPreview, handleLabelPrint, labelSchema } from "./label";
 
 type GroupRow = typeof schema.group.$inferSelect;
 
@@ -207,12 +207,17 @@ export async function handleAdmin(
     return json({ config: configOf({ ...group, ...updates }) });
   }
 
-  if (path === "/api/admin/bins/label") {
+  if (
+    path === "/api/admin/bins/label" ||
+    path === "/api/admin/bins/label/preview"
+  ) {
     const parsed = labelSchema.safeParse(body);
     if (!parsed.success) return error(400, "invalid label request");
     // The QR origin comes from config, not the request — see publicOrigin.
     const origin = publicOrigin(new URL(req.url).origin);
-    return handleLabelPrint(ctx, parsed.data, origin);
+    return path.endsWith("/preview")
+      ? handleLabelPreview(ctx, parsed.data, origin)
+      : handleLabelPrint(ctx, parsed.data, origin);
   }
 
   if (path === "/api/admin/bins/allocate") {

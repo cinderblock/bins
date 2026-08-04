@@ -900,17 +900,25 @@ describe("open access", () => {
     expect(off.status).toBe(501);
   });
 
-  test("label print posts a spec to the configured printer", async () => {
-    const seen: { url: string; body: unknown }[] = [];
+  test("label print posts a rendered PNG, not a spec", async () => {
+    const seen: {
+      url: string;
+      contentType: string | null;
+      body: Uint8Array;
+    }[] = [];
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async (
       input: string | URL | Request,
       init?: RequestInit,
     ) => {
-      seen.push({ url: String(input), body: JSON.parse(String(init?.body)) });
-      return new Response(JSON.stringify({ success: true }), { status: 200 });
+      seen.push({
+        url: String(input),
+        contentType: new Headers(init?.headers).get("content-type"),
+        body: init?.body as Uint8Array,
+      });
+      return new Response("", { status: 200 });
     }) as unknown as typeof fetch;
-    process.env.LABEL_PRINT_URL = "http://labelpi.test/api/label";
+    process.env.LABEL_PRINT_URL = "http://labelpi.test/print";
     process.env.PUBLIC_BASE_URL = "https://store.example.org";
 
     try {
@@ -919,25 +927,63 @@ describe("open access", () => {
         body: { adminPassword: "admin-pw", binId, copies: 2 },
       });
       expect(res.status).toBe(200);
-      expect(seen).toHaveLength(1);
-      const sent = seen[0]?.body as {
-        title: string;
-        url: string;
-        copies: number;
-      };
-      // The SPEC is what crosses the wire — no pixels, no TSPL.
-      expect(sent.title).toBe("Kitchen");
-      expect(sent.copies).toBe(2);
-      // Canonical origin from config, not from a request header.
-      expect(sent.url.startsWith("HTTPS://STORE.EXAMPLE.ORG/")).toBe(true);
-      // The sticker secret rides the FRAGMENT so it stays out of server logs.
-      expect(sent.url).toContain("#");
+      // One request per copy: a printer is one physical device, and firing
+      // them concurrently tends to interleave or drop jobs.
+      expect(seen).toHaveLength(2);
+      const first = seen[0];
+      expect(first?.contentType).toBe("image/png");
+      // Pixels, not JSON — the printer needs no knowledge of what a bin is.
+      const png = first?.body as Uint8Array;
+      expect(png.byteLength).toBeGreaterThan(1000);
+      // PNG magic number.
+      expect([...png.slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
     } finally {
       globalThis.fetch = realFetch;
       // biome-ignore lint/performance/noDelete: unsetting an env var needs it
       delete process.env.LABEL_PRINT_URL;
       // biome-ignore lint/performance/noDelete: unsetting an env var needs it
       delete process.env.PUBLIC_BASE_URL;
+    }
+  });
+
+  test("preview returns the same image without printing", async () => {
+    let printed = 0;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      printed++;
+      return new Response("", { status: 200 });
+    }) as unknown as typeof fetch;
+    process.env.LABEL_PRINT_URL = "http://labelpi.test/print";
+    try {
+      const res = await call("POST", "/api/admin/bins/label/preview", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw", binId },
+      });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("image/png");
+      // Nothing reached the printer — that's the entire point of a preview.
+      expect(printed).toBe(0);
+      expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(1000);
+    } finally {
+      globalThis.fetch = realFetch;
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.LABEL_PRINT_URL;
+    }
+  });
+
+  test("asking for art without a provider refuses instead of printing plain", async () => {
+    process.env.LABEL_PRINT_URL = "http://labelpi.test/print";
+    try {
+      const res = await call("POST", "/api/admin/bins/label", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw", binId, art: true },
+      });
+      // Silently printing an art-less label would waste stock on something
+      // the user didn't ask for.
+      expect(res.status).toBe(501);
+    } finally {
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.LABEL_PRINT_URL;
     }
   });
 

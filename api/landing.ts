@@ -11,6 +11,7 @@ import { asc } from "drizzle-orm";
 import { db, schema } from "../db/client.server";
 import { boxNumbers, homeView, isOpenAccess, labelPrintUrl } from "./config";
 import { json } from "./context";
+import { artAvailable } from "./labels/art";
 
 export async function handleLanding(): Promise<Response> {
   const group = await db.query.group.findFirst({
@@ -26,6 +27,7 @@ export async function handleLanding(): Promise<Response> {
       homeView: homeView(),
       boxNumbers: boxNumbers(),
       labelPrinting: labelPrintUrl() !== null,
+      labelArt: artAvailable(),
     });
   return json({
     needsSetup: false,
@@ -33,6 +35,7 @@ export async function handleLanding(): Promise<Response> {
     homeView: homeView(),
     boxNumbers: boxNumbers(),
     labelPrinting: labelPrintUrl() !== null,
+    labelArt: artAvailable(),
     title: group.landingTitle ?? `${group.name} Inventory Management System`,
     subtitle: group.landingSubtitle ?? "Scan a Box to Start",
   });

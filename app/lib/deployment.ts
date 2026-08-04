@@ -28,6 +28,8 @@ export type Deployment = {
   boxNumbers: BoxNumbers;
   /** A label printer is configured, so the app may offer "Print label". */
   labelPrinting: boolean;
+  /** An image provider is configured, so artwork may be offered. */
+  labelArt: boolean;
 };
 
 /**
@@ -39,6 +41,7 @@ export const DEFAULT_DEPLOYMENT: Deployment = {
   homeView: "scanner",
   boxNumbers: "public",
   labelPrinting: false,
+  labelArt: false,
 };
 
 export type LandingResponse = {
@@ -47,6 +50,7 @@ export type LandingResponse = {
   homeView?: string;
   boxNumbers?: string;
   labelPrinting?: boolean;
+  labelArt?: boolean;
   title?: string;
   subtitle?: string;
 };
@@ -67,6 +71,7 @@ export async function refreshDeployment(): Promise<LandingResponse | null> {
       homeView: body.homeView === "browse" ? "browse" : "scanner",
       boxNumbers: body.boxNumbers === "internal" ? "internal" : "public",
       labelPrinting: body.labelPrinting === true,
+      labelArt: body.labelArt === true,
     } satisfies Deployment);
     return body;
   } catch {

@@ -63,6 +63,17 @@ export function labelPrintToken(): string | null {
 }
 
 /**
+ * Label stock geometry, `WxH@DPI` in inches — e.g. `4x6@203`.
+ *
+ * Required to render at all: the app cannot guess what's loaded in someone's
+ * printer, and getting it wrong wastes physical material. Defaults to the
+ * common 4x6 thermal shipping label.
+ */
+export function labelSizeRaw(): string {
+  return process.env.LABEL_SIZE?.trim() || "4x6@203";
+}
+
+/**
  * The origin a printed QR must encode.
  *
  * In the browser, sticker URLs derive from `window.location.origin` — one

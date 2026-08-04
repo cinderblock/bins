@@ -42,6 +42,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { CaptureOverlay } from "~/components/CaptureOverlay";
 import { ClaimBin } from "~/components/ClaimBin";
 import { LabelSheet } from "~/components/LabelSheet";
+import { LabelPrintSheet } from "~/components/LabelSheet.print";
 import { LocationSheet } from "~/components/LocationSheet";
 import { NoteSheet } from "~/components/NoteSheet";
 import { PhotoImg, usePhotoUrl } from "~/components/PhotoImg";
@@ -114,33 +115,7 @@ export default function BinPage() {
   // allocation, so the button only appears once admin is unlocked.
   const canPrintLabel =
     deployment?.labelPrinting === true && typeof adminPassword === "string";
-  const [printing, setPrinting] = useState(false);
-
-  async function printLabel() {
-    if (typeof adminPassword !== "string" || binId === null) return;
-    setPrinting(true);
-    try {
-      const result = await apiJson<{ title: string; printed: number }>(
-        "/api/admin/bins/label",
-        {
-          method: "POST",
-          body: JSON.stringify({ adminPassword, binId, includeDetails: false }),
-        },
-      );
-      notifications.show({
-        message: `Printing label for "${result.title}"`,
-        color: "green",
-      });
-    } catch (err) {
-      // Surface the printer's own words — "out of paper" beats "failed".
-      notifications.show({
-        message: err instanceof Error ? err.message : String(err),
-        color: "red",
-      });
-    } finally {
-      setPrinting(false);
-    }
-  }
+  const [labelOpen, setLabelOpen] = useState(false);
 
   const [noteOpen, setNoteOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
@@ -255,9 +230,8 @@ export default function BinPage() {
               size="xs"
               variant="light"
               radius="xl"
-              loading={printing}
               leftSection={<IconPrinter size={16} />}
-              onClick={() => void printLabel()}
+              onClick={() => setLabelOpen(true)}
             >
               Label
             </Button>
@@ -498,6 +472,16 @@ export default function BinPage() {
         opened={locationOpen}
         onClose={() => setLocationOpen(false)}
       />
+      {canPrintLabel && typeof adminPassword === "string" && (
+        <LabelPrintSheet
+          binId={bin.id}
+          adminPassword={adminPassword}
+          artAvailable={deployment?.labelArt === true}
+          opened={labelOpen}
+          onClose={() => setLabelOpen(false)}
+        />
+      )}
+
       <LabelSheet
         binId={bin.id}
         labelIds={bin.labelIds}
