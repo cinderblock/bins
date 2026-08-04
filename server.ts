@@ -40,6 +40,22 @@ function serveAsset(pathname: string): Response | undefined {
   return new Response(file, { headers: { "Cache-Control": cacheControl } });
 }
 
+/**
+ * A build artifact path is ALWAYS an asset request, so a missing one is a 404
+ * — never the SPA shell.
+ *
+ * Falling through to the shell here is what turned a stale service worker into
+ * a permanently blank app: every deploy rehashes the assets, an installed SW
+ * kept serving the previous index.html, that shell asked for chunks which no
+ * longer exist, and the server answered each one with `index.html` and a 200.
+ * The browser then tried to execute HTML as a JavaScript module, hydration
+ * never completed, and the page sat on the loading fallback forever with
+ * nothing obviously wrong. A 404 makes that failure loud and recoverable.
+ */
+function isBuildArtifact(pathname: string): boolean {
+  return pathname.startsWith("/assets/");
+}
+
 // The SPA shell — served for every non-asset, non-API GET so client routes
 // like /123 resolve. Must never be cached long: it references hashed assets.
 function serveShell(): Response {
@@ -71,6 +87,15 @@ Bun.serve({
     if (req.method === "GET" || req.method === "HEAD") {
       const asset = serveAsset(url.pathname);
       if (asset) return asset;
+      // A missing build artifact is a 404, never the shell — see
+      // isBuildArtifact. Serving HTML here strands any client holding a stale
+      // asset list (an out-of-date service worker) on a blank page forever.
+      if (isBuildArtifact(url.pathname)) {
+        return new Response("not found", {
+          status: 404,
+          headers: { "Cache-Control": "no-store" },
+        });
+      }
       return serveShell();
     }
 

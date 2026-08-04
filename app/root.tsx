@@ -16,6 +16,7 @@ import {
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
 
+import { useEffect } from "react";
 import type { Route } from "./+types/root";
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
 
@@ -67,7 +68,51 @@ export default function App() {
 }
 
 // Shown while the SPA boots (SPA mode renders this into index.html).
+/**
+ * How long to wait before deciding the app has failed to boot. Generous: a
+ * cold cache on a slow phone over a busy LAN can legitimately take a few
+ * seconds, and a false trigger costs a reload.
+ */
+const BOOT_TIMEOUT_MS = 10_000;
+const BOOT_RECOVERY_KEY = "bins:boot-recovery";
+
 export function HydrateFallback() {
+  // Self-heal a stale service worker.
+  //
+  // Every deploy rehashes the assets. An installed SW keeps serving the
+  // index.html it precached, that shell asks for chunks which no longer
+  // exist, and the app never hydrates — leaving this fallback on screen
+  // forever. The update prompt that would replace the SW is a component
+  // INSIDE the app, so it never gets to run: the fix is trapped behind the
+  // thing it fixes. This is the only code that still runs in that state.
+  //
+  // Safe to be aggressive here: the caches hold the precached shell and
+  // re-fetchable photo bytes. All real data — the replica, the op outbox,
+  // pending photos — lives in IndexedDB and is untouched.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void (async () => {
+        // Once per tab. A reload loop would be worse than a stuck page.
+        if (sessionStorage.getItem(BOOT_RECOVERY_KEY)) return;
+        // Offline is a legitimate reason to be slow, and dropping the
+        // precache while offline would turn a delay into a dead app.
+        if (!navigator.onLine) return;
+        sessionStorage.setItem(BOOT_RECOVERY_KEY, "1");
+        try {
+          const registrations =
+            (await navigator.serviceWorker?.getRegistrations()) ?? [];
+          await Promise.all(registrations.map((r) => r.unregister()));
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        } catch {
+          // Even if teardown fails, the reload is still worth attempting.
+        }
+        location.reload();
+      })();
+    }, BOOT_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <div
       style={{
