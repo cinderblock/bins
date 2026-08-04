@@ -38,6 +38,12 @@ where.
 - **Photos done right**: on-device downscale (~300 KB), content-addressed
   (sha256) storage, latest top-down shot automatically becomes the bin's
   primary picture.
+- **Deleting is undoable, for everyone**: deleting a photo or note offers an
+  Undo toast, and every bin page keeps a collapsed "N deleted" section you can
+  restore from later — including something a housemate deleted on their
+  phone last week. Nothing is really erased: the op log is append-only and
+  photo blobs are never garbage-collected, so a restore is just another op
+  that syncs to every device.
 - **Phone-first, desktop-aware**: phones boot straight into the live
   scanner; desktops get an opt-in camera (type a bin number instead — the
   webcam faces you, not the boxes), centered page columns instead of

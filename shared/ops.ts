@@ -137,6 +137,18 @@ export const clientOpSchema = z.discriminatedUnion("type", [
     binId,
     payload: z.object({ entryOpId: z.string().uuid() }),
   }),
+  /**
+   * Undelete — the undo half of entry.remove. Deletion is a LWW boolean, not a
+   * one-way door: a photo someone deleted by accident can be brought back on
+   * EVERY device, not just the one that deleted it. Any member may restore,
+   * same as any member may remove (see reducer.ts for the convergence rules).
+   */
+  z.object({
+    ...opBase,
+    type: z.literal("entry.restore"),
+    binId,
+    payload: z.object({ entryOpId: z.string().uuid() }),
+  }),
   z.object({
     ...opBase,
     type: z.literal("location.upsert"),

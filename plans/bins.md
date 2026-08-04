@@ -453,6 +453,31 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   secretCode; write token authors ops attributed to the integration label;
   CORS preflight + real-response allowlist (listed echoes origin, unlisted gets
   nothing); revoke kills the token. Feature COMPLETE.
+- [x] **Undo for deleted photos/notes** (2026-08-04, user question: "if a user
+  deletes a picture — is there a way to undo, on others' devices?"; answer at
+  the time was NO, then "add all 3"). Deletion stops being a one-way door:
+  1. **`entry.restore` op** (client-authorable, any member — same bar as
+     delete). Entry deletion is now LWW on its own `deletedClock`, exactly like
+     a bin's retire/restore on the `status` clock, instead of the old
+     first-write-wins-and-terminal `if (entry.deletedByOpId) return`. So a
+     remove and a restore racing from two devices converge on the later one in
+     any arrival order. Migration 0006 adds `bin_entry.deleted_clock`; Dexie
+     v4 backfills the column to null.
+  2. **Undo toast** (`app/lib/undo.tsx`, `deleteEntryWithUndo`) — 8s,
+     bottom-center, with an Undo button. NO confirm dialog: a confirm taxes
+     the common case and is useless against the real failure (a phone
+     mis-tap, dismissed as reflexively as it appeared). Undo authors a fresh
+     restore op, so an already-pushed delete and one still in the outbox take
+     the identical path.
+  3. **"N deleted" section** on the bin page (`DeletedEntries.tsx`), collapsed
+     by default, listing deleted photos/notes with Restore — the escape hatch
+     once the toast is gone, including for someone else's delete.
+  Also: bottom-center toasts now sit above the fixed bottom controls
+  (`TOAST_BOTTOM` in `lib/ui.ts`) — they previously rendered ON the bin page's
+  ActionBar, which put the Undo button exactly where "Note" is. Tests: 4
+  reducer convergence + 1 API round-trip (70 pass). Verified in a browser on
+  an isolated dev instance: delete→Undo, delete→Deleted→Restore, primary photo
+  recompute both ways, and the v3→v4 Dexie upgrade on a seeded pre-undo db.
 - [ ] Phase 5 — AI embellishment: server job (gated on ANTHROPIC_API_KEY) runs
   Claude vision over new contents photos → server-authored `bin.aiItems` ops →
   feeds search for free. Schema/op type not yet defined.
@@ -526,6 +551,24 @@ scanner card (the opt-in card feels fine so far).
   fold as **min** over ops (get-or-create stamping breaks order-independence);
   entry.remove arriving before its entry.add must still touch the bin's
   updatedAt (tombstone branch calls refreshDerived too).
+- **A LOSING op must still fold its time into the bin.** `entry.remove`'s old
+  early return (`if (entry.deletedByOpId) return`) skipped `refreshDerived`
+  for the loser, and because createdAt folds as **min**, that made createdAt
+  depend on arrival order — a latent divergence that predated undo and only
+  became reachable once remove/restore could compete. The remove/restore case
+  now calls refreshDerived unconditionally; a reducer test locks it in.
+- **Entry stubs can now be LIVE.** A remove-before-add left a contentless stub;
+  a restore-before-add leaves one too, but not deleted — so `!deletedByOpId`
+  no longer implies "renderable". Anything listing entries to a human must
+  also check `hasContent()` (bin page, BinPeek, `/api/v1/bins/:id`).
+- **Legacy tombstones carry a null `deletedClock` on purpose.** The server
+  could backfill it from the op log; the client can't (no local op log). One
+  side honoring a clock the other never learned would diverge, so NEITHER
+  backfills — any later verdict wins on both. Safe in practice: every restore
+  op is authored after this shipped, so it out-clocks any legacy delete.
+- **Mantine notifications render ~20px below their own fixed container**, so
+  `bottom: <bar height>` is not enough to clear a fixed bottom bar. See
+  `TOAST_BOTTOM`; re-measure in a browser rather than eyeballing it.
 - `<img>` can't send the bearer header → photos are fetched via
   authenticated `fetch` and cached as blobs in Dexie (`getPhotoBlob`), which
   doubles as the offline photo cache for other devices' photos.

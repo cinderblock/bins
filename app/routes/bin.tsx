@@ -25,6 +25,7 @@ import {
 import { useDocumentTitle, useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import type { EntryState } from "@shared/reducer";
+import { hasContent } from "@shared/reducer";
 import {
   IconArchive,
   IconArrowLeft,
@@ -41,13 +42,13 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { CaptureOverlay } from "~/components/CaptureOverlay";
 import { ClaimBin } from "~/components/ClaimBin";
+import { DeletedEntries } from "~/components/DeletedEntries";
 import { LabelSheet } from "~/components/LabelSheet";
 import { LabelPrintSheet } from "~/components/LabelSheet.print";
 import { LocationSheet } from "~/components/LocationSheet";
 import { NoteSheet } from "~/components/NoteSheet";
 import { PhotoImg, usePhotoUrl } from "~/components/PhotoImg";
 import { SyncBadge } from "~/components/SyncBadge";
-import { removeEntry } from "~/lib/actions";
 import { useAdminPassword } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { db } from "~/lib/db";
@@ -55,9 +56,8 @@ import { useDeployment } from "~/lib/deployment";
 import { relativeTime } from "~/lib/format";
 import { formatWeight, labelColor } from "~/lib/labels";
 import { syncNow } from "~/lib/sync";
-import { PAGE_MAXW, PHONE_MEDIA } from "~/lib/ui";
-
-const ACTION_BAR_HEIGHT = 88;
+import { ACTION_BAR_HEIGHT, PAGE_MAXW, PHONE_MEDIA } from "~/lib/ui";
+import { deleteEntryWithUndo } from "~/lib/undo";
 
 export default function BinPage() {
   const params = useParams();
@@ -71,11 +71,15 @@ export default function BinPage() {
     [binId],
     undefined,
   );
-  const entries = useLiveQuery(
+  // Live AND deleted in one query — the deleted ones feed the recovery
+  // section below. Contentless rows are remove/restore stubs whose entry.add
+  // hasn't synced yet (see shared/reducer.ts); there's nothing to show for
+  // either state until it does.
+  const allEntries = useLiveQuery(
     async () =>
       binId !== null
         ? (await db.entries.where("binId").equals(binId).toArray())
-            .filter((e) => !e.deletedByOpId)
+            .filter(hasContent)
             .sort((a, b) => b.effectiveTime - a.effectiveTime)
         : [],
     [binId],
@@ -164,6 +168,8 @@ export default function BinPage() {
     );
   }
 
+  const entries = allEntries.filter((e) => !e.deletedByOpId);
+  const deleted = allEntries.filter((e) => e.deletedByOpId);
   const photos = entries.filter((e) => e.photoHash);
   const notes = entries.filter((e) => e.kind === "note");
 
@@ -384,7 +390,9 @@ export default function BinPage() {
                       variant="subtle"
                       color="gray"
                       size="sm"
-                      onClick={() => void removeEntry(bin.id, note.id)}
+                      onClick={() =>
+                        deleteEntryWithUndo(bin.id, note.id, "Note")
+                      }
                       aria-label="Delete note"
                     >
                       <IconTrash size={14} />
@@ -394,6 +402,9 @@ export default function BinPage() {
               ))}
             </Stack>
           )}
+
+          {/* Recovery: anything deleted on any device, restorable for all */}
+          <DeletedEntries entries={deleted} authors={authors} />
         </Stack>
       )}
 
@@ -535,7 +546,11 @@ function Lightbox({
         variant="light"
         leftSection={<IconTrash size={16} />}
         onClick={() => {
-          void removeEntry(entry.binId, entry.id);
+          deleteEntryWithUndo(
+            entry.binId,
+            entry.id,
+            entry.kind === "contents_photo" ? "Contents photo" : "Item photo",
+          );
           onDeleted();
         }}
       >

@@ -1,0 +1,1 @@
+ALTER TABLE `bin_entry` ADD `deleted_clock` text;

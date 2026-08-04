@@ -124,6 +124,21 @@ db.version(3)
       }),
   );
 
+// v4: entries gain `deletedClock` (delete/undelete is now LWW — see
+// shared/reducer.ts). No index changes, so no `.stores()` — Dexie carries v3's
+// schema forward. Rows deleted before undo shipped get null, matching the
+// server's own un-backfilled rows: both sides then treat any later verdict as
+// the winner, so the two replicas stay in step rather than one honoring a
+// clock the other never learned.
+db.version(4).upgrade((tx) =>
+  tx
+    .table("entries")
+    .toCollection()
+    .modify((row: Record<string, unknown>) => {
+      if (row.deletedClock === undefined) row.deletedClock = null;
+    }),
+);
+
 export async function getMeta<T>(key: string): Promise<T | undefined> {
   const row = await db.meta.get(key);
   return row?.value as T | undefined;

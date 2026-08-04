@@ -252,6 +252,91 @@ describe("api", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("a deleted photo can be undone, and the undo reaches other devices", async () => {
+    const { eq } = await import("drizzle-orm");
+    const hash = "b".repeat(64);
+    const photoOpId = uuid();
+    // Strictly increasing so the LWW verdict order is the one under test and
+    // not a same-millisecond opId tiebreak.
+    const t0 = Date.now();
+    const primaryHash = async () =>
+      (await db.query.bin.findFirst({ where: eq(schema.bin.id, binId) }))
+        ?.primaryPhotoHash;
+    const v1EntryIds = async () => {
+      const res = await call("GET", `/api/v1/bins/${binId}`, { token: tokenA });
+      const body = (await res.json()) as { entries: { id: string }[] };
+      return body.entries.map((e) => e.id);
+    };
+
+    const add = await call("POST", "/api/sync/push", {
+      token: tokenA,
+      body: {
+        ops: [
+          {
+            opId: photoOpId,
+            type: "entry.addPhoto",
+            binId,
+            payload: { hash, kind: "contents_photo", mime: "image/jpeg" },
+            clientTime: t0,
+          },
+        ],
+      },
+    });
+    expect(add.status).toBe(200);
+    expect(await primaryHash()).toBe(hash);
+    expect(await v1EntryIds()).toContain(photoOpId);
+
+    // Device B deletes it — the derived primary falls away with it.
+    const remove = await call("POST", "/api/sync/push", {
+      token: tokenB,
+      body: {
+        ops: [
+          {
+            opId: uuid(),
+            type: "entry.remove",
+            binId,
+            payload: { entryOpId: photoOpId },
+            clientTime: t0 + 1,
+          },
+        ],
+      },
+    });
+    expect(remove.status).toBe(200);
+    expect(await primaryHash()).toBeNull();
+    expect(await v1EntryIds()).not.toContain(photoOpId);
+
+    // Device A — which did NOT delete it — undoes the delete.
+    const restore = await call("POST", "/api/sync/push", {
+      token: tokenA,
+      body: {
+        ops: [
+          {
+            opId: uuid(),
+            type: "entry.restore",
+            binId,
+            payload: { entryOpId: photoOpId },
+            clientTime: t0 + 2,
+          },
+        ],
+      },
+    });
+    expect(restore.status).toBe(200);
+    expect(await primaryHash()).toBe(hash);
+    expect(await v1EntryIds()).toContain(photoOpId);
+
+    // The tombstone is cleared on the row, and the restore is a real op every
+    // other device pulls — not a local un-hide.
+    const entry = await db.query.binEntry.findFirst({
+      where: eq(schema.binEntry.id, photoOpId),
+    });
+    expect(entry?.deletedByOpId).toBeNull();
+    expect(entry?.deletedClock).toBeTruthy();
+
+    const pull = await call("GET", "/api/sync/pull?since=0", { token: tokenB });
+    const pulled = (await pull.json()) as { ops: { type: string }[] };
+    expect(pulled.ops.map((o) => o.type)).toContain("entry.restore");
+  });
+
   test("secret codes fold look-alike glyphs when read", async () => {
     const { normalizeSecretCode } = await import("../shared/ops");
     // O/Q → 0, I/L → 1; case- and whitespace-insensitive.

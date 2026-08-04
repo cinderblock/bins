@@ -19,6 +19,7 @@ import "@mantine/notifications/styles.css";
 import { useEffect } from "react";
 import type { Route } from "./+types/root";
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
+import { TOAST_BOTTOM } from "./lib/ui";
 
 // Paint the right background on the very first frame (before JS/CSS), so a
 // dark-mode phone never flashes white. Dark is the app default — this tool
@@ -51,8 +52,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <body>
         <MantineProvider defaultColorScheme="dark">
           {/* Bottom-center: toasts land in the thumb/glance zone, confirming
-              fast-flow actions ("Photo saved") without reaching. */}
-          <Notifications position="bottom-center" />
+              fast-flow actions ("Photo saved") without reaching — but lifted
+              clear of the fixed bottom controls they'd otherwise cover. */}
+          <Notifications
+            position="bottom-center"
+            style={{ bottom: TOAST_BOTTOM }}
+          />
           <PwaUpdatePrompt />
           {children}
         </MantineProvider>

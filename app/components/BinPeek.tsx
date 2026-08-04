@@ -5,6 +5,7 @@
  * retire) belongs to the full bin page, one tap on the header away.
  */
 import { ActionIcon, Badge, Group, Paper, Stack, Text } from "@mantine/core";
+import { hasContent } from "@shared/reducer";
 import {
   IconChevronDown,
   IconChevronRight,
@@ -31,7 +32,8 @@ export function BinPeek({
   const entries = useLiveQuery(
     async () =>
       (await db.entries.where("binId").equals(binId).toArray())
-        .filter((e) => !e.deletedByOpId)
+        // hasContent skips remove/restore stubs awaiting their entry.add.
+        .filter((e) => !e.deletedByOpId && hasContent(e))
         .sort((a, b) => b.effectiveTime - a.effectiveTime),
     [binId],
     [],

@@ -58,6 +58,21 @@ export async function removeEntry(binId: number, entryOpId: string) {
 }
 
 /**
+ * Undo a removeEntry — a fresh op, not a retraction of the old one. The log is
+ * append-only, so undoing a delete that already pushed and undoing one still
+ * sitting in the outbox take the identical path, and either way the undo
+ * reaches the rest of the group.
+ */
+export async function restoreEntry(binId: number, entryOpId: string) {
+  await enqueueOp({
+    ...stamp(),
+    type: "entry.restore",
+    binId,
+    payload: { entryOpId },
+  });
+}
+
+/**
  * Photo entry: rendition blob rows land BEFORE the op (if the op enqueue then
  * failed, orphan blobs are harmless and content-addressed, so a retry reuses
  * them). Upload ordering and local retention are driven by each row's role.

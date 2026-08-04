@@ -9,7 +9,7 @@
  * The sticker `secretCode` is deliberately NEVER exposed here — a read token
  * embedded in a front-end must not leak the codes that mint device tokens.
  */
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { db, schema } from "../db/client.server";
 import { type Ctx, error, json } from "./context";
 
@@ -56,6 +56,10 @@ async function getBin(ctx: Ctx, binId: number): Promise<Response> {
       eq(schema.binEntry.groupId, ctx.groupId),
       eq(schema.binEntry.binId, binId),
       isNull(schema.binEntry.deletedByOpId),
+      // Skip remove/restore stubs whose entry.add hasn't landed yet — a
+      // restored stub is live but has no content to hand out until it does
+      // (see shared/reducer.ts).
+      or(isNotNull(schema.binEntry.photoHash), isNotNull(schema.binEntry.text)),
     ),
     orderBy: [desc(schema.binEntry.effectiveTime), desc(schema.binEntry.id)],
   });

@@ -215,6 +215,128 @@ describe("reducer convergence", () => {
     expect(snapshot).toContain(`"deletedByOpId"`);
   });
 
+  test("entry.restore undoes a remove and brings the primary photo back", async () => {
+    const hashA = "a".repeat(64);
+    const hashB = "b".repeat(64);
+    const add1 = op({
+      type: "entry.addPhoto",
+      effectiveTime: 200,
+      payload: { hash: hashA, kind: "contents_photo", mime: "image/jpeg" },
+    });
+    const add2 = op({
+      type: "entry.addPhoto",
+      effectiveTime: 300,
+      payload: { hash: hashB, kind: "contents_photo", mime: "image/jpeg" },
+    });
+    const ops = [
+      add1,
+      add2,
+      op({
+        type: "entry.remove",
+        effectiveTime: 400,
+        payload: { entryOpId: add2.opId },
+      }),
+      // The undo, from a DIFFERENT device than the one that deleted it.
+      op({
+        type: "entry.restore",
+        deviceId: "device-b",
+        effectiveTime: 500,
+        payload: { entryOpId: add2.opId },
+      }),
+    ] as CanonicalOp[];
+    const snapshot = await expectConvergence(ops);
+    // Restore (500) is the latest verdict -> add2 is live again and is once
+    // more the newest contents shot.
+    expect(snapshot).toContain(`"primaryPhotoHash":"${hashB}"`);
+    expect(snapshot).not.toContain(`"deletedByOpId":"`);
+  });
+
+  test("a stale restore loses to a later remove (LWW, not last-arrived)", async () => {
+    const hash = "a".repeat(64);
+    const add = op({
+      type: "entry.addPhoto",
+      effectiveTime: 200,
+      payload: { hash, kind: "contents_photo", mime: "image/jpeg" },
+    });
+    const ops = [
+      add,
+      // An offline device's undo (300) surfacing AFTER someone else's
+      // considered delete (400) must not resurrect the entry.
+      op({
+        type: "entry.restore",
+        deviceId: "device-b",
+        effectiveTime: 300,
+        payload: { entryOpId: add.opId },
+      }),
+      op({
+        type: "entry.remove",
+        effectiveTime: 400,
+        payload: { entryOpId: add.opId },
+      }),
+    ] as CanonicalOp[];
+    const snapshot = await expectConvergence(ops);
+    expect(snapshot).toContain(`"deletedByOpId":"`);
+    expect(snapshot).toContain(`"primaryPhotoHash":null`);
+  });
+
+  test("remove/restore before the add: stub carries the verdict either way", async () => {
+    const hash = "a".repeat(64);
+    const entryOpId = fakeUuid();
+    const ops = [
+      op({
+        type: "entry.remove",
+        effectiveTime: 300,
+        payload: { entryOpId },
+      }),
+      op({
+        type: "entry.restore",
+        effectiveTime: 400,
+        payload: { entryOpId },
+      }),
+      // The add lands last on this replica (its author was offline) and must
+      // fill the stub's content WITHOUT clobbering the restore verdict.
+      op({
+        opId: entryOpId,
+        type: "entry.addPhoto",
+        effectiveTime: 200,
+        payload: { hash, kind: "contents_photo", mime: "image/jpeg" },
+      }),
+    ] as CanonicalOp[];
+    const snapshot = await expectConvergence(ops);
+    expect(snapshot).toContain(`"photoHash":"${hash}"`);
+    expect(snapshot).toContain(`"primaryPhotoHash":"${hash}"`);
+    expect(snapshot).not.toContain(`"deletedByOpId":"`);
+  });
+
+  test("a LOSING remove still folds the bin's created/updated clocks", async () => {
+    // Regression guard: an entry verdict that loses LWW must still contribute
+    // its time to the bin, because createdAt folds as MIN — skipping the loser
+    // makes createdAt depend on arrival order (it did, before undo landed).
+    const hash = "a".repeat(64);
+    const add = op({
+      type: "entry.addPhoto",
+      effectiveTime: 200,
+      payload: { hash, kind: "contents_photo", mime: "image/jpeg" },
+    });
+    const ops = [
+      add,
+      // Earlier than everything else, and doomed to lose to the 500 restore.
+      op({
+        type: "entry.remove",
+        effectiveTime: 100,
+        payload: { entryOpId: add.opId },
+      }),
+      op({
+        type: "entry.restore",
+        effectiveTime: 500,
+        payload: { entryOpId: add.opId },
+      }),
+    ] as CanonicalOp[];
+    const snapshot = await expectConvergence(ops);
+    expect(snapshot).toContain(`"createdAt":100`);
+    expect(snapshot).toContain(`"updatedAt":500`);
+  });
+
   test("notes append and survive any ordering", async () => {
     const ops = [
       op({

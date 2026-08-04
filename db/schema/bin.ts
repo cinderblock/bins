@@ -66,6 +66,8 @@ export const binEntry = sqliteTable(
     geoLng: real("geo_lng"),
     geoAcc: real("geo_acc"),
     deletedByOpId: text("deleted_by_op_id"),
+    /** LWW clock of the last entry.remove/entry.restore (see shared/reducer.ts). */
+    deletedClock: text("deleted_clock"),
   },
   (t) => [
     index("bin_entry_bin").on(t.binId),

@@ -7,9 +7,14 @@
  * Convergence design (ops may be applied in ANY order and re-applied):
  * - Scalar fields are last-writer-wins, compared by (effectiveTime, opId) per
  *   field, tracked in `fieldClocks`. Re-applying the winning op is a no-op.
- * - Entries (photos/notes) are keyed by opId — append-only, order-free.
- * - An entry.remove for a not-yet-seen entry leaves a tombstone stub; the add
- *   arriving later fills the fields but stays deleted.
+ * - Entries (photos/notes) are keyed by opId — append-only, order-free. Their
+ *   ONE mutable bit is deletion, which is LWW on its own `deletedClock`
+ *   (entry.remove / entry.restore compete like any field), so an undo
+ *   propagates to every device instead of being a one-way door.
+ * - An entry.remove for a not-yet-seen entry leaves a CONTENTLESS stub carrying
+ *   the verdict; the add arriving later fills the fields and keeps it. Such a
+ *   stub can also be live (restore-before-add), so consumers must skip entries
+ *   with no content rather than assume "not deleted" means "renderable".
  * - The primary photo is DERIVED — latest non-deleted contents_photo by
  *   (effectiveTime, id) — never a settable field, so it cannot conflict.
  */
@@ -68,6 +73,14 @@ export interface EntryState {
   geoAcc: number | null;
   /** Tombstone: opId of the entry.remove that deleted this entry. */
   deletedByOpId: string | null;
+  /**
+   * LWW clock of the last entry.remove/entry.restore applied — deletion is the
+   * only mutable bit on an entry, so it gets a single clock rather than the
+   * `fieldClocks` map the multi-field entities carry. Null means no
+   * remove/restore has been seen (or the row predates undo support, in which
+   * case any later verdict wins — see plans/bins.md).
+   */
+  deletedClock: string | null;
 }
 
 export interface LocationState {
@@ -262,19 +275,24 @@ export async function applyOp(
         geoLng: op.geo?.lng ?? null,
         geoAcc: op.geo?.acc ?? null,
         deletedByOpId: existing?.deletedByOpId ?? null,
+        deletedClock: existing?.deletedClock ?? null,
       });
       await refreshDerived(store, op.binId, op.effectiveTime);
       return;
     }
 
-    case "entry.remove": {
+    case "entry.remove":
+    case "entry.restore": {
+      // Delete/undelete is LWW on `deletedClock`, the same way retire/restore
+      // compete on a bin's `status` clock — so the two racing from different
+      // devices converge on the later one whatever order they arrive in, and a
+      // re-applied op is a no-op.
+      const clock = clockOf(op);
+      const deleted = op.type === "entry.remove";
       const entry = await store.getEntry(op.payload.entryOpId);
-      if (entry) {
-        if (entry.deletedByOpId) return;
-        await store.putEntry({ ...entry, deletedByOpId: op.opId });
-        await refreshDerived(store, entry.binId, op.effectiveTime);
-      } else {
-        // Tombstone stub: the add hasn't been seen yet (kind is provisional).
+      if (!entry) {
+        // Stub: the add hasn't been seen yet, so kind/content are provisional
+        // (contentless until the add lands — consumers skip those).
         await store.putEntry({
           id: op.payload.entryOpId,
           binId: op.binId,
@@ -289,10 +307,21 @@ export async function applyOp(
           geoLat: null,
           geoLng: null,
           geoAcc: null,
-          deletedByOpId: op.opId,
+          deletedByOpId: deleted ? op.opId : null,
+          deletedClock: clock,
         });
-        await refreshDerived(store, op.binId, op.effectiveTime);
+      } else if (wins(clock, entry.deletedClock ?? undefined)) {
+        await store.putEntry({
+          ...entry,
+          deletedByOpId: deleted ? op.opId : null,
+          deletedClock: clock,
+        });
       }
+      // Unconditionally — even for a LOSING verdict. refreshDerived folds the
+      // op's time into the bin's createdAt (min) / updatedAt (max), and min is
+      // only order-independent if every op contributes; skipping the loser
+      // makes createdAt depend on arrival order.
+      await refreshDerived(store, entry?.binId ?? op.binId, op.effectiveTime);
       return;
     }
 
@@ -394,6 +423,16 @@ async function refreshDerived(store: StateStore, binId: number, time: number) {
   bin.primaryPhotoHash = latest?.photoHash ?? null;
   bin.primaryThumbHash = latest?.thumbHash ?? null;
   await store.putBin(bin);
+}
+
+/**
+ * Does this entry carry real content, as opposed to being a remove/restore
+ * stub whose entry.add hasn't arrived yet? A stub can be LIVE (a restore that
+ * outran its add), so `!deletedByOpId` alone doesn't mean "renderable" —
+ * anything that lists entries to a human must check this too.
+ */
+export function hasContent(entry: EntryState): boolean {
+  return Boolean(entry.photoHash || entry.text);
 }
 
 /** Comparator implementing the (effectiveTime, id) order for entries. */
