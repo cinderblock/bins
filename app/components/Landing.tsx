@@ -1,12 +1,21 @@
 /**
- * Signed-out landing for non-sticker URLs: pure branding, no entry form —
- * scanning a sticker IS the login. Branding is served by the API (the repo
- * stays tenant-agnostic); a fresh database redirects to first-boot /setup.
+ * Signed-out landing for non-sticker URLs. Scanning a sticker IS the login,
+ * so this is mostly branding — but it is also where someone lands who typed a
+ * box URL off a sticker without its code, or followed a link from a friend,
+ * and a page that only shows a logo reads as "this app is broken".
+ *
+ * So: when the URL names a box, say which box and what opens it; and always
+ * offer the access-code route (user decision 2026-08-04, superseding the
+ * earlier "no entry form on the landing" call). The form itself still lives
+ * only at /join — this links there and hands back the page to return to.
+ *
+ * Branding is served by the API (the repo stays tenant-agnostic); a fresh
+ * database redirects to first-boot /setup.
  */
-import { Stack, Text, Title } from "@mantine/core";
+import { Anchor, Paper, Stack, Text, Title } from "@mantine/core";
 import { IconQrcode } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 
 type Branding = { title: string; subtitle: string };
 
@@ -15,8 +24,9 @@ const FALLBACK: Branding = {
   subtitle: "Scan a Box to Start",
 };
 
-export function Landing() {
+export function Landing({ binId }: { binId?: number }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [branding, setBranding] = useState<Branding | null>(null);
 
   useEffect(() => {
@@ -51,6 +61,26 @@ export function Landing() {
       <Text size="xl" c="dimmed">
         {branding.subtitle}
       </Text>
+      {binId != null && (
+        <Paper p="md" radius="lg" withBorder maw={420} w="100%">
+          <Stack gap={6}>
+            <Text fw={600}>Box #{binId}</Text>
+            <Text size="sm" c="dimmed">
+              This device hasn’t joined yet. Scan the QR code on the box —
+              that’s what signs you in — and it opens straight to this page.
+            </Text>
+          </Stack>
+        </Paper>
+      )}
+      <Anchor
+        component={Link}
+        to="/join"
+        state={{ next: `${location.pathname}${location.search}` }}
+        c="dimmed"
+        size="sm"
+      >
+        I have an access code
+      </Anchor>
     </Stack>
   );
 }

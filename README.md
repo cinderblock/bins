@@ -26,9 +26,10 @@ where.
   fuzzy ("sharpee" finds the Sharpies).
 - **No accounts**: scanning any sticker once IS the login — pick a display
   name and you're in. Signed-out visitors on any other URL get a branded
-  landing page (title/subtitle set per group; the shared access code lives
-  only at an unlinked `/join` as the bootstrap path). One deploy hosts many
-  groups (`group_id` on every tenant table).
+  landing page (title/subtitle set per group) that names the box they were
+  after, if any, and offers the shared access code as the quiet second way
+  in (`/join`, also the bootstrap path and the invite-link target). One
+  deploy hosts many groups (`group_id` on every tenant table).
 - **First-boot setup & admin**: a fresh database greets the first visitor
   with a setup wizard (group name, landing branding, access code, admin
   password) that also joins them as the first member. A password-gated admin
@@ -41,6 +42,8 @@ where.
   scanner; desktops get an opt-in camera (type a bin number instead — the
   webcam faces you, not the boxes), centered page columns instead of
   stretched mobile layouts, and dialogs where phones get bottom sheets.
+  Touch devices get finger-sized targets and tappable buttons in place of
+  keyboard-only affordances — never a decorative icon that looks pressable.
 
 ## Stack
 

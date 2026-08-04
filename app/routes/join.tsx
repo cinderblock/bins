@@ -1,8 +1,9 @@
 /**
- * The UNLINKED access-code join — nothing in the UI points here. It exists
- * as the bootstrap path (someone must be a member before the first stickers
- * can be allocated) and as a fallback for operators. Everyone else joins by
- * scanning a sticker.
+ * Access-code join: the bootstrap path (someone must be a member before the
+ * first stickers can be allocated), the invite-link target, and the fallback
+ * for anyone who reached a box URL without its sticker code. Most people
+ * still join by scanning a sticker — the landing offers this as the quiet
+ * second option and passes the page to return to in `location.state.next`.
  */
 import {
   Button,
@@ -18,7 +19,7 @@ import {
 import { useDocumentTitle } from "@mantine/hooks";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
-import { Navigate } from "react-router";
+import { Navigate, useLocation } from "react-router";
 import { adoptIdentity } from "~/lib/auth";
 import { IDENTITY_KEY, type Identity, db } from "~/lib/db";
 import { rememberAccessCode } from "~/lib/invite";
@@ -43,9 +44,13 @@ export default function Join() {
   const [geoOk, setGeoOk] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Where to land once joined — the box page someone was trying to reach when
+  // the landing sent them here. Only same-origin paths; never a raw URL.
+  const state = useLocation().state as { next?: string } | null;
+  const next = state?.next && /^\/(?!\/)/.test(state.next) ? state.next : "/";
 
   if (identity === undefined) return null;
-  if (identity !== null) return <Navigate to="/" replace />;
+  if (identity !== null) return <Navigate to={next} replace />;
 
   async function join() {
     setBusy(true);

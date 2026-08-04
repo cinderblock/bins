@@ -17,3 +17,14 @@ export const PHONE_MEDIA = "(max-width: 48em)";
  * is a desktop whose camera faces the user — scanning is opt-in there.
  */
 export const DESKTOP_MEDIA = "(hover: hover) and (pointer: fine)";
+
+/**
+ * Finger-sized treatment: a phone-width window OR any coarse pointer. Wider
+ * than PHONE_MEDIA on purpose — a tablet in landscape has a desktop-sized
+ * viewport but still needs targets you can hit with a thumb, and no hover to
+ * discover things with.
+ */
+export const TOUCH_MEDIA = `${PHONE_MEDIA}, (pointer: coarse)`;
+
+/** Minimum comfortable tap target (px) — iOS HIG's 44pt. */
+export const TOUCH_TARGET = 44;

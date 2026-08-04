@@ -68,8 +68,11 @@ export default function Shell() {
     // Perimeter-protected deployment: reaching the app at all is the proof of
     // access, so ask for a name instead of showing a dead-end landing page.
     if (deployment.openAccess) return <FirstRun sticker={null} />;
-    // Everything else: branded landing — no entry form, scan a box to start.
-    return <Landing />;
+    // Everything else: branded landing. A bare `/{id}` (a box URL typed or
+    // shared without its sticker code) grants nothing by design, but it does
+    // tell us WHICH box the visitor wanted — worth saying, instead of
+    // dropping them on generic branding with no idea what went wrong.
+    return <Landing binId={target?.binId} />;
   }
   return (
     <>

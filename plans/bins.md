@@ -8,6 +8,10 @@ specifics. Those live in untracked `plans/local.md` (read it too if present).
 Companion plan: `plans/multi-instance.md` — running a SECOND deployment of
 the same `master` with a different trust model (open-access mode, matrix
 deploy, generic label printing, itemized contents, voice memos).
+Companion plan: `plans/mobile-ux-and-suggestions.md` — field reports from a
+live deployment: the touch revamp of the category picker + sheets, the
+landing's new way in, and the (unbuilt) member-suggests / admin-approves
+edit flow.
 
 ## Goal
 
@@ -34,8 +38,11 @@ dead zones (storage units, remote sites), merging back to the server later.
   bearer token (localStorage/Dexie, not cookies). Two ways to join (both →
   the same token): (a) scan a sticker — see "Per-bin secret codes" below —
   proof of physical access, prompts for name only; (b) the shared group access
-  code — kept as the bootstrap path, but (user decision 2026-07-06) its form
-  is NOT in the visible UI: it lives only at the unlinked `/join` route.
+  code — kept as the bootstrap path. Its form lives only at `/join`, but that
+  route is no longer unlinked: **superseded 2026-08-04** (see
+  `plans/mobile-ux-and-suggestions.md`), the landing now offers "I have an
+  access code" and hands `/join` the page to return to, because a bare
+  `/{id}` was a silent dead end for anyone without the sticker in hand.
   Signed-out visitors on non-sticker URLs see a branded LANDING page (title/
   subtitle served by `/api/landing`; defaults "{group} Inventory Management
   System" / "Scan a Box to Start"; repo stays tenant-agnostic).
