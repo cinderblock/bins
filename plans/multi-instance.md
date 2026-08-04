@@ -260,6 +260,121 @@ is harmless (different origins, and the token authorizes) but it does mean
 box numbers are not globally unique across the two instances — don't build
 anything that assumes they are.
 
+## Work item 2b — label generation moves INTO bins (supersedes part of 2)
+
+**Reversed 2026-08-03, at the user's direction, and they are right.**
+
+Work item 2 said: bins posts a SPEC, and the print service owns layout, art,
+and rasterisation. That optimised for "don't duplicate the print service's
+pipeline". The better axis is **printer independence**: if bins produces a
+finished image, then any printer that accepts an image works — a Jiose via
+LabelPi, a Brother QL, a Zebra, AirPrint, or a PDF to an office printer. A
+spec-shaped API only ever works with a service that implements that spec.
+
+It also puts generation where the DATA is. bins knows the box name, contents,
+categories and photos; a print service handed a title string knows almost
+nothing, which matters most for artwork.
+
+### The new line
+
+- **bins owns**: what goes on the label, layout, QR, artwork, and preview.
+  It emits a finished image at the target pixel geometry.
+- **The printer owns**: media handling, dithering, and printer command
+  language. Dithering stays on the device side deliberately — it depends on
+  head density, media and speed, which are properties of the printer, not of
+  the label.
+
+So bins sends a **greyscale PNG at the label's pixel size**, and the device
+does the final 1-bit conversion. `LABEL_PRINT_URL` stays; only the body
+changes from JSON to an image.
+
+### Two capabilities, not one
+
+The user's own observation, and it matters: **printing and AI art are
+different categories** and must be independently switchable.
+
+| Capability | Config | Notes |
+| --- | --- | --- |
+| Printing | printer URL/target | Can this deployment put ink on stock? |
+| Artwork | provider + key | Costs real money per image. Always optional. |
+
+Every combination is legitimate: plain title+QR labels with no art; art
+generated and viewed in-app without a printer; both; neither (today's
+default, and what a fresh self-hoster gets).
+
+### Label templates
+
+Two shapes, because the jobs differ:
+
+- **`qr`** — title + QR (+ optional art). The utility label. A box that needs
+  to be *identified* by scanning.
+- **`art`** — large artwork + title, **no QR**. Decorative. This is the Math
+  Camp case: those boxes already carry a permanent pre-printed serial sticker,
+  so a generated sticker there is illustrative, not functional. Forcing a QR
+  onto it would be redundant.
+
+### The real implementation fork: where do pixels get made?
+
+bins has NO runtime rendering capability today — `sharp` is a devDependency
+used only by `scripts/generate-icons.ts`.
+
+- **(a) satori → SVG → raster.** Pure JS/WASM, and critically **satori
+  converts text to vector paths using a font buffer bundled in the repo**. The
+  output has no font dependency at raster time, so the label is byte-identical
+  on a dev box, in CI, and on either host. This kills an entire class of bug —
+  the one that just cost time on the print server, where node-canvas has no
+  Windows binding and a missing system font renders tofu.
+- **(b) node-canvas.** Familiar API; native module. Already demonstrated not
+  to build on the Windows dev box, and depends on host fonts. Same trap.
+- **(c) Render in the browser and upload the PNG.** No server rendering deps
+  at all, and preview is free because it's the same canvas. But artwork needs
+  a server call anyway (the API key must never reach a browser), printing then
+  depends on whichever phone rendered it, and two devices with different fonts
+  produce different labels.
+
+**DECIDED 2026-08-03: (a) satori.** Deterministic output and no native
+dependency are worth more than API familiarity, and this repo is meant to be
+self-hostable by strangers on hardware we will never see.
+
+Also decided: **two templates** (`qr` and `art`), and **Math Camp gets neither
+capability for now** — build for TSL, flip Math Camp on later once it's proven.
+
+### As built (foundation, 2026-08-03)
+
+`api/labels/spec.ts` + `api/labels/render.ts`, 7 tests in `render.test.ts`.
+satori 0.29 + sharp, font from `@fontsource/inter` (`.woff`, since satori
+takes ttf/otf/woff but NOT woff2).
+
+Verified by rendering and looking at the output — which is the point of the
+approach, and was impossible with the canvas route.
+
+Gotchas hit while building it, all fixed:
+
+- **`sharp` was a devDependency.** The release deploy runs `bun install
+  --production`, which would have dropped it and crashed the renderer in
+  production while working perfectly in dev. Moved to `dependencies`.
+- **`QRCode.toDataURL` is browser-only under Bun** (same trap as the print
+  server). `toString({type:'svg'})` is pure JS; it's rasterised with nearest-
+  neighbour so module edges stay on pixel boundaries for the printer's dither.
+- **A long title was silently clipped.** The first cut used
+  `maxHeight` + `overflow: hidden`, and the width estimate was optimistic, so
+  the third line was cut in half. Both fixed: the estimate now errs high
+  (0.58 em advance, 1.25 line box) and the clip is gone entirely — a box name
+  must never be quietly truncated.
+- satori will wrap but will not SHRINK, so the size has to be chosen before
+  layout; the estimate only needs to be conservative, not exact.
+
+Still to build: the art provider, the print transport (POST the PNG), a
+preview endpoint, and wiring the "Label" button to templates.
+
+### Consequence for the print service
+
+It gets **dumber, not smarter** — eventually just "accept an image, print it".
+That is close to true already: its IPP path accepts `image/png` today. No
+spec-shaped endpoint is needed from it after all; the earlier request in
+`LabelPrinter/plans/label-api-for-bins.md` should be narrowed to "an HTTP way
+to POST an image", or dropped in favour of driving its existing IPP endpoint.
+
 ## Work item 6 — structured locations (shelves with slots)
 
 Raised by the user 2026-08-02: a warehouse has pre-labeled shelves, and a
