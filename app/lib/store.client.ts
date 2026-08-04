@@ -9,6 +9,7 @@ import type {
   LabelState,
   LocationState,
   StateStore,
+  SuggestionState,
 } from "@shared/reducer";
 import { compareEntries } from "@shared/reducer";
 import { db } from "./db";
@@ -46,6 +47,12 @@ export class DexieStateStore implements StateStore {
   }
   async putLabel(label: LabelState): Promise<void> {
     await db.labels.put(label);
+  }
+  async getSuggestion(id: string): Promise<SuggestionState | undefined> {
+    return db.suggestions.get(id);
+  }
+  async putSuggestion(suggestion: SuggestionState): Promise<void> {
+    await db.suggestions.put(suggestion);
   }
 }
 

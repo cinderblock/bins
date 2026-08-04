@@ -9,6 +9,7 @@ import type {
   LabelState,
   LocationState,
   StateStore,
+  SuggestionState,
 } from "./reducer";
 import { compareEntries } from "./reducer";
 
@@ -17,6 +18,7 @@ export class MemoryStore implements StateStore {
   entries = new Map<string, EntryState>();
   locations = new Map<string, LocationState>();
   labels = new Map<string, LabelState>();
+  suggestions = new Map<string, SuggestionState>();
 
   async getBin(id: number) {
     const bin = this.bins.get(id);
@@ -55,6 +57,13 @@ export class MemoryStore implements StateStore {
   async putLabel(label: LabelState) {
     this.labels.set(label.id, structuredClone(label));
   }
+  async getSuggestion(id: string) {
+    const suggestion = this.suggestions.get(id);
+    return suggestion ? structuredClone(suggestion) : undefined;
+  }
+  async putSuggestion(suggestion: SuggestionState) {
+    this.suggestions.set(suggestion.id, structuredClone(suggestion));
+  }
 
   /**
    * Deterministic serialization for state-equality assertions. Sorts map
@@ -81,6 +90,7 @@ export class MemoryStore implements StateStore {
         entries: sortByKey(this.entries),
         locations: sortByKey(this.locations),
         labels: sortByKey(this.labels),
+        suggestions: sortByKey(this.suggestions),
       }),
     );
   }

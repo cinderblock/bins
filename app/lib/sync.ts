@@ -49,9 +49,19 @@ let authDead = false;
 /** Enqueue a client op: outbox + optimistic local apply, one transaction. */
 export async function enqueueOp(op: ClientOp): Promise<void> {
   const identity = await getIdentity();
+  // Every table the reducer may write must be in scope — Dexie throws rather
+  // than widening a transaction mid-flight, so a new materialized table has to
+  // be added here AND in pullOnce or the op that writes it fails at runtime.
   await db.transaction(
     "rw",
-    [db.pendingOps, db.bins, db.entries, db.locations, db.labels],
+    [
+      db.pendingOps,
+      db.bins,
+      db.entries,
+      db.locations,
+      db.labels,
+      db.suggestions,
+    ],
     async () => {
       await db.pendingOps.put({ opId: op.opId, op });
       const provisional: CanonicalOp = {
@@ -100,7 +110,7 @@ async function pullOnce(): Promise<boolean> {
   if (response.ops.length > 0) {
     await db.transaction(
       "rw",
-      [db.bins, db.entries, db.locations, db.labels, db.meta],
+      [db.bins, db.entries, db.locations, db.labels, db.suggestions, db.meta],
       async () => {
         for (const op of response.ops) await applyOp(clientStore, op);
         const last = response.ops[response.ops.length - 1];

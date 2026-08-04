@@ -4,6 +4,7 @@ import type {
   EntryState,
   LabelState,
   LocationState,
+  SuggestionState,
 } from "@shared/reducer";
 /**
  * The client-side replica: Dexie (IndexedDB). Materialized state (bins,
@@ -58,6 +59,7 @@ class BinsDatabase extends Dexie {
   entries!: EntityTable<EntryState, "id">;
   locations!: EntityTable<LocationState, "id">;
   labels!: EntityTable<LabelState, "id">;
+  suggestions!: EntityTable<SuggestionState, "id">;
   pendingOps!: EntityTable<PendingOpRow, "opId">;
   blobs!: EntityTable<BlobRow, "hash">;
   meta!: EntityTable<MetaRow, "key">;
@@ -161,6 +163,20 @@ db.version(5).upgrade(async (tx) => {
       if (row.cols === undefined) row.cols = null;
       if (row.rows === undefined) row.rows = null;
     });
+});
+
+// v6: suggested edits. `[binId+status]` serves the bin page's "waiting for an
+// admin" line and `status` serves the admin queue's count, both without a
+// table scan. Nothing to backfill — a fresh table, filled by the next pull.
+db.version(6).stores({
+  bins: "id, updatedAt, status, *labelIds",
+  entries: "id, binId, effectiveTime",
+  locations: "id, sortOrder",
+  labels: "id, sortOrder",
+  suggestions: "id, binId, status, [binId+status], createdAt",
+  pendingOps: "opId",
+  blobs: "hash, status, role, lastAccessAt",
+  meta: "key",
 });
 
 export async function getMeta<T>(key: string): Promise<T | undefined> {

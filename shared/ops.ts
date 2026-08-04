@@ -70,6 +70,26 @@ export const binFieldsSchema = z.object({
 export type BinFields = z.infer<typeof binFieldsSchema>;
 
 /**
+ * The subset of bin fields a member SUGGESTS rather than sets: the box's
+ * identity. Everything else a member can touch (location, categories, weight,
+ * photos, notes) still applies instantly — those describe what's in the box
+ * right now, and a wrong one is self-correcting. A box's name and size are how
+ * everyone else finds it later, so they go through an admin (see bin.suggest).
+ *
+ * Deliberately NOT enforced on the wire: bin.setFields stays open to members,
+ * because bin.claim already lets whoever scans a fresh sticker name and size
+ * the box, and the whole trust model is "a sticker is the credential, the op
+ * log makes vandalism recoverable". The queue is a workflow, not a permission
+ * boundary — see plans/mobile-ux-and-suggestions.md.
+ */
+export const suggestFieldsSchema = z.object({
+  name: z.string().max(200).nullish(),
+  sizeClass: z.string().max(50).nullish(),
+  externalLabel: z.string().max(500).nullish(),
+});
+export type SuggestFields = z.infer<typeof suggestFieldsSchema>;
+
+/**
  * Category labels ("booze", "soda", "liquid", "kitchen", "shade", …) — a box
  * can carry MANY. Labels are group-defined rows (label.upsert / label.archive,
  * like locations); a box's membership is a per-(bin,label) boolean set by
@@ -215,6 +235,23 @@ export const clientOpSchema = z.discriminatedUnion("type", [
       present: z.boolean(),
     }),
   }),
+  /**
+   * "This box should be called X" — a proposed edit to a box's identity
+   * fields, parked for an admin instead of applied. Ordinary member op, so it
+   * queues offline and syncs like anything else; the approving half is
+   * server-authored (suggestion.resolve). The suggestion row is keyed by this
+   * op's own opId.
+   */
+  z.object({
+    ...opBase,
+    type: z.literal("bin.suggest"),
+    binId,
+    payload: z.object({
+      fields: suggestFieldsSchema,
+      /** Why — free text the admin sees next to the diff. */
+      note: z.string().max(1000).nullish(),
+    }),
+  }),
 ]);
 export type ClientOp = z.infer<typeof clientOpSchema>;
 
@@ -245,6 +282,23 @@ export const serverOpSchema = z.discriminatedUnion("type", [
     type: z.literal("bin.restore"),
     binId,
     payload: z.object({}),
+  }),
+  /**
+   * An admin's verdict on a bin.suggest. Server-authored behind the group's
+   * admin password (/api/admin/suggestions/resolve), the same shape as
+   * retire/restore. Accepting does NOT mutate the bin from here: the endpoint
+   * authors a separate server-side bin.setFields in the same transaction, so
+   * the change competes on the ordinary LWW clocks and this op stays a pure
+   * record of the decision.
+   */
+  z.object({
+    ...opBase,
+    type: z.literal("suggestion.resolve"),
+    binId,
+    payload: z.object({
+      suggestionId: z.string().uuid(),
+      accepted: z.boolean(),
+    }),
   }),
 ]);
 export type ServerOp = z.infer<typeof serverOpSchema>;

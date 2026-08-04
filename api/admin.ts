@@ -5,7 +5,7 @@
  * group) PLUS the group's admin password on EVERY request — stateless, no
  * admin sessions to steal or expire.
  */
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { z } from "zod";
 import { db, schema } from "../db/client.server";
@@ -73,6 +73,11 @@ const createIntegrationSchema = withPassword.extend({
 
 const revokeIntegrationSchema = withPassword.extend({
   integrationId: z.string().uuid(),
+});
+
+const resolveSuggestionSchema = withPassword.extend({
+  suggestionId: z.string().uuid(),
+  accepted: z.boolean(),
 });
 
 /**
@@ -168,6 +173,71 @@ async function authorBinStatusOp(
       .returning({ seq: schema.op.seq });
     op.seq = inserted[0]?.seq ?? null;
     await applyOp(store, op);
+  });
+}
+
+/**
+ * Author the server-side half of a suggestion decision: the verdict op
+ * always, plus — on accept — an ordinary bin.setFields carrying the proposed
+ * values. Two ops, one transaction, one seq range: a replica can never see the
+ * box change without the decision that caused it, or vice versa.
+ *
+ * The field change is a SEPARATE op on purpose. It competes on the same LWW
+ * clocks as any other edit, so approving a week-old suggestion doesn't silently
+ * clobber a newer name someone set in the meantime — it just loses the clock
+ * comparison, exactly like two people editing at once.
+ */
+async function authorSuggestionResolution(
+  ctx: Ctx,
+  suggestion: typeof schema.suggestion.$inferSelect,
+  accepted: boolean,
+): Promise<void> {
+  await serializedTransaction(async () => {
+    const store = new DrizzleStateStore(ctx.groupId);
+    const now = Date.now();
+    const write = async (op: CanonicalOp & { binId: number }) => {
+      const inserted = await db
+        .insert(schema.op)
+        .values({
+          opId: op.opId,
+          groupId: ctx.groupId,
+          binId: op.binId,
+          deviceId: null,
+          type: op.type,
+          payload: op.payload,
+          clientTime: now,
+          effectiveTime: now,
+          serverTime: new Date(now),
+        })
+        .returning({ seq: schema.op.seq });
+      op.seq = inserted[0]?.seq ?? null;
+      await applyOp(store, op);
+    };
+
+    await write({
+      opId: uuidv7(),
+      type: "suggestion.resolve",
+      binId: suggestion.binId,
+      payload: { suggestionId: suggestion.id, accepted },
+      clientTime: now,
+      geo: null,
+      seq: null,
+      deviceId: null,
+      effectiveTime: now,
+    });
+
+    if (!accepted) return;
+    await write({
+      opId: uuidv7(),
+      type: "bin.setFields",
+      binId: suggestion.binId,
+      payload: suggestion.fields,
+      clientTime: now,
+      geo: null,
+      seq: null,
+      deviceId: null,
+      effectiveTime: now,
+    });
   });
 }
 
@@ -301,6 +371,55 @@ export async function handleAdmin(
       return { imported, skipped };
     });
     return json(result);
+  }
+
+  if (path === "/api/admin/suggestions") {
+    // The review queue: pending first (oldest first — a suggestion that has
+    // been waiting longest is the one to deal with), then recent decisions so
+    // an admin can see what they just did and what a co-admin decided.
+    const rows = await db.query.suggestion.findMany({
+      where: eq(schema.suggestion.groupId, ctx.groupId),
+      orderBy: [asc(schema.suggestion.createdAt)],
+      limit: 500,
+    });
+    const bins = await db.query.bin.findMany({
+      where: eq(schema.bin.groupId, ctx.groupId),
+      columns: { id: true, name: true, sizeClass: true, externalLabel: true },
+    });
+    const binById = new Map(bins.map((b) => [b.id, b]));
+    return json({
+      suggestions: rows.map((row) => ({
+        id: row.id,
+        binId: row.binId,
+        deviceId: row.deviceId,
+        fields: row.fields,
+        note: row.note,
+        status: row.status,
+        createdAt: row.createdAt,
+        resolvedAt: row.resolvedAt,
+        // The CURRENT values, so the UI can render before → after without
+        // needing its own replica to be in sync with the server.
+        current: binById.get(row.binId) ?? null,
+      })),
+    });
+  }
+
+  if (path === "/api/admin/suggestions/resolve") {
+    const parsed = resolveSuggestionSchema.safeParse(body);
+    if (!parsed.success) return error(400, "invalid resolve request");
+    // Group-scoped: an admin must never decide another group's suggestion.
+    const row = await db.query.suggestion.findFirst({
+      where: and(
+        eq(schema.suggestion.id, parsed.data.suggestionId),
+        eq(schema.suggestion.groupId, ctx.groupId),
+      ),
+    });
+    if (!row) return error(404, "no such suggestion");
+    // Already decided (a co-admin got there first, or a double tap) — say so
+    // rather than authoring a second verdict op for the same suggestion.
+    if (row.status !== "pending") return error(409, `already ${row.status}`);
+    await authorSuggestionResolution(ctx, row, parsed.data.accepted);
+    return json({ ok: true });
   }
 
   if (path === "/api/admin/devices") {
