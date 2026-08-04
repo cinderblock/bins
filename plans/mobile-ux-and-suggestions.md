@@ -101,10 +101,24 @@ Reported, verbatim:
         + 2 API (propose → queue → approve → box renamed → 409 → both ops
         pull; dismiss changes nothing, 404 on unknown). 69 pass, 0 fail,
         typecheck + lint clean.
-  - [ ] NOT yet done: drive the two new components in a browser. The server
-        round-trip is covered by the API tests, but nothing has rendered
-        `EditBoxSheet` / `SuggestionQueue` for real. Do this after the merge,
-        in the main tree (see the gotcha about the P: worktree).
+  - [x] MERGED to master (`1238519`) — see "Merging phase 2". The merge
+        found a bug no test could: `enqueueOp`/`pullOnce` list the tables the
+        reducer may write and Dexie won't widen a transaction mid-flight, so
+        `suggestions` missing from both made every `bin.suggest` throw a
+        DexieError in the browser while MemoryStore and Drizzle tests passed.
+  - [x] Verified against the RUNNING dev server (not just the test harness):
+        migration 0008 applied to an existing db; a real member token pushed
+        `bin.suggest`; `/api/admin/suggestions` returned the proposal with
+        the box's current values as the "before"; approving authored
+        `suggestion.resolve` (seq 11) + `bin.setFields` (seq 12) and renamed
+        #100 to "Wine glasses"/L; a second verdict got 409; a wrong admin
+        password got 403. `EditBoxSheet` was screenshotted open on a
+        phone-width viewport with the member wording, prefilled name, size
+        control, "why", and a disabled-until-changed submit.
+  - [ ] Still unproven by hand: the final submit click and the
+        `SuggestionQueue` approve button *in the browser*. Not a known
+        defect — the Chrome automation could not reliably deliver clicks or
+        see portal content (see gotchas). Worth one manual pass on a phone.
 - [ ] **Phase 3 — PWA push for admins** (user asked for it alongside the
       in-app badge; not started). Sketch: VAPID keypair in env, a
       `push_subscription` table keyed by device, `POST /api/push/subscribe`,
@@ -186,6 +200,22 @@ identity) but worth confirming it's the intent.
 - Two sessions generating drizzle migrations in parallel WILL collide on the
   number. The file is disposable — delete it and re-run `db:generate` after
   merging rather than hand-editing `_journal.json`.
+- **A new materialized table needs THREE client-side edits, not one**: the
+  Dexie `version().stores()`, and the table lists in BOTH `enqueueOp` and
+  `pullOnce` (app/lib/sync.ts). Miss the transaction lists and every op that
+  writes the table throws `DexieError` at runtime while the whole test suite
+  stays green — MemoryStore and Drizzle have no transaction scoping. This
+  cost an afternoon; the lists now carry a comment.
+- The Chrome automation is unreliable against this app: `javascript_tool`
+  frequently cannot see Mantine portal content (`document.body.innerText`
+  misses the drawer, `documentElement` sometimes catches it), synthetic
+  clicks land on the overlay if fired before the drawer's open animation
+  finishes (closing it again), and `Page.captureScreenshot` times out every
+  few calls. Screenshots are the only trustworthy oracle. For anything
+  server-shaped, curl against the dev API beats driving the UI.
+- The dev database `data/bins.db` now has admin password `test-admin` (set
+  during verification) and bins 101/102 are claimed by throwaway "Verifier"
+  devices. Gitignored dev data, but don't be confused by it.
 
 ## Things not to do
 
