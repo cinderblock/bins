@@ -81,7 +81,58 @@ Reported, verbatim:
         branch re-checked at 1129px — unchanged "new category…" field.
         `/2` signed out shows the Box #2 card; the access-code link carries
         `{next:"/2"}`.
-- [ ] **Phase 2 — suggested edits** (design below, not yet built)
+- [x] **Phase 2 — suggested edits** — BUILT 2026-08-04, on the branch
+      `feat/suggested-edits` (commit `f4f23bf`), NOT yet merged to master.
+      See "Merging phase 2" below — it needs a migration renumber and the
+      shared tree to be quiet.
+  - [x] `bin.suggest` (client op) + `suggestion.resolve` (server op),
+        `SuggestionState` + `getSuggestion`/`putSuggestion` on `StateStore`,
+        all three adapters (memory / Drizzle / Dexie), `suggestion` table,
+        Dexie v4 with a `[binId+status]` index.
+  - [x] `POST /api/admin/suggestions` (queue, carries each box's CURRENT
+        values for the diff) and `.../resolve` behind `requireAdmin`; accept
+        authors verdict + `bin.setFields` in one transaction; second verdict
+        is a 409.
+  - [x] UI: pencil next to the box name on the bin page → `EditBoxSheet`
+        (admin edits directly, member suggests with an optional "why"); a
+        "waiting for an admin" alert on the bin page; `SuggestionQueue` at
+        the top of `/admin`.
+  - [x] Tests: 2 convergence (verdict-before-proposal; two admins racing)
+        + 2 API (propose → queue → approve → box renamed → 409 → both ops
+        pull; dismiss changes nothing, 404 on unknown). 69 pass, 0 fail,
+        typecheck + lint clean.
+  - [ ] NOT yet done: drive the two new components in a browser. The server
+        round-trip is covered by the API tests, but nothing has rendered
+        `EditBoxSheet` / `SuggestionQueue` for real. Do this after the merge,
+        in the main tree (see the gotcha about the P: worktree).
+- [ ] **Phase 3 — PWA push for admins** (user asked for it alongside the
+      in-app badge; not started). Sketch: VAPID keypair in env, a
+      `push_subscription` table keyed by device, `POST /api/push/subscribe`,
+      a service-worker `push` handler that opens `/admin`, and a send on
+      `bin.suggest` ingest to every device in the group whose admin has
+      subscribed. Needs a decision on who counts as "an admin to notify" —
+      the app has no admin *identity*, only a shared password, so
+      subscription has to be opt-in from a device that has unlocked admin.
+
+## Merging phase 2
+
+The branch was cut from `dacaf07`, before the concurrent undo/restore work
+landed (`82ec335`, `e31ddfe`). To merge:
+
+1. Wait for the main tree to be CLEAN — a merge touches `shared/ops.ts` and
+   `shared/reducer.ts`, where the other session has had uncommitted work all
+   afternoon. Git will refuse rather than clobber, but don't force it.
+2. `git merge feat/suggested-edits`. Expect small conflicts in the op union
+   and the reducer switch (both branches append cases); take both sides.
+3. Renumber the migration: the branch generated `0006_strong_glorian.sql`,
+   but master now has its own 0006 (and an uncommitted 0007). Delete the
+   branch's migration + `meta/0006_snapshot.json`, revert
+   `meta/_journal.json` to master's, then `bun run db:generate` to emit the
+   next free number against the merged schema. The suggestion table is
+   purely additive, so the regenerated SQL is the same CREATE TABLE.
+4. `bun run typecheck && bun run lint && bun test`, then drive the flow in a
+   browser (bin page → suggest → /admin → approve).
+5. `git worktree remove` the P: worktree (see gotcha) and delete the branch.
 
 ## Design: suggested edits (phase 2)
 
@@ -104,7 +155,11 @@ pushed like any other, the privileged half is server-authored behind
   pending count on the bin page; a review queue on `/admin` showing
   before → after with Approve / Reject.
 
-Open question to raise with the user before building: members can already
+RESOLVED (user decision 2026-08-04): identity fields only — name, size,
+external label. Everything else a member changes stays instant. Notification
+is an in-app badge PLUS PWA push for admins (push is phase 3).
+
+The scope question that prompted that decision: members can already
 change location, categories, weight, and add/delete photos and notes freely.
 Moderating only name/size/external-label is defensible (those are the box's
 identity) but worth confirming it's the intent.
@@ -119,6 +174,18 @@ identity) but worth confirming it's the intent.
 - Nested Mantine overlays (a Modal opened from inside a Drawer) fight over
   focus traps — the composer is INLINE in the sheet for that reason, not a
   second modal.
+- **Don't put a worktree on the P: share.** `P:\Projects\WIP\personal` is
+  `\\uberfall.tsl\Cameron\...`; git refuses to operate there ("detected
+  dubious ownership", different owner SID), `bun run format` rewrote line
+  endings across all 105 files, `rm` on the SQLite test dir hit EACCES, and
+  Vite never finished starting over UNC. Git commands DO work from the main
+  repo with an explicit git-dir:
+  `git --git-dir="…/bins/.git/worktrees/bins-suggestions" --work-tree="P:/…" …`
+  — that's how `f4f23bf` got committed, staging only the 20 real files and
+  leaving the line-ending churn unstaged. Next time use a worktree on C:.
+- Two sessions generating drizzle migrations in parallel WILL collide on the
+  number. The file is disposable — delete it and re-run `db:generate` after
+  merging rather than hand-editing `_journal.json`.
 
 ## Things not to do
 
