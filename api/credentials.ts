@@ -20,7 +20,19 @@
  */
 import { db } from "../db/client.server";
 
+/**
+ * On by default, because being locked out of your own inventory is the failure
+ * this exists to prevent and it is far more likely than someone reading the
+ * log. A self-hoster who ships logs somewhere they don't control can turn it
+ * off — the code is still readable in /admin and via reset-credentials.
+ */
+function loggingEnabled(): boolean {
+  const raw = process.env.LOG_ACCESS_CODE?.trim().toLowerCase();
+  return raw !== "0" && raw !== "false" && raw !== "no";
+}
+
 export async function logGroupCredentials(): Promise<void> {
+  if (!loggingEnabled()) return;
   try {
     const groups = await db.query.group.findMany({
       columns: { name: true, accessCode: true, adminPasswordHash: true },

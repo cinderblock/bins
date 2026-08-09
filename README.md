@@ -107,6 +107,45 @@ environment (rotating it silently unsubscribes every admin):
 bun scripts/generate-vapid.ts
 ```
 
+### Updates reach devices on their own
+
+An installed PWA keeps running the build it cached, so a deploy is not the
+same event as devices picking it up. New builds therefore activate as soon as
+they're ready and the page reloads at the first moment it can't interrupt
+anyone — backgrounded, or with no sheet open, nothing focused for typing and
+no camera preview live. To make the gap visible rather than invisible, each
+device reports the commit it is running and `/admin`'s device list marks
+anything behind the server as `old build`.
+
+A deploy keeps the last few releases runnable and ~30 servable (stripped to
+just their client build), so a device on an older build can still fetch its
+own chunks, boot, and update itself instead of stranding. If one ever does get
+stuck on a blank screen, `/<origin>/api/recover` clears the service worker and
+caches — deliberately under `/api/`, which the worker never intercepts — and
+leaves IndexedDB alone, so nothing captured offline is lost.
+
+### If you lose the access code or admin password
+
+Neither is recoverable from a hash, so the access code is stored readable:
+it's printed at startup, shown in `/admin`, and `LOG_ACCESS_CODE=0` turns the
+logging off (see `.env.example` for the trade). The admin password is only
+ever hashed and never logged.
+
+To set either without knowing the old one — no data touched, existing devices
+stay signed in:
+
+```sh
+bun scripts/reset-credentials.ts --show
+bun scripts/reset-credentials.ts --access-code "a phrase you'll remember"
+bun scripts/reset-credentials.ts --admin-password "…"
+```
+
+Recreating the database is never the answer: these are two columns on one row,
+and everything else is your inventory. If you still know the admin password,
+`/join` accepts it directly ("I have the admin password instead") — it
+authorises strictly more than the access code, so it should never leave you
+locked out behind it.
+
 ## How sync works (short version)
 
 Every mutation is an **op** (`bin.claim`, `entry.addPhoto`, `bin.setLocation`,

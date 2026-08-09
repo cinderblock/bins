@@ -396,6 +396,12 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   navigateFallback (denylist `/api/`), CacheFirst `blobs` cache for
   `/api/blobs/{sha256}`, NetworkOnly `/api/*`, update prompt via
   `PwaUpdatePrompt` toast (`registerType: "prompt"`, NEVER auto-reload).
+  **SUPERSEDED 2026-08-09** — see `plans/blank-app-after-deploy.md`. Holding a
+  new build behind a tap meant devices sat on old code indefinitely and
+  shipped fixes reached nobody. Now: activate immediately, reload at the first
+  moment it can't interrupt anyone (`app/lib/appUpdate.ts`). The "never
+  auto-update" rule was an implementation choice from this phase, never a user
+  decision — it was later mistaken for one, which cost a day.
   Registration + head links are hand-rolled in root.tsx (`injectRegister:
   false`) because SPA-mode index.html is React-prerendered, not vite HTML.
 - [x] Publishability sweep (2026-07-06) — scrubbed all tenant/host strings
@@ -535,6 +541,27 @@ Follow-up round (same day, user: "keep going?"):
 
 Still deliberately NOT done: a desktop root that's a list instead of the
 scanner card (the opt-in card feels fine so far).
+
+## Credentials + recovery (2026-08-09, user decision)
+
+An operator locked themselves out of their own live deployment: both the group
+access code and the admin password were hash-only, `/admin` needs the CURRENT
+admin password to rotate anything, and the access code only survived on devices
+that had already joined. The data was perfectly intact and completely
+unreachable, and "recreate the database" was very nearly the remedy.
+
+- The access code is now stored PLAINTEXT alongside its hash (migration 0011),
+  printed at startup (`api/credentials.ts`, off with `LOG_ACCESS_CODE=0`) and
+  shown in `/admin`. Trade accepted deliberately: log or database access now
+  means group access — close to what the code already implies, since every
+  joined device caches it in plaintext for invite links.
+- The ADMIN password stays hash-only and is never logged. It is the credential
+  gating destructive actions, and it has a reset path instead.
+- `scripts/reset-credentials.ts` sets either credential without the old one,
+  touching nothing else. `--show` prints current state.
+- `/api/auth/join-by-admin` + a `/join` toggle: the admin password can mint a
+  device. It authorises strictly more than the access code, so it must never
+  leave someone stuck behind the weaker secret. Not cached as an invite code.
 
 ## Findings / gotchas
 
