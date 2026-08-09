@@ -7,8 +7,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   cacheControlFor,
+  clientDirOf,
   findInPriorReleases,
   priorClientDirs,
 } from "./release-assets";
@@ -44,18 +46,17 @@ let root: string;
 
 /** One release tree, with the given files under its client build. */
 function makeRelease(sha: string, assets: string[]) {
-  const client = `${root}/releases/${sha}/build/client`;
-  mkdirSync(`${client}/assets`, { recursive: true });
+  const release = join(root, "releases", sha);
+  const client = clientDirOf(release);
+  mkdirSync(join(client, "assets"), { recursive: true });
   for (const name of assets) {
-    writeFileSync(`${client}/assets/${name}`, `// ${sha} ${name}`);
+    writeFileSync(join(client, "assets", name), `// ${sha} ${name}`);
   }
-  return `${root}/releases/${sha}`;
+  return release;
 }
 
 beforeEach(() => {
-  // Separators normalized to match what priorClientDirs returns; on a Windows
-  // dev machine tmpdir() is backslashed, and production is Linux either way.
-  root = mkdtempSync(`${tmpdir()}/bins-releases-`).replaceAll("\\", "/");
+  root = mkdtempSync(join(tmpdir(), "bins-releases-"));
 });
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
@@ -71,21 +72,21 @@ describe("priorClientDirs", () => {
 
     expect(dirs.sort()).toEqual(
       [
-        `${root}/releases/bbb/build/client`,
-        `${root}/releases/ccc/build/client`,
+        clientDirOf(join(root, "releases", "bbb")),
+        clientDirOf(join(root, "releases", "ccc")),
       ].sort(),
     );
   });
 
   test("skips a release with no client build (a half-staged deploy)", () => {
     const current = makeRelease("aaa", ["app-1.js"]);
-    mkdirSync(`${root}/releases/partial`, { recursive: true });
+    mkdirSync(join(root, "releases", "partial"), { recursive: true });
 
     expect(priorClientDirs(current)).toEqual([]);
   });
 
   test("is empty, not an error, outside a release-tree layout", () => {
-    expect(priorClientDirs(`${root}/not/a/release`)).toEqual([]);
+    expect(priorClientDirs(join(root, "not", "a", "release"))).toEqual([]);
   });
 });
 
@@ -101,7 +102,11 @@ describe("findInPriorReleases", () => {
 
     expect(hit?.release).toBe("bbb");
     expect(hit?.path).toBe(
-      `${root}/releases/bbb/build/client/assets/manifest-old.js`,
+      join(
+        clientDirOf(join(root, "releases", "bbb")),
+        "assets",
+        "manifest-old.js",
+      ),
     );
   });
 
@@ -117,7 +122,7 @@ describe("findInPriorReleases", () => {
   test("refuses to walk out of the release tree", () => {
     const current = makeRelease("aaa", []);
     makeRelease("bbb", []);
-    writeFileSync(`${root}/secret.txt`, "nope");
+    writeFileSync(join(root, "secret.txt"), "nope");
 
     expect(
       findInPriorReleases(

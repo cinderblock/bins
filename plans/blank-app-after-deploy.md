@@ -130,12 +130,57 @@ Step 2 is what fixes this class outright, which is why it shipped first.
       `/assets/manifest-<hash>.js`, matching what index.html references (was 72
       without it); watchdog present in the prerendered index.html; typecheck,
       lint and 106 tests green.
-- [ ] Deploy and confirm a stranded device recovers untouched.
-- [ ] Not yet exercised in a browser: the watchdog actually firing on a stale
-      shell, and offline boot. Both were verified by construction, not by
-      driving them — the user asked to ship without waiting for that.
+- [x] Deployed and verified in a browser against the live site: the precache
+      now holds 70 entries INCLUDING `/assets/manifest-<hash>.js` and the
+      shell (it held neither before); `/api/recover` un-strands a device and
+      an IndexedDB canary survives it; a chunk from a pruned build is served
+      from a prior release (`x-bins-prior-release: c97b584…`).
+- [ ] Still not driven by hand: the boot watchdog firing on a genuinely stale
+      shell, and a true offline boot (no tooling here to force the browser
+      offline). Both are verified by construction — the precache now contains
+      every file offline boot needs.
+
+## What went wrong DURING the fix (read this before the next deploy)
+
+Three self-inflicted problems, all worth keeping:
+
+1. **The first fix took both sites down (502).** `deploy.yml` stages a
+   hand-listed set of files, and `release-assets.ts` — a new root-level module
+   `server.ts` imports — was not on it. It built, staged, and then died on
+   every start. The symlink flip happens BEFORE the health check, so the
+   failure landed on production instead of failing CI. Fixed by adding the
+   file, then by adding a **preflight**: the staged release is booted on a
+   throwaway socket and `DATABASE_PATH` and must answer `/_version` before
+   `current` is flipped.
+2. **A CDN cache re-broke every device we repaired.** `/sw.js` was being served
+   `cf-cache-status: HIT` with `Age: 2891` under a four-hour TTL, so a
+   just-repaired device re-registered the STALE worker. The worker moved to
+   `service-worker.js` (a path the CDN never cached) and the origin now sends
+   `no-cache` for it.
+   NOTE: Cloudflare REWRITES that header — the response arrives as
+   `max-age=14400, must-revalidate`. Browsers bypass their own HTTP cache when
+   checking a worker for updates, so impact is limited, but the origin does
+   not have the last word here. Changing it means a Cloudflare Browser Cache
+   TTL / cache rule, which needs the operator's explicit per-change
+   authorization.
+3. **`no-store` on `/push-sw.js` silently killed precaching.** The generated
+   worker `importScripts("/push-sw.js")` on the line ABOVE `precacheAndRoute`,
+   so an unstorable response there aborted the module before precaching was
+   ever registered: the worker installed and activated with an EMPTY cache,
+   the app worked fine online, and offline boot was dead. Diagnosed by
+   comparing production (zero caches) against an identical local build (70
+   entries). Use `no-cache`, never `no-store`, for anything a worker imports.
 
 ## Things not to do
+
+- Don't serve `no-store` for the service worker or anything it
+  `importScripts`. Use `no-cache` — revalidated, but still storable.
+- Don't add a root-level module `server.ts` imports without adding it to
+  `deploy.yml`'s copy list. The preflight now catches this, but the list is
+  still hand-maintained.
+- Don't compare filesystem paths built with string interpolation. Everything
+  here goes through `node:path` `join`, on both sides, so the tests behave the
+  same on Windows and Linux with no separator patching.
 
 - Don't "fix" this by dropping `registerType: "prompt"` — that trades this bug
   for lost captures.

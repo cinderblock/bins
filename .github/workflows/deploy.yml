@@ -66,6 +66,47 @@ jobs:
           # Prune to production dependencies inside the release dir.
           ( cd "$REL" && bun install --frozen-lockfile --production )
 
+      - name: Smoke-test the staged release before activating it
+        # The symlink flip is what takes the site down, and it happens BEFORE
+        # the health check below — so a release that cannot start at all takes
+        # production with it and CI only finds out afterwards. That is exactly
+        # what happened: a module server.ts imports was missing from the file
+        # list above, which builds and stages perfectly and then dies on every
+        # start. Boot it here, while the live site is still untouched.
+        #
+        # Isolated: its own socket and a THROWAWAY database, so this can
+        # neither collide with the running instance nor migrate real data.
+        run: |
+          set -euo pipefail
+          REL="$APP_ROOT/releases/$GITHUB_SHA"
+          SOCK="$REL/preflight.sock"
+          (
+            cd "$REL"
+            SOCKET_PATH="$SOCK" DATABASE_PATH="$REL/preflight.db" \
+              bun server.ts > "$REL/preflight.log" 2>&1 &
+            echo $! > "$REL/preflight.pid"
+          )
+          ok=""
+          for _ in $(seq 1 30); do
+            if [ -S "$SOCK" ] && bun -e '
+              const r = await fetch("http://localhost/_version", { unix: process.env.SOCK });
+              process.exit(r.status === 200 ? 0 : 1);
+            ' 2>/dev/null; then ok=1; break; fi
+            sleep 1
+          done
+          kill "$(cat "$REL/preflight.pid")" 2>/dev/null || true
+          rm -f "$SOCK" "$REL/preflight.pid" "$REL/preflight.db"*
+          if [ -z "$ok" ]; then
+            echo "::error::staged release failed to start — NOT activating it"
+            echo "--- preflight log ---"
+            cat "$REL/preflight.log" || true
+            exit 1
+          fi
+          rm -f "$REL/preflight.log"
+          echo "staged release starts cleanly"
+        env:
+          SOCK: /srv/bins/releases/${{ github.sha }}/preflight.sock
+
       - name: Activate + restart
         run: |
           set -euo pipefail

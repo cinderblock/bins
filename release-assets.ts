@@ -16,7 +16,18 @@
  * socket at import time and can't be loaded on a dev machine.
  */
 import { existsSync, readdirSync, realpathSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
+
+const ASSETS_SUBDIR = "assets";
+
+/**
+ * A release directory's client build. Built with `join` throughout so paths
+ * are in the platform's own form on both sides of every comparison — no
+ * separator juggling in the callers, and none in the tests.
+ */
+export function clientDirOf(releaseDir: string): string {
+  return join(releaseDir, "build", "client");
+}
 
 /**
  * Files that must NEVER be cached by anything, at any layer.
@@ -94,14 +105,14 @@ export function priorClientDirs(releaseDir: string): string[] {
     // The supervisor launches `<root>/current/run`, so the running release can
     // arrive here as the SYMLINK path. Its sibling would then be `releases/`
     // itself and the fallback would silently find nothing — resolve first.
-    // Separators normalized so the paths built below match the caller's on a
-    // Windows dev machine; production is Linux, where this is a no-op.
-    const resolved = realpathSync(releaseDir).replaceAll("\\", "/");
-    const currentClientDir = `${resolved}/build/client`;
-    const releases = dirname(resolved);
-    return readdirSync(releases)
-      .map((name) => `${releases}/${name}/build/client`)
-      .filter((dir) => dir !== currentClientDir && existsSync(`${dir}/assets`));
+    const resolved = realpathSync(releaseDir);
+    const currentClientDir = clientDirOf(resolved);
+    return readdirSync(dirname(resolved))
+      .map((name) => clientDirOf(join(dirname(resolved), name)))
+      .filter(
+        (dir) =>
+          dir !== currentClientDir && existsSync(join(dir, ASSETS_SUBDIR)),
+      );
   } catch {
     return [];
   }
@@ -119,8 +130,11 @@ export function findInPriorReleases(
   pathname: string,
 ): { path: string; release: string } | undefined {
   if (pathname.includes("..")) return undefined;
+  // A rooted URL path → path segments, so `join` builds it in the platform's
+  // own form rather than splicing a "/" path onto a "\" one.
+  const segments = pathname.split("/").filter(Boolean);
   for (const dir of clientDirs) {
-    const path = `${dir}${pathname}`;
+    const path = join(dir, ...segments);
     if (existsSync(path)) {
       return { path, release: basename(dirname(dirname(dir))) };
     }
