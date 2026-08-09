@@ -1,5 +1,6 @@
 /**
- * Serving build artifacts from EARLIER releases (see server.ts).
+ * Static-asset serving policy: cache headers, and falling back to EARLIER
+ * releases (both used by server.ts).
  *
  * A deploy rehashes every asset, so a client holding an older asset list — an
  * installed service worker serving the shell it precached — asks for files the
@@ -16,6 +17,33 @@
  */
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { basename, dirname } from "node:path";
+
+/**
+ * Files that must NEVER be cached by anything, at any layer.
+ *
+ * A cached service worker is a cached decision about every other file. This
+ * was observed live: a CDN held `/sw.js` for hours, so a device that had just
+ * been repaired re-registered the OLD worker, which precached the OLD shell —
+ * straight back into the broken state it had just escaped. Browsers already
+ * bypass their own HTTP cache when checking a worker for updates; `no-store`
+ * is what stops an intermediary caching it, and stops the very first
+ * registration being served a stale copy.
+ */
+const NEVER_CACHE = new Set(["/sw.js", "/push-sw.js"]);
+
+/**
+ * `Cache-Control` for a static file, by request path.
+ *
+ * Assets are content-hashed, so they're immutable for a year. Everything else
+ * is named, therefore mutable, therefore revalidated.
+ */
+export function cacheControlFor(pathname: string): string {
+  if (NEVER_CACHE.has(pathname)) return "no-store, must-revalidate";
+  if (pathname.startsWith("/assets/")) {
+    return "public, max-age=31536000, immutable";
+  }
+  return "public, max-age=3600";
+}
 
 /**
  * Client build directories of every OTHER release on disk.

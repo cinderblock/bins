@@ -14,7 +14,11 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import { handleApi } from "./api/router";
-import { findInPriorReleases, priorClientDirs } from "./release-assets";
+import {
+  cacheControlFor,
+  findInPriorReleases,
+  priorClientDirs,
+} from "./release-assets";
 
 const SOCKET_PATH = process.env.SOCKET_PATH ?? "/run/bins/bins.sock";
 const CLIENT_DIR = `${import.meta.dir}/build/client`;
@@ -41,10 +45,9 @@ function serveAsset(pathname: string): Response | undefined {
   if (pathname === "/" || pathname.includes("..")) return undefined;
   const file = Bun.file(`${CLIENT_DIR}${pathname}`);
   if (!file.size) return undefined;
-  const cacheControl = pathname.startsWith("/assets/")
-    ? "public, max-age=31536000, immutable"
-    : "public, max-age=3600";
-  return new Response(file, { headers: { "Cache-Control": cacheControl } });
+  return new Response(file, {
+    headers: { "Cache-Control": cacheControlFor(pathname) },
+  });
 }
 
 /**

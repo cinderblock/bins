@@ -7,7 +7,28 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { findInPriorReleases, priorClientDirs } from "./release-assets";
+import {
+  cacheControlFor,
+  findInPriorReleases,
+  priorClientDirs,
+} from "./release-assets";
+
+describe("cacheControlFor", () => {
+  test("never caches the service worker or its imports", () => {
+    // A cached worker is a cached decision about every other file: a CDN held
+    // /sw.js for hours, and a just-repaired device re-installed the old one.
+    expect(cacheControlFor("/sw.js")).toBe("no-store, must-revalidate");
+    expect(cacheControlFor("/push-sw.js")).toBe("no-store, must-revalidate");
+  });
+
+  test("treats content-hashed assets as immutable", () => {
+    expect(cacheControlFor("/assets/root-a1b2c3.js")).toContain("immutable");
+  });
+
+  test("revalidates everything else", () => {
+    expect(cacheControlFor("/favicon.svg")).toBe("public, max-age=3600");
+  });
+});
 
 let root: string;
 
