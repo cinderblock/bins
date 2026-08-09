@@ -44,10 +44,22 @@ import { basename, dirname } from "node:path";
  */
 export const SERVICE_WORKER_FILENAME = "service-worker.js";
 
-const NEVER_CACHE = new Set([
+/**
+ * Files that must always be revalidated before use.
+ *
+ * `no-cache`, deliberately NOT `no-store`. A stored-but-revalidated response
+ * can never be stale, and it stays STORABLE — which matters, because the
+ * worker pulls `/push-sw.js` in with `importScripts`, and that call sits
+ * ABOVE `precacheAndRoute` in the generated worker. Serving it `no-store` made
+ * the import fail on the live site: the worker installed and activated having
+ * precached nothing at all, silently, so offline boot was dead while
+ * everything looked healthy. Verified by the precache being empty in
+ * production and populated from an identical local build.
+ */
+const ALWAYS_REVALIDATE = new Set([
   `/${SERVICE_WORKER_FILENAME}`,
   // The old name. Kept so any client still asking for it stops being handed a
-  // cacheable response.
+  // long-lived cacheable response.
   "/sw.js",
   "/push-sw.js",
 ]);
@@ -59,7 +71,7 @@ const NEVER_CACHE = new Set([
  * is named, therefore mutable, therefore revalidated.
  */
 export function cacheControlFor(pathname: string): string {
-  if (NEVER_CACHE.has(pathname)) return "no-store, must-revalidate";
+  if (ALWAYS_REVALIDATE.has(pathname)) return "no-cache, must-revalidate";
   if (pathname.startsWith("/assets/")) {
     return "public, max-age=31536000, immutable";
   }

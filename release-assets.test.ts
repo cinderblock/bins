@@ -14,11 +14,21 @@ import {
 } from "./release-assets";
 
 describe("cacheControlFor", () => {
-  test("never caches the service worker or its imports", () => {
+  test("always revalidates the service worker and its imports", () => {
     // A cached worker is a cached decision about every other file: a CDN held
     // /sw.js for hours, and a just-repaired device re-installed the old one.
-    expect(cacheControlFor("/sw.js")).toBe("no-store, must-revalidate");
-    expect(cacheControlFor("/push-sw.js")).toBe("no-store, must-revalidate");
+    for (const p of ["/service-worker.js", "/sw.js", "/push-sw.js"]) {
+      expect(cacheControlFor(p)).toBe("no-cache, must-revalidate");
+    }
+  });
+
+  test("keeps those responses STORABLE (no-store breaks importScripts)", () => {
+    // The worker importScripts()es /push-sw.js above precacheAndRoute, so an
+    // unstorable response there means a worker that activates having cached
+    // nothing — offline boot dead, with nothing visibly wrong.
+    for (const p of ["/service-worker.js", "/push-sw.js"]) {
+      expect(cacheControlFor(p)).not.toContain("no-store");
+    }
   });
 
   test("treats content-hashed assets as immutable", () => {
