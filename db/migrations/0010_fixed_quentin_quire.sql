@@ -1,0 +1,1 @@
+ALTER TABLE `device` ADD `build_sha` text;

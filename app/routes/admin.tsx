@@ -40,7 +40,7 @@ import { ShelfBuilder } from "~/components/ShelfBuilder";
 import { SuggestionQueue } from "~/components/SuggestionQueue";
 import { forgetAdmin, rememberAdmin, useAdminPassword } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
-import { relativeTime } from "~/lib/format";
+import { relativeTime, shortBuild } from "~/lib/format";
 import { rememberAccessCode } from "~/lib/invite";
 import { syncNow } from "~/lib/sync";
 
@@ -55,6 +55,8 @@ type DeviceRow = {
   displayName: string;
   lastSeenAt: number | null;
   self: boolean;
+  /** The build this device last reported RUNNING; null before it checks in. */
+  buildSha: string | null;
 };
 
 type IntegrationRow = {
@@ -94,6 +96,8 @@ export default function Admin() {
   const [newAdminPassword, setNewAdminPassword] = useState("");
   const [importText, setImportText] = useState("");
   const [devices, setDevices] = useState<DeviceRow[]>([]);
+  /** What the server is serving, to compare each device's reported build to. */
+  const [serverBuild, setServerBuild] = useState<string | null>(null);
 
   const [integrations, setIntegrations] = useState<IntegrationRow[]>([]);
   const [newLabel, setNewLabel] = useState("");
@@ -116,11 +120,15 @@ export default function Admin() {
   }
 
   async function refreshDeviceList(pw: string) {
-    const res = await apiJson<{ devices: DeviceRow[] }>("/api/admin/devices", {
+    const res = await apiJson<{
+      devices: DeviceRow[];
+      serverBuild: string;
+    }>("/api/admin/devices", {
       method: "POST",
       body: JSON.stringify({ adminPassword: pw }),
     });
     setDevices(res.devices);
+    setServerBuild(res.serverBuild);
   }
 
   async function refreshIntegrations(pw: string) {
@@ -621,6 +629,13 @@ export default function Admin() {
                 Revoking signs a device out; its unsynced work survives locally
                 and flows after it signs back in (Settings).
               </Text>
+              {serverBuild && (
+                <Text size="xs" c="dimmed">
+                  Server is serving <strong>{shortBuild(serverBuild)}</strong>.
+                  A device marked “old build” hasn’t picked it up yet — it
+                  updates itself the next time it’s open and idle.
+                </Text>
+              )}
               <Table>
                 <Table.Tbody>
                   {devices.map((device) => (
@@ -633,6 +648,21 @@ export default function Admin() {
                         {device.lastSeenAt
                           ? relativeTime(device.lastSeenAt)
                           : "never"}
+                      </Table.Td>
+                      <Table.Td>
+                        {device.buildSha == null ? (
+                          <Text size="xs" c="dimmed">
+                            unknown
+                          </Text>
+                        ) : serverBuild && device.buildSha !== serverBuild ? (
+                          <Badge color="yellow" variant="light" size="sm">
+                            old build · {shortBuild(device.buildSha)}
+                          </Badge>
+                        ) : (
+                          <Badge color="green" variant="light" size="sm">
+                            current
+                          </Badge>
+                        )}
                       </Table.Td>
                       <Table.Td>
                         <ActionIcon

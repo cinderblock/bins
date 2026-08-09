@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { binIdFromScan } from "./format";
+import { binIdFromScan, shortBuild } from "./format";
 
 describe("binIdFromScan", () => {
   test("bare numbers and plain URLs (no secret)", () => {
@@ -42,5 +42,20 @@ describe("binIdFromScan", () => {
     expect(binIdFromScan("https://host.example/123abc")).toBeNull();
     expect(binIdFromScan("not a url")).toBeNull();
     expect(binIdFromScan("")).toBeNull();
+  });
+});
+
+describe("shortBuild", () => {
+  test("abbreviates a full sha to the 7 chars you'd paste into git", () => {
+    expect(shortBuild("4c9c2129cf5ea8ba8c38f9617fe6f73dc4e6c1ab")).toBe(
+      "4c9c212",
+    );
+  });
+
+  test("leaves non-sha values alone", () => {
+    // A local build reports "dev"; truncating that to "dev" is fine, but
+    // truncating some future marker to gibberish would not be.
+    expect(shortBuild("dev")).toBe("dev");
+    expect(shortBuild("v1.2.3")).toBe("v1.2.3");
   });
 });

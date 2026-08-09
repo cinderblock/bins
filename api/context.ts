@@ -56,12 +56,21 @@ export async function authenticate(req: Request): Promise<Ctx | null> {
     where: eq(schema.device.tokenHash, sha256Hex(token)),
   });
   if (!row) return null;
-  // Touch lastSeenAt at most once an hour — this is a hot path.
+  // Touch lastSeenAt at most once an hour — this is a hot path. The build a
+  // device reports is written whenever it CHANGES, which is the moment worth
+  // catching (a device finally taking an update) and is rare enough to be free.
   const now = Date.now();
-  if (!row.lastSeenAt || now - row.lastSeenAt.getTime() > 3_600_000) {
+  const reportedBuild = req.headers.get("x-bins-build")?.slice(0, 64) || null;
+  const staleSeen =
+    !row.lastSeenAt || now - row.lastSeenAt.getTime() > 3_600_000;
+  const buildChanged = reportedBuild !== null && reportedBuild !== row.buildSha;
+  if (staleSeen || buildChanged) {
     await db
       .update(schema.device)
-      .set({ lastSeenAt: new Date(now) })
+      .set({
+        lastSeenAt: new Date(now),
+        ...(buildChanged ? { buildSha: reportedBuild } : {}),
+      })
       .where(eq(schema.device.id, row.id));
   }
   return {

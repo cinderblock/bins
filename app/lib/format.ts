@@ -1,5 +1,14 @@
 /** Small display helpers — not worth a dayjs dependency. */
 
+/**
+ * A build SHA at a glance. Full 40 chars are unreadable in a table cell and
+ * the leading 7 are what anyone would paste into `git show` anyway. Values
+ * that aren't SHAs (notably "dev") are shown as-is.
+ */
+export function shortBuild(sha: string): string {
+  return /^[0-9a-f]{40}$/i.test(sha) ? sha.slice(0, 7) : sha;
+}
+
 export function relativeTime(ms: number): string {
   const delta = Date.now() - ms;
   const minutes = Math.round(delta / 60_000);

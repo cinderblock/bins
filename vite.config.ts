@@ -14,6 +14,14 @@ const publicHost = process.env.PUBLIC_BASE_URL
 const apiPort = Number(process.env.API_PORT ?? 3001);
 
 export default defineConfig({
+  // Stamp the commit into the bundle so a device can report which build it is
+  // actually running (see app/lib/api.ts). CI provides GITHUB_SHA; a local
+  // build is just "dev".
+  define: {
+    __BUILD_SHA__: JSON.stringify(
+      process.env.GITHUB_SHA ?? process.env.BUILD_SHA ?? "dev",
+    ),
+  },
   plugins: [
     reactRouter(),
     tsconfigPaths(),

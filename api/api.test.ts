@@ -31,12 +31,15 @@ function call(
     origin?: string;
     /** Simulates what a reverse proxy would set (see api/config.ts). */
     xff?: string;
+    /** The build the calling device reports RUNNING (see api/context.ts). */
+    build?: string;
   } = {},
 ): Promise<Response> {
   const headers: Record<string, string> = {};
   if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
   if (opts.origin) headers.Origin = opts.origin;
   if (opts.xff) headers["X-Forwarded-For"] = opts.xff;
+  if (opts.build) headers["X-Bins-Build"] = opts.build;
   let body: BodyInit | undefined;
   if (opts.rawBody) {
     body = opts.rawBody as unknown as BodyInit;
@@ -148,6 +151,41 @@ describe("api", () => {
     expect(bad.status).toBe(403);
     const noAuth = await call("GET", "/api/sync/pull?since=0");
     expect(noAuth.status).toBe(401);
+  });
+
+  test("devices report which build they run, and admin can see who is stale", async () => {
+    // The failure this exists for: a fleet of installed PWAs sitting on old
+    // code with no way to notice. The server knows what it serves; only the
+    // device knows what it is actually running.
+    await call("GET", "/api/auth/me", { token: tokenA, build: "buildone" });
+    const listed = async () => {
+      const res = await call("POST", "/api/admin/devices", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw" },
+      });
+      return (await res.json()) as {
+        serverBuild: string;
+        devices: { displayName: string; buildSha: string | null }[];
+      };
+    };
+
+    const first = await listed();
+    expect(first.serverBuild).toBeTruthy();
+    expect(first.devices.find((d) => d.displayName === "Ada")?.buildSha).toBe(
+      "buildone",
+    );
+    // Bob has never sent a build, so he reads as unknown rather than current.
+    expect(first.devices.find((d) => d.displayName === "Bob")?.buildSha).toBe(
+      null,
+    );
+
+    // Taking an update must be visible immediately, not on the hourly
+    // last-seen cadence — that moment is the whole point of the feature.
+    await call("GET", "/api/auth/me", { token: tokenA, build: "buildtwo" });
+    const second = await listed();
+    expect(second.devices.find((d) => d.displayName === "Ada")?.buildSha).toBe(
+      "buildtwo",
+    );
   });
 
   test("allocate stickers, claim + note, second device converges via pull", async () => {

@@ -37,6 +37,12 @@ export const device = sqliteTable(
       .notNull()
       .default(now),
     lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }),
+    /**
+     * The commit of the bundle this device is RUNNING, self-reported on every
+     * API call. Distinct from what the server serves: an installed PWA can be
+     * on old code for a long time, and without this there is no way to see it.
+     */
+    buildSha: text("build_sha"),
   },
   (t) => [index("device_group").on(t.groupId)],
 );

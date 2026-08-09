@@ -5,6 +5,13 @@
  */
 import { getIdentity } from "./db";
 
+/**
+ * The commit this bundle was built from, stamped in by Vite at build time
+ * ("dev" outside CI). Sent on every API call — see apiFetch.
+ */
+export const BUILD_SHA: string =
+  typeof __BUILD_SHA__ === "string" ? __BUILD_SHA__ : "dev";
+
 let cachedToken: string | null | undefined;
 
 export function setCachedToken(token: string | null) {
@@ -33,6 +40,11 @@ export async function apiFetch(
   const bearer = await token();
   const headers = new Headers(init?.headers);
   if (bearer) headers.set("Authorization", `Bearer ${bearer}`);
+  // Which build this device is actually RUNNING, which is a different question
+  // from which build the server is serving. A fleet of phones can sit on old
+  // code invisibly — that is precisely what went unnoticed for weeks — so the
+  // server records it per device and /admin shows who is behind.
+  headers.set("X-Bins-Build", BUILD_SHA);
   const res = await fetch(path, { ...init, headers });
   if (!res.ok) {
     let message = res.statusText;

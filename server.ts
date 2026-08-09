@@ -5,14 +5,9 @@
 //
 // Importing db/client.server (via the API) migrates the SQLite db on boot.
 
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  unlinkSync,
-} from "node:fs";
+import { chmodSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
+import { BUILD_SHA } from "./api/build";
 import { handleApi } from "./api/router";
 import {
   cacheControlFor,
@@ -29,17 +24,9 @@ const CLIENT_DIR = `${import.meta.dir}/build/client`;
 // out of date while it runs.
 const PRIOR_CLIENT_DIRS = priorClientDirs(import.meta.dir);
 
-// The git SHA this release was built from — written into the release tree by
-// CI (deploy.yml) and served at /_version so the deploy can confirm the new
-// build actually took over. "dev" outside a release.
-const BUILD_SHA = (() => {
-  if (process.env.BUILD_SHA) return process.env.BUILD_SHA.trim();
-  try {
-    return readFileSync(`${import.meta.dir}/BUILD_SHA`, "utf8").trim();
-  } catch {
-    return "dev";
-  }
-})();
+// The git SHA this release was built from — served at /_version so a deploy
+// can confirm the new build took over. Shared with the API (which compares it
+// against what each device reports running); see api/build.ts.
 
 function serveAsset(pathname: string): Response | undefined {
   if (pathname === "/" || pathname.includes("..")) return undefined;

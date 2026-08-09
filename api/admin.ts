@@ -14,6 +14,7 @@ import { type CanonicalOp, secretCodeSchema } from "../shared/ops";
 import { applyOp } from "../shared/reducer";
 import { allocateBins, allocateSchema } from "./allocate";
 import { normalizeAccessCode } from "./auth";
+import { BUILD_SHA } from "./build";
 import { publicOrigin } from "./config";
 import {
   type Ctx,
@@ -440,9 +441,18 @@ export async function handleAdmin(
         eq(schema.device.groupId, ctx.groupId),
         eq(schema.device.kind, "member"),
       ),
-      columns: { id: true, displayName: true, lastSeenAt: true },
+      columns: {
+        id: true,
+        displayName: true,
+        lastSeenAt: true,
+        buildSha: true,
+      },
     });
     return json({
+      // `serverBuild` is what the app SHOULD be running; each device reports
+      // what it IS running. Without the comparison there is no way to see a
+      // fleet sitting on old code, which is exactly how that went unnoticed.
+      serverBuild: BUILD_SHA,
       devices: devices.map((d) => ({
         ...d,
         lastSeenAt: d.lastSeenAt?.getTime() ?? null,
