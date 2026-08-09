@@ -12,6 +12,7 @@ import { addPhoto } from "~/lib/actions";
 import { getCameraStream, stopCamera } from "~/lib/camera";
 import { captureFromVideo, processFile } from "~/lib/photos";
 import { DESKTOP_MEDIA } from "~/lib/ui";
+import { photoSavedWithUndo } from "~/lib/undo";
 
 export function CaptureOverlay({
   binId,
@@ -55,12 +56,12 @@ export function CaptureOverlay({
   }, [isDesktop]);
 
   async function save(photo: Awaited<ReturnType<typeof captureFromVideo>>) {
-    await addPhoto(binId, kind, photo);
-    notifications.show({
-      message:
-        kind === "contents_photo" ? "Contents photo saved" : "Item photo saved",
-      color: "green",
-    });
+    const entryOpId = await addPhoto(binId, kind, photo);
+    photoSavedWithUndo(
+      binId,
+      entryOpId,
+      kind === "contents_photo" ? "Contents photo saved" : "Item photo saved",
+    );
     onClose();
   }
 

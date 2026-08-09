@@ -113,11 +113,12 @@ export async function restoreEntry(binId: number, entryOpId: string) {
  * failed, orphan blobs are harmless and content-addressed, so a retry reuses
  * them). Upload ordering and local retention are driven by each row's role.
  */
+/** Returns the entry's id (its op id), so the caller can offer an undo. */
 export async function addPhoto(
   binId: number,
   kind: "contents_photo" | "item_photo",
   photo: ProcessedPhoto,
-) {
+): Promise<string> {
   const now = Date.now();
   const renditions = [
     { role: "thumb" as const, r: photo.thumb },
@@ -149,6 +150,7 @@ export async function addPhoto(
     },
   };
   await enqueueOp(op);
+  return op.opId;
 }
 
 /**

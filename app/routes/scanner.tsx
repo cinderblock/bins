@@ -50,6 +50,7 @@ import { db, getMeta, setMeta } from "~/lib/db";
 import { type ScanTarget, binIdFromScan } from "~/lib/format";
 import { captureFromVideo } from "~/lib/photos";
 import { DESKTOP_MEDIA, PAGE_MAXW } from "~/lib/ui";
+import { photoSavedWithUndo } from "~/lib/undo";
 
 // Self-host the ponyfill's wasm: the default fetches from a CDN at runtime,
 // which is useless offline. As a hashed local asset it lands in the service
@@ -267,13 +268,14 @@ export default function Scanner() {
     setCapturing(true);
     try {
       const photo = await captureFromVideo(video);
-      await addPhoto(currentBinId, "contents_photo", photo);
+      const entryOpId = await addPhoto(currentBinId, "contents_photo", photo);
       setFlash(true);
       setTimeout(() => setFlash(false), 180);
-      notifications.show({
-        message: `Contents photo saved to #${currentBinId}`,
-        color: "green",
-      });
+      photoSavedWithUndo(
+        currentBinId,
+        entryOpId,
+        `Contents photo saved to #${currentBinId}`,
+      );
     } catch (err) {
       notifications.show({ message: `Capture failed: ${err}`, color: "red" });
     } finally {

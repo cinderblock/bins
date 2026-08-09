@@ -13,6 +13,7 @@ import { IDENTITY_KEY, type Identity, db } from "~/lib/db";
 import { refreshDeployment, useDeployment } from "~/lib/deployment";
 import { binIdFromScan } from "~/lib/format";
 import { startGeo } from "~/lib/geo";
+import { lockPortrait } from "~/lib/orientation";
 // Imported for its side effect too: captures `beforeinstallprompt` early.
 import "~/lib/install";
 import { startSync } from "~/lib/sync";
@@ -40,6 +41,12 @@ export default function Shell() {
   // Cheap, unauthenticated, and a failure leaves the cached value alone.
   useEffect(() => {
     void refreshDeployment();
+  }, []);
+
+  // Bending down to scan a low box shouldn't reflow the page mid-scan.
+  // Best effort — see lib/orientation.
+  useEffect(() => {
+    lockPortrait();
   }, []);
 
   if (identity === undefined || deployment === undefined) return null;
