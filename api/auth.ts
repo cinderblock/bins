@@ -20,6 +20,12 @@ const joinSchema = z.object({
   deviceId,
 });
 
+const joinByAdminSchema = z.object({
+  adminPassword: z.string().min(1).max(200),
+  displayName,
+  deviceId,
+});
+
 const joinByBinSchema = z.object({
   binId: z.number().int().positive(),
   code: secretCodeSchema,
@@ -75,6 +81,33 @@ export async function handleJoin(req: Request): Promise<Response> {
     ),
   });
   if (!group) return error(403, "unknown access code");
+
+  return mintDevice(group, displayName, deviceId);
+}
+
+/**
+ * Join with the ADMIN password instead of the access code.
+ *
+ * Reported by an operator who went to /admin on a new device and was asked for
+ * a group access code they didn't have: every admin endpoint needs a member
+ * token AND the admin password, so knowing the more privileged secret still
+ * left them locked out behind the less privileged one. That's backwards.
+ *
+ * No privilege escalation: the admin password already authorises everything
+ * the access code does and much more, so accepting it here grants nothing new.
+ * The password identifies the group, so this works on a multi-group deploy.
+ */
+export async function handleJoinByAdmin(req: Request): Promise<Response> {
+  const parsed = joinByAdminSchema.safeParse(
+    await req.json().catch(() => null),
+  );
+  if (!parsed.success) return error(400, "invalid join request");
+  const { adminPassword, displayName, deviceId } = parsed.data;
+
+  const group = await db.query.group.findFirst({
+    where: eq(schema.group.adminPasswordHash, sha256Hex(adminPassword)),
+  });
+  if (!group) return error(403, "wrong admin password");
 
   return mintDevice(group, displayName, deviceId);
 }

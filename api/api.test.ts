@@ -153,6 +153,38 @@ describe("api", () => {
     expect(noAuth.status).toBe(401);
   });
 
+  test("the admin password can join a device, so /admin is never a dead end", async () => {
+    // An admin arriving at /admin on a new device was asked for the group
+    // access code — a WEAKER secret — and had no way in without it, even
+    // knowing the stronger one. Every admin call needs a member token too.
+    const wrong = await call("POST", "/api/auth/join-by-admin", {
+      body: {
+        adminPassword: "not-it",
+        displayName: "Imposter",
+        deviceId: crypto.randomUUID(),
+      },
+    });
+    expect(wrong.status).toBe(403);
+
+    const res = await call("POST", "/api/auth/join-by-admin", {
+      body: {
+        adminPassword: "admin-pw",
+        displayName: "Admin Phone",
+        deviceId: crypto.randomUUID(),
+      },
+    });
+    expect(res.status).toBe(200);
+    const { token } = (await res.json()) as { token: string };
+
+    // The minted device is an ordinary member, and with the admin password it
+    // reaches the admin surface — which is the whole point.
+    const admin = await call("POST", "/api/admin/group", {
+      token,
+      body: { adminPassword: "admin-pw" },
+    });
+    expect(admin.status).toBe(200);
+  });
+
   test("the access code is readable, so an operator can't be locked out", async () => {
     // The lockout this prevents: both credentials were hash-only, /admin needs
     // the CURRENT admin password to rotate anything, and the code only lived

@@ -2,6 +2,7 @@ import { handleAdmin } from "./admin";
 import {
   handleDevices,
   handleJoin,
+  handleJoinByAdmin,
   handleJoinByBin,
   handleJoinOpen,
   handleMe,
@@ -35,6 +36,10 @@ export async function handleApi(req: Request, url: URL): Promise<Response> {
       return await handleJoin(req);
     if (path === "/api/auth/join-by-bin" && method === "POST")
       return await handleJoinByBin(req);
+    // The admin password authorises strictly more than the access code, so it
+    // must not leave someone locked out behind the weaker one.
+    if (path === "/api/auth/join-by-admin" && method === "POST")
+      return await handleJoinByAdmin(req);
     // 404s unless the deployment declares itself perimeter-protected.
     if (path === "/api/auth/join-open" && method === "POST")
       return await handleJoinOpen(req);
