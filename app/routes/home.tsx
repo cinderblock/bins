@@ -14,14 +14,19 @@
  * scanner also has its own stable URL (/scan) so it can be linked to.
  */
 import { useDeployment } from "~/lib/deployment";
+import { useDeskMode } from "~/lib/deskMode";
 import Bins from "./bins";
 import Scanner from "./scanner";
 
 export default function Home() {
   const deployment = useDeployment();
+  // A device in desk mode never opens on the camera, whatever the deployment
+  // default is — see lib/deskMode.
+  const deskMode = useDeskMode();
   // Render nothing rather than flashing the camera on before we know: on a
   // browse-home deployment, briefly opening the viewfinder would light the
   // LED and re-prompt on iOS for a screen the user never asked for.
-  if (deployment === undefined) return null;
+  if (deployment === undefined || deskMode === undefined) return null;
+  if (deskMode) return <Bins />;
   return deployment.homeView === "browse" ? <Bins /> : <Scanner />;
 }

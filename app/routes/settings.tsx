@@ -53,6 +53,7 @@ import {
   setMeta,
 } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
+import { setDeskMode, useDeskMode } from "~/lib/deskMode";
 import { GEO_OPT_IN_KEY, setGeoOptIn } from "~/lib/geo";
 import {
   canPromptInstall,
@@ -76,6 +77,7 @@ import { syncNow } from "~/lib/sync";
 export default function Settings() {
   useDocumentTitle("Settings · bins");
   const navigate = useNavigate();
+  const deskMode = useDeskMode();
   const identity = useLiveQuery(
     async () =>
       (await db.meta.get(IDENTITY_KEY))?.value as Identity | undefined,
@@ -305,6 +307,15 @@ export default function Settings() {
               void setGeoOptIn(e.currentTarget.checked);
             }}
             label="Record location on photos and notes"
+          />
+          {/* The way back out of desk mode. Turning it ON lives next to
+              "Start camera" where the choice actually comes up; without this
+              it would be a one-way door. */}
+          <Switch
+            checked={deskMode === true}
+            onChange={(e) => void setDeskMode(e.currentTarget.checked)}
+            label="Desk mode — no camera, open on browse and search"
+            description="For a laptop used to sort and verify rather than scan."
           />
         </Stack>
       </Paper>

@@ -24,7 +24,7 @@ import {
   Title,
   UnstyledButton,
 } from "@mantine/core";
-import { useDocumentTitle } from "@mantine/hooks";
+import { useDocumentTitle, useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import type { BinState } from "@shared/reducer";
 import {
@@ -42,6 +42,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import type MiniSearch from "minisearch";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
+import { BinDetailPane } from "~/components/BinDetailPane";
 import { LabelChips } from "~/components/LabelChips";
 import { PhotoImg } from "~/components/PhotoImg";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
@@ -103,6 +104,15 @@ export default function Bins() {
 
   // Search-intent entries (the scanner's magnifier icon, the /search
   // redirect) land with this state so the keyboard pops immediately.
+  // Desk mode: a wide screen gets list + detail side by side, so checking a
+  // shelf doesn't mean navigating in and out of every box and losing your
+  // place. Phones and narrow windows keep the plain list.
+  const twoPane =
+    useMediaQuery("(min-width: 75em)", false, {
+      getInitialValueInEffect: false,
+    }) ?? false;
+  const [previewId, setPreviewId] = useState<number | null>(null);
+
   const focusSearch = Boolean(
     (location.state as { focusSearch?: boolean } | null)?.focusSearch,
   );
@@ -195,6 +205,9 @@ export default function Bins() {
 
   function activate(bin: BinState) {
     if (selecting) toggle(bin.id);
+    // Side by side, a click selects rather than navigates — the detail is
+    // already on screen, and leaving would throw away the list and its scroll.
+    else if (twoPane) setPreviewId(bin.id);
     else navigate(`/${bin.id}`);
   }
 
@@ -254,6 +267,39 @@ export default function Bins() {
     }
   }
 
+  // The rendered order, for the key handler below. A ref because that handler
+  // is registered once but must always see the CURRENT list.
+  const shownRef = useRef<BinState[]>([]);
+
+  // Arrow keys walk the list without leaving the search box — the point of
+  // this layout is working down a shelf, and reaching for the mouse on every
+  // box defeats it. Ignored while bulk-selecting, where arrows mean nothing.
+  //
+  // Registered above the `bins === undefined` bail-out on purpose: a hook that
+  // only runs on some renders changes the hook count between them, which React
+  // rejects outright (error #310 — caught by driving this in a browser, since
+  // types and tests both pass happily).
+  useEffect(() => {
+    if (!twoPane || selecting) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      const list = shownRef.current;
+      if (list.length === 0) return;
+      e.preventDefault();
+      setPreviewId((current) => {
+        const at = list.findIndex((b) => b.id === current);
+        if (at === -1) return list[0]?.id ?? null;
+        const next =
+          e.key === "ArrowDown"
+            ? Math.min(at + 1, list.length - 1)
+            : Math.max(at - 1, 0);
+        return list[next]?.id ?? null;
+      });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [twoPane, selecting]);
+
   if (bins === undefined) return null;
 
   // Text query: MiniSearch relevance order. The index only covers ACTIVE
@@ -274,13 +320,15 @@ export default function Bins() {
     ? listed.filter((bin) => bin.labelIds.includes(filterLabel))
     : listed;
 
-  return (
+  shownRef.current = shown;
+
+  const list = (
     <Stack
       p="md"
       pt="max(var(--mantine-spacing-md), env(safe-area-inset-top))"
       gap="md"
-      maw={PAGE_MAXW}
-      mx="auto"
+      maw={twoPane ? undefined : PAGE_MAXW}
+      mx={twoPane ? undefined : "auto"}
     >
       <Group justify="space-between">
         <Group gap="sm">
@@ -598,6 +646,30 @@ export default function Bins() {
 
       {editing && <EditSheet bin={editing} onClose={() => setEditing(null)} />}
     </Stack>
+  );
+
+  if (!twoPane) return list;
+  return (
+    <Group
+      align="stretch"
+      gap="md"
+      wrap="nowrap"
+      p="md"
+      style={{ height: "100dvh" }}
+    >
+      <div
+        style={{
+          flex: "0 0 clamp(360px, 40%, 560px)",
+          minWidth: 0,
+          overflowY: "auto",
+        }}
+      >
+        {list}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <BinDetailPane binId={previewId} />
+      </div>
+    </Group>
   );
 }
 

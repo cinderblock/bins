@@ -47,6 +47,7 @@ import {
   torchCapableTrack,
 } from "~/lib/camera";
 import { db, getMeta, setMeta } from "~/lib/db";
+import { setDeskMode } from "~/lib/deskMode";
 import { type ScanTarget, binIdFromScan } from "~/lib/format";
 import { captureFromVideo } from "~/lib/photos";
 import { DESKTOP_MEDIA, PAGE_MAXW } from "~/lib/ui";
@@ -400,6 +401,20 @@ export default function Scanner() {
               onClick={() => setDesktopCameraOn(true)}
             >
               Start camera
+            </Button>
+            {/* The other job this machine does: no camera at all, just work
+                through what's already photographed. Sticks, so the next visit
+                opens straight on browse instead of a viewfinder. */}
+            <Button
+              size="lg"
+              variant="default"
+              leftSection={<IconSearch size={20} />}
+              onClick={() => {
+                void setDeskMode(true);
+                navigate("/bins", { state: { focusSearch: true } });
+              }}
+            >
+              Browse &amp; search instead
             </Button>
             <Divider label="or type a bin number" labelPosition="center" />
             <ManualBinInput onSubmit={(target) => void onScan(target)} />

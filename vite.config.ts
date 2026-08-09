@@ -74,7 +74,11 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         // Offline boot: any navigation serves the precached SPA shell…
         navigateFallback: "/index.html",
-        // …but never API routes.
+        // …but never API routes. The repair page lives under /api for exactly
+        // this reason: that prefix is in the denylist of every worker ever
+        // deployed, so /api/r reaches the server even from a device stranded
+        // on an old build. A prettier /reset would only work for builds new
+        // enough to already know about it — i.e. not the ones that need it.
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {

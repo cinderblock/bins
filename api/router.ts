@@ -48,7 +48,14 @@ export async function handleApi(req: Request, url: URL): Promise<Response> {
     // Under /api/ on purpose: that prefix is the service worker's navigation
     // denylist, so this reaches the server even from a device a stale worker
     // has stranded. See api/recover.ts.
-    if (path === "/api/recover" && method === "GET") return handleRecover();
+    // `/api/r` is the one to read out loud: short, AND under the prefix that
+    // every worker ever deployed already refuses to intercept — so it reaches
+    // the server even from a device stranded on an old build. (`/reset` and
+    // `/r` are nicer still, but only work for builds new enough to have them
+    // in the worker's denylist.)
+    if ((path === "/api/recover" || path === "/api/r") && method === "GET") {
+      return handleRecover();
+    }
     if (path === "/api/setup" && method === "POST")
       return await handleSetup(req);
 

@@ -198,6 +198,13 @@ export const INSTALL_HINT_KEY = "installHintShown";
 export const ADMIN_PASSWORD_KEY = "adminPassword";
 /** Group access code cached on devices that know it, for invite links (lib/invite.ts). */
 export const ACCESS_CODE_KEY = "accessCode";
+/**
+ * This device does inventory WORK, not scanning — a laptop used for looking
+ * through photos, categorising and verifying. Suppresses the camera entirely
+ * and opens on the browse/search surface. Per device, not per deployment: the
+ * same group has campers on phones scanning and campers on laptops sorting.
+ */
+export const NO_CAMERA_KEY = "noCamera";
 
 export async function getIdentity(): Promise<Identity | undefined> {
   return getMeta<Identity>(IDENTITY_KEY);
