@@ -6,7 +6,6 @@
  * second option and passes the page to return to in `location.state.next`.
  */
 import {
-  Anchor,
   Button,
   Checkbox,
   Container,
@@ -21,6 +20,7 @@ import { useDocumentTitle } from "@mantine/hooks";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { Navigate, useLocation } from "react-router";
+import { rememberAdmin } from "~/lib/admin";
 import { adoptIdentity } from "~/lib/auth";
 import { IDENTITY_KEY, type Identity, db } from "~/lib/db";
 import { rememberAccessCode } from "~/lib/invite";
@@ -43,10 +43,6 @@ export default function Join() {
   const [displayName, setDisplayName] = useState("");
   const [accessCode, setAccessCode] = useState(codeFromUrl);
   const [geoOk, setGeoOk] = useState(true);
-  // Which secret they're presenting. The admin password authorises strictly
-  // more than the access code, so someone who has it must never be stuck
-  // behind the one they don't — reported by an operator locked out of /admin.
-  const [useAdminPassword, setUseAdminPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Where to land once joined — the box page someone was trying to reach when
@@ -57,39 +53,66 @@ export default function Join() {
   if (identity === undefined) return null;
   if (identity !== null) return <Navigate to={next} replace />;
 
+  /** One join attempt; retries once on 409 (a device-id collision). */
+  async function post(
+    endpoint: string,
+    credential: Record<string, string>,
+  ): Promise<Response | null> {
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...credential,
+          displayName: displayName.trim(),
+          deviceId: crypto.randomUUID(),
+        }),
+      });
+      if (response.status !== 409) break;
+    }
+    return response;
+  }
+
+  /**
+   * One field, either secret.
+   *
+   * Asking which KIND of code you hold is a question only the system cares
+   * about — you just have "the code someone gave me". So try the access code,
+   * and on a rejection try the same text as the admin password. Whichever
+   * matches decides what you get: an admin lands with /admin already unlocked
+   * instead of being asked for the very password they just typed.
+   */
   async function join() {
     setBusy(true);
     setError(null);
     try {
-      const endpoint = useAdminPassword
-        ? "/api/auth/join-by-admin"
-        : "/api/auth/join";
-      const credential = useAdminPassword
-        ? { adminPassword: accessCode }
-        : { accessCode };
-      let response: Response | null = null;
-      for (let attempt = 0; attempt < 2; attempt++) {
-        response = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...credential,
-            displayName: displayName.trim(),
-            deviceId: crypto.randomUUID(),
-          }),
+      const secret = accessCode;
+      let response = await post("/api/auth/join", { accessCode: secret });
+      let joinedAsAdmin = false;
+      if (response && response.status === 403) {
+        const asAdmin = await post("/api/auth/join-by-admin", {
+          adminPassword: secret,
         });
-        if (response.status !== 409) break;
+        if (asAdmin?.ok) {
+          response = asAdmin;
+          joinedAsAdmin = true;
+        }
       }
       if (!response || !response.ok) {
-        const body = (await response?.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(body?.error ?? "could not join");
+        // Deliberately does NOT say which secret was wrong — that would turn
+        // this box into an oracle for "is this string the admin password?".
+        throw new Error("That code didn’t match. Check it and try again.");
       }
       await adoptIdentity((await response.json()) as Identity, geoOk);
-      // Cache the ACCESS CODE only — an admin password is not an invite, and
-      // must never end up in a link this device hands to someone else.
-      if (!useAdminPassword) await rememberAccessCode(accessCode);
+      if (joinedAsAdmin) {
+        // Typing it here IS a successful verification, so unlock admin on this
+        // device. Never cached as an invite code: an invite is meant to be
+        // handed to someone else, and this is the one secret that must not be.
+        await rememberAdmin(secret);
+      } else {
+        await rememberAccessCode(secret);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "could not join");
     } finally {
@@ -103,9 +126,8 @@ export default function Join() {
         <Stack>
           <Title order={2}>bins</Title>
           <Text c="dimmed" size="sm">
-            Join with the{" "}
-            {useAdminPassword ? "admin password" : "group access code"} and a
-            name (shown next to your photos and notes).
+            Join with the group code and a name (shown next to your photos and
+            notes). An admin password works here too, and unlocks admin.
           </Text>
           <TextInput
             label="Your name"
@@ -116,24 +138,11 @@ export default function Join() {
             autoFocus
           />
           <PasswordInput
-            label={useAdminPassword ? "Admin password" : "Group access code"}
+            label="Access code or admin password"
             value={accessCode}
             onChange={(e) => setAccessCode(e.currentTarget.value)}
             size="lg"
           />
-          <Anchor
-            component="button"
-            type="button"
-            size="sm"
-            onClick={() => {
-              setUseAdminPassword((v) => !v);
-              setError(null);
-            }}
-          >
-            {useAdminPassword
-              ? "I have the group access code instead"
-              : "I have the admin password instead"}
-          </Anchor>
           <Checkbox
             checked={geoOk}
             onChange={(e) => setGeoOk(e.currentTarget.checked)}
