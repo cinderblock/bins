@@ -142,13 +142,35 @@ jobs:
             process.exit(1);
           '
 
-      - name: Prune old releases (keep last 5)
+      - name: Prune old releases (5 runnable, 30 servable)
         if: always()
+        # Deleting an old release deletes the chunks of every device still
+        # running it, and those devices then can't boot to update themselves —
+        # they need a human to visit /api/recover. The client build is a few MB
+        # (the rest of a release is node_modules), so older releases are
+        # stripped to just that instead of removed: a stale device keeps
+        # booting, and therefore keeps auto-updating, for ~30 deploys instead
+        # of 5.
         run: |
           cd "$APP_ROOT/releases" 2>/dev/null || exit 0
+          current="$(readlink -f "$APP_ROOT/current" 2>/dev/null || echo none)"
           n=0
           for d in $(ls -1dt -- */ 2>/dev/null); do
+            rel="${d%/}"
+            # Never touch the release actually being served.
+            [ "$(readlink -f "$rel")" = "$current" ] && continue
             n=$((n + 1))
-            [ "$n" -gt 5 ] && rm -rf -- "$d"
+            if [ "$n" -le 5 ]; then
+              continue
+            elif [ "$n" -le 30 ]; then
+              find "$rel" -mindepth 1 -maxdepth 1 ! -name build \
+                -exec rm -rf -- {} + 2>/dev/null || true
+              if [ -d "$rel/build" ]; then
+                find "$rel/build" -mindepth 1 -maxdepth 1 ! -name client \
+                  -exec rm -rf -- {} + 2>/dev/null || true
+              fi
+            else
+              rm -rf -- "$rel"
+            fi
           done
           true
