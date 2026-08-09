@@ -54,7 +54,11 @@ jobs:
           # Ready-to-run tree: the SPA build, the server entry and everything it
           # imports at runtime (api/, shared/, db/ incl. migrations — the app
           # auto-migrates on boot), and prod node_modules.
-          cp -r build api shared db server.ts run package.json bun.lock "$REL"/
+          #
+          # This list is hand-maintained: a module server.ts imports that is
+          # missing here builds fine, stages fine, and then the release cannot
+          # boot at all. Add new runtime files as you add them.
+          cp -r build api shared db server.ts release-assets.ts run package.json bun.lock "$REL"/
           chmod +x "$REL/run"
           # Stamp the build SHA so the running app reports which release it is
           # (server.ts serves it at /_version; the health check below verifies it).
