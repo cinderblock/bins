@@ -52,9 +52,21 @@ proved each link:
 
 ## Decisions already made (don't re-ask)
 
-- `registerType: "prompt"` stays. Auto-activating a worker mid-capture can
-  lose work; that decision predates this bug and this bug is not a reason to
-  revisit it.
+- **CORRECTED 2026-08-09 — "never auto-update" was never a user decision.**
+  An earlier revision of this file listed `registerType: "prompt"` here, in
+  the don't-re-ask section, and it was cited back to the user as their locked
+  constraint. It wasn't. It came from an implementation choice in `ca2988b`
+  ("PWA shell"), and no `(user decision …)` tag anywhere mentions updates or
+  reloads. Putting an agent's choice in this section turned it into a fake
+  constraint that shaped a day of debugging.
+
+  The actual user decision (2026-08-09): **always update.** Activate a new
+  worker as soon as it's ready and reload at the first moment that can't
+  interrupt anyone — see `app/lib/appUpdate.ts`. Activation is safe for a page
+  still running old chunks because the server serves build artifacts from
+  previous releases.
+
+  Only put something in this section with a date and an attribution.
 - `generateSW` stays (no switch to `injectManifest`) — same reasoning as
   `plans/mobile-ux-and-suggestions.md` phase 3: the generated SW is
   load-bearing and not worth owning.
@@ -236,8 +248,10 @@ element's centre — that IS the browser's hit test, the same one a finger uses.
   here goes through `node:path` `join`, on both sides, so the tests behave the
   same on Windows and Linux with no separator patching.
 
-- Don't "fix" this by dropping `registerType: "prompt"` — that trades this bug
-  for lost captures.
+- Don't reintroduce "a new build waits for a tap". Devices then sit on old
+  code indefinitely and shipped fixes reach nobody, which is far worse than
+  the reload it was avoiding. Reload timing is the thing to be careful with,
+  not activation.
 - Don't trust a green build here: the whole failure is invisible to typecheck,
   lint and the test suite. The oracle is the generated `build/client/sw.js`
   precache list.
