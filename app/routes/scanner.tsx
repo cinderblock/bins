@@ -50,7 +50,7 @@ import { db, getMeta, setMeta } from "~/lib/db";
 import { setDeskMode } from "~/lib/deskMode";
 import { type ScanTarget, binIdFromScan } from "~/lib/format";
 import { captureFromVideo } from "~/lib/photos";
-import { DESKTOP_MEDIA, PAGE_MAXW } from "~/lib/ui";
+import { DESKTOP_MEDIA, PAGE_MAXW, TOUCH_TARGET } from "~/lib/ui";
 import { photoSavedWithUndo } from "~/lib/undo";
 
 // Self-host the ponyfill's wasm: the default fetches from a CDN at runtime,
@@ -498,7 +498,7 @@ export default function Scanner() {
             </Group>
           )}
 
-          {!peekOpen && recentBins.length > 0 && (
+          {!peekOpen && (
             <Group gap="xs" style={{ overflowX: "auto", flexWrap: "nowrap" }}>
               {recentBins.map((bin) => (
                 <Badge
@@ -516,6 +516,26 @@ export default function Scanner() {
                   {bin.name ? ` ${bin.name}` : ""}
                 </Badge>
               ))}
+              {/* This strip is the LAST FEW boxes, in one scrolling line over a
+                  live viewfinder — there is nowhere to sort or filter, and it
+                  was being read as "the list". Always offer the way out to the
+                  real one, even before anything is recent. */}
+              <Badge
+                size="lg"
+                variant="filled"
+                leftSection={<IconSearch size={14} />}
+                onClick={() =>
+                  navigate("/bins", { state: { focusSearch: true } })
+                }
+                style={{
+                  cursor: "pointer",
+                  flexShrink: 0,
+                  textTransform: "none",
+                  minHeight: TOUCH_TARGET,
+                }}
+              >
+                All boxes
+              </Badge>
             </Group>
           )}
 
