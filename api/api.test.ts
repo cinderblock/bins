@@ -153,6 +153,47 @@ describe("api", () => {
     expect(noAuth.status).toBe(401);
   });
 
+  test("the access code is readable, so an operator can't be locked out", async () => {
+    // The lockout this prevents: both credentials were hash-only, /admin needs
+    // the CURRENT admin password to rotate anything, and the code only lived
+    // on devices that had already joined. Forget it with no device signed in
+    // and the data was intact but unreachable.
+    const res = await call("POST", "/api/admin/group", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw" },
+    });
+    expect(res.status).toBe(200);
+    const { config } = (await res.json()) as {
+      config: { accessCode: string | null };
+    };
+    expect(config.accessCode).toBe("secret-code");
+
+    // Rotating keeps it readable, and the new code actually works to join.
+    const rotated = await call("POST", "/api/admin/group", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", newAccessCode: "rotated-code" },
+    });
+    const after = (await rotated.json()) as {
+      config: { accessCode: string | null };
+    };
+    expect(after.config.accessCode).toBe("rotated-code");
+
+    const joined = await call("POST", "/api/auth/join", {
+      body: {
+        accessCode: "rotated-code",
+        displayName: "Cid",
+        deviceId: crypto.randomUUID(),
+      },
+    });
+    expect(joined.status).toBe(200);
+
+    // Put it back so later tests still see the original code.
+    await call("POST", "/api/admin/group", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", newAccessCode: "secret-code" },
+    });
+  });
+
   test("devices report which build they run, and admin can see who is stale", async () => {
     // The failure this exists for: a fleet of installed PWAs sitting on old
     // code with no way to notice. The server knows what it serves; only the

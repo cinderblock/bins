@@ -35,6 +35,8 @@ export async function handleSetup(req: Request): Promise<Response> {
       id: groupId,
       name: p.groupName.trim(),
       accessCodeHash: sha256Hex(normalizeAccessCode(p.accessCode)),
+      // Kept readable so a forgotten code can be recovered — see the column.
+      accessCode: p.accessCode.trim(),
       landingTitle: p.landingTitle?.trim() || null,
       landingSubtitle: p.landingSubtitle?.trim() || null,
       adminPasswordHash: sha256Hex(p.adminPassword),

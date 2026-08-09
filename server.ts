@@ -8,6 +8,7 @@
 import { chmodSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import { BUILD_SHA } from "./api/build";
+import { logGroupCredentials } from "./api/credentials";
 import { handleApi } from "./api/router";
 import {
   cacheControlFor,
@@ -129,3 +130,8 @@ try {
 } catch {}
 
 console.log(`bins listening on unix:${SOCKET_PATH} (build ${BUILD_SHA})`);
+
+// Print each group's access code, so it can always be recovered from the log
+// rather than being unrecoverable once forgotten. See api/credentials.ts for
+// the trade this makes.
+await logGroupCredentials();

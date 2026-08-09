@@ -131,6 +131,9 @@ function configOf(group: GroupRow) {
     name: group.name,
     landingTitle: group.landingTitle,
     landingSubtitle: group.landingSubtitle,
+    // Shown to an unlocked admin so the code never has to be remembered. Null
+    // for groups predating the plaintext column — rotate once to populate it.
+    accessCode: group.accessCode,
   };
 }
 
@@ -266,8 +269,10 @@ export async function handleAdmin(
       updates.landingTitle = p.landingTitle.trim() || null;
     if (p.landingSubtitle !== undefined)
       updates.landingSubtitle = p.landingSubtitle.trim() || null;
-    if (p.newAccessCode !== undefined)
+    if (p.newAccessCode !== undefined) {
       updates.accessCodeHash = sha256Hex(normalizeAccessCode(p.newAccessCode));
+      updates.accessCode = p.newAccessCode.trim();
+    }
     if (p.newAdminPassword !== undefined)
       updates.adminPasswordHash = sha256Hex(p.newAdminPassword);
     if (Object.keys(updates).length > 0) {

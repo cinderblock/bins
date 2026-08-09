@@ -15,6 +15,22 @@ export const group = sqliteTable("group", {
   name: text("name").notNull(),
   /** sha256 hex of the normalized (trimmed, lowercased) access code. */
   accessCodeHash: text("access_code_hash").notNull(),
+  /**
+   * The access code in PLAINTEXT, so it can be recovered.
+   *
+   * A deliberate trade, made after an operator locked themselves out of their
+   * own deployment: the hash alone meant a forgotten code could only be
+   * replaced, never read, even by the person running the server. Anyone with
+   * the database or the server log can now read it — which is close to what
+   * the code already implies, since it is a shared secret that every joined
+   * device already caches in plaintext locally (lib/invite.ts) to build invite
+   * links, and since the app's whole access model is deliberately low-security
+   * (seeing one sticker gets you in).
+   *
+   * Null for groups created before this column existed; /admin and the startup
+   * log say "unknown" rather than guessing, and rotating once fills it in.
+   */
+  accessCode: text("access_code"),
   /** Signed-out landing branding; null → "{name} Inventory Management System". */
   landingTitle: text("landing_title"),
   /** Signed-out landing subtitle; null → "Scan a Box to Start". */

@@ -22,6 +22,9 @@ await db.insert(schema.group).values({
   id,
   name,
   accessCodeHash: sha256Hex(normalizeAccessCode(code)),
+  // Kept readable so it can be recovered later — see the column, and
+  // scripts/reset-credentials.ts.
+  accessCode: code.trim(),
   adminPasswordHash: adminPassword ? sha256Hex(adminPassword) : null,
 });
 console.log(

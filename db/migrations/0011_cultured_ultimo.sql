@@ -1,0 +1,1 @@
+ALTER TABLE `group` ADD `access_code` text;
