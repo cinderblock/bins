@@ -51,6 +51,11 @@ export default defineConfig({
         // React Router SPA mode writes index.html AFTER the client bundle
         // closes, so the glob can't see it — add it explicitly (revision
         // bumps every build; its content embeds hashed asset names anyway).
+        //
+        // `assets/manifest-*.js` is written later still — after the whole Vite
+        // build, so not even a `closeBundle` hook can reach it. It is added by
+        // the `precache:route-manifest` build step; leaving it out of the
+        // precache is what stranded every installed device on every deploy.
         additionalManifestEntries: [
           { url: "/index.html", revision: Date.now().toString(36) },
         ],

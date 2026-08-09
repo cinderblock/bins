@@ -14,9 +14,16 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 import { handleApi } from "./api/router";
+import { findInPriorReleases, priorClientDirs } from "./release-assets";
 
 const SOCKET_PATH = process.env.SOCKET_PATH ?? "/run/bins/bins.sock";
 const CLIENT_DIR = `${import.meta.dir}/build/client`;
+
+// Client builds of the other releases still on disk — the fallback that keeps
+// a stale shell bootable across a deploy (see release-assets.ts). Snapshotted
+// at boot on purpose: a deploy restarts this process, so it can never go
+// out of date while it runs.
+const PRIOR_CLIENT_DIRS = priorClientDirs(import.meta.dir);
 
 // The git SHA this release was built from — written into the release tree by
 // CI (deploy.yml) and served at /_version so the deploy can confirm the new
@@ -38,6 +45,24 @@ function serveAsset(pathname: string): Response | undefined {
     ? "public, max-age=31536000, immutable"
     : "public, max-age=3600";
   return new Response(file, { headers: { "Cache-Control": cacheControl } });
+}
+
+/**
+ * The same asset out of an earlier release — see release-assets.ts. Only ever
+ * reached for a path this release doesn't have, and only for hashed build
+ * artifacts, so it can't shadow anything current.
+ */
+function serveAssetFromPriorRelease(pathname: string): Response | undefined {
+  const hit = findInPriorReleases(PRIOR_CLIENT_DIRS, pathname);
+  if (!hit) return undefined;
+  return new Response(Bun.file(hit.path), {
+    headers: {
+      "Cache-Control": "public, max-age=31536000, immutable",
+      // Names the release it came from, so "is anyone still on an old shell?"
+      // is answerable from the reverse proxy's logs.
+      "X-Bins-Prior-Release": hit.release,
+    },
+  });
 }
 
 /**
@@ -87,10 +112,15 @@ Bun.serve({
     if (req.method === "GET" || req.method === "HEAD") {
       const asset = serveAsset(url.pathname);
       if (asset) return asset;
-      // A missing build artifact is a 404, never the shell — see
-      // isBuildArtifact. Serving HTML here strands any client holding a stale
-      // asset list (an out-of-date service worker) on a blank page forever.
       if (isBuildArtifact(url.pathname)) {
+        // Most likely a stale shell asking for its own build's chunks; hand
+        // them over if an earlier release still has them, so it can boot and
+        // update itself.
+        const prior = serveAssetFromPriorRelease(url.pathname);
+        if (prior) return prior;
+        // A missing build artifact is a 404, never the shell — see
+        // isBuildArtifact. Serving HTML here strands any client holding a
+        // stale asset list on a blank page forever.
         return new Response("not found", {
           status: 404,
           headers: { "Cache-Control": "no-store" },

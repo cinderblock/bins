@@ -18,6 +18,14 @@ import "@mantine/notifications/styles.css";
 
 import { useEffect } from "react";
 import type { Route } from "./+types/root";
+
+declare global {
+  interface Window {
+    /** Set once the app hydrates — read by bootWatchdogJs. */
+    __binsBooted?: boolean;
+  }
+}
+
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
 import { TOAST_BOTTOM } from "./lib/ui";
 
@@ -28,6 +36,68 @@ const earlyColorSchemeCss = `
 :root { color-scheme: dark; }
 html { background-color: #242424; }
 html[data-mantine-color-scheme="light"] { background-color: #ffffff; color-scheme: light; }
+`;
+
+/**
+ * How long to wait before deciding the app has failed to boot. Generous: a
+ * cold cache on a slow phone over a busy LAN can legitimately take a few
+ * seconds, and a false trigger costs a reload.
+ */
+const BOOT_TIMEOUT_MS = 10_000;
+const BOOT_RECOVERY_KEY = "bins:boot-recovery";
+
+/**
+ * Self-heal a service worker that can no longer boot the app.
+ *
+ * Every deploy rehashes the assets. An installed worker keeps serving the
+ * index.html it precached; if that shell asks for a chunk which no longer
+ * exists, the app never hydrates and the boot fallback stays on screen
+ * forever. The update prompt that would replace the worker is a component
+ * INSIDE the app, so it never gets to run — the fix is trapped behind the
+ * thing it fixes.
+ *
+ * This has to be an inline script, NOT a React effect. It shipped as a
+ * `useEffect` in HydrateFallback first, which was useless in the exact case it
+ * was written for: hydration is what's broken, so the effect never ran (proved
+ * on a stuck page — the sessionStorage guard below was still unset). An inline
+ * script in the prerendered shell is the last code still running in that
+ * state.
+ *
+ * Safe to be aggressive: the caches hold the precached shell and re-fetchable
+ * photo bytes. All real data — the replica, the op outbox, pending photos —
+ * lives in IndexedDB and is untouched.
+ */
+const bootWatchdogJs = `
+(function () {
+  window.__binsBooted = false;
+  setTimeout(function () {
+    if (window.__binsBooted) return;
+    // Offline is a legitimate reason to be slow, and dropping the precache
+    // while offline would turn a delay into a dead app.
+    if (!navigator.onLine) return;
+    try {
+      // Once per tab. A reload loop would be worse than a stuck page.
+      if (sessionStorage.getItem(${JSON.stringify(BOOT_RECOVERY_KEY)})) return;
+      sessionStorage.setItem(${JSON.stringify(BOOT_RECOVERY_KEY)}, "1");
+    } catch (e) {}
+    var reload = function () { location.reload(); };
+    Promise.resolve()
+      .then(function () {
+        return navigator.serviceWorker
+          ? navigator.serviceWorker.getRegistrations()
+          : [];
+      })
+      .then(function (regs) {
+        return Promise.all(regs.map(function (r) { return r.unregister(); }));
+      })
+      .then(function () { return caches.keys(); })
+      .then(function (keys) {
+        return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+      })
+      // Even if teardown fails, the reload is still worth attempting.
+      .then(reload, reload);
+  }, ${BOOT_TIMEOUT_MS});
+})();
 `;
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -48,6 +118,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
         <ColorSchemeScript defaultColorScheme="dark" />
         <style>{earlyColorSchemeCss}</style>
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: a build-time
+            constant, and it must run without the app — see bootWatchdogJs. */}
+        <script dangerouslySetInnerHTML={{ __html: bootWatchdogJs }} />
       </head>
       <body>
         <MantineProvider defaultColorScheme="dark">
@@ -69,55 +142,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  // Tells the boot watchdog (see bootWatchdogJs) that hydration happened, so
+  // it stands down. Rendering this component at all IS the proof.
+  useEffect(() => {
+    window.__binsBooted = true;
+  }, []);
   return <Outlet />;
 }
 
 // Shown while the SPA boots (SPA mode renders this into index.html).
-/**
- * How long to wait before deciding the app has failed to boot. Generous: a
- * cold cache on a slow phone over a busy LAN can legitimately take a few
- * seconds, and a false trigger costs a reload.
- */
-const BOOT_TIMEOUT_MS = 10_000;
-const BOOT_RECOVERY_KEY = "bins:boot-recovery";
-
 export function HydrateFallback() {
-  // Self-heal a stale service worker.
-  //
-  // Every deploy rehashes the assets. An installed SW keeps serving the
-  // index.html it precached, that shell asks for chunks which no longer
-  // exist, and the app never hydrates — leaving this fallback on screen
-  // forever. The update prompt that would replace the SW is a component
-  // INSIDE the app, so it never gets to run: the fix is trapped behind the
-  // thing it fixes. This is the only code that still runs in that state.
-  //
-  // Safe to be aggressive here: the caches hold the precached shell and
-  // re-fetchable photo bytes. All real data — the replica, the op outbox,
-  // pending photos — lives in IndexedDB and is untouched.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      void (async () => {
-        // Once per tab. A reload loop would be worse than a stuck page.
-        if (sessionStorage.getItem(BOOT_RECOVERY_KEY)) return;
-        // Offline is a legitimate reason to be slow, and dropping the
-        // precache while offline would turn a delay into a dead app.
-        if (!navigator.onLine) return;
-        sessionStorage.setItem(BOOT_RECOVERY_KEY, "1");
-        try {
-          const registrations =
-            (await navigator.serviceWorker?.getRegistrations()) ?? [];
-          await Promise.all(registrations.map((r) => r.unregister()));
-          const keys = await caches.keys();
-          await Promise.all(keys.map((k) => caches.delete(k)));
-        } catch {
-          // Even if teardown fails, the reload is still worth attempting.
-        }
-        location.reload();
-      })();
-    }, BOOT_TIMEOUT_MS);
-    return () => clearTimeout(timer);
-  }, []);
-
   return (
     <div
       style={{
