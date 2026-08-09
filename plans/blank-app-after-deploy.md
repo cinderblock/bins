@@ -185,7 +185,47 @@ Three self-inflicted problems, all worth keeping:
    comparing production (zero caches) against an identical local build (70
    entries). Use `no-cache`, never `no-store`, for anything a worker imports.
 
+## The OTHER bug: an invisible column that ate every click
+
+Found 2026-08-09 after the user reported, for the fourth time, a control that
+was visibly there and did nothing. It was never the service worker.
+
+`<Notifications position="bottom-center" style={{ bottom: TOAST_BOTTOM }} />`
+in `app/root.tsx`. Mantine's container also sets `top: 16px`, so supplying
+only `bottom` stretched the fixed element between the two: measured live at
+**440 × 1889 px**, `position: fixed`, `pointer-events: auto`, `z-index: 400`,
+running the full height of the viewport down the middle of the screen —
+holding **zero notifications**. `document.elementFromPoint()` at the centre of
+the "Enter access code" button returned `mantine-Notifications-root`, not the
+button.
+
+On a phone, 440px IS the width of the screen, so essentially the whole app was
+untappable. This explains every report that looked like staleness but wasn't:
+buttons that "aren't clickable", inputs "greyed out and not editable" (they
+were neither — they just couldn't be focused), `/admin` that "doesn't do
+anything", "no interaction" in iOS Safari.
+
+Introduced with `TOAST_BOTTOM` (2026-08-04, the undo work), which is when the
+field reports started.
+
+Fix: `top: "auto"` restores the intended geometry (height went 1889 → 0), and
+`pointerEvents: "none"` on the container with `auto` on the notifications
+guarantees it can never intercept anything again whatever its geometry.
+
+**Method note — the oracle that lied.** A coordinate click through the Chrome
+automation produced NO click event in the page at all (verified with a capture
+-phase listener: zero events). It fails silently and looks identical to "the
+app ignored the click", and it cost real time by making a working control look
+broken and a broken one look untested. Use `document.elementFromPoint()` at an
+element's centre — that IS the browser's hit test, the same one a finger uses.
+
 ## Things not to do
+
+- Don't set only `bottom` (or only `top`) on a Mantine `Notifications`
+  container, and don't ever leave it `pointer-events: auto`.
+- Don't trust a coordinate click from the browser automation as evidence that
+  a control does or doesn't work. It frequently delivers nothing. Hit-test
+  with `elementFromPoint`, and drive behaviour with a dispatched `.click()`.
 
 - Don't serve `no-store` for the service worker or anything it
   `importScripts`. Use `no-cache` — revalidated, but still storable.

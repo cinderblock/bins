@@ -138,10 +138,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <MantineProvider defaultColorScheme="dark">
           {/* Bottom-center: toasts land in the thumb/glance zone, confirming
               fast-flow actions ("Photo saved") without reaching — but lifted
-              clear of the fixed bottom controls they'd otherwise cover. */}
+              clear of the fixed bottom controls they'd otherwise cover.
+
+              `top: auto` is load-bearing. Mantine's container sets `top: 16px`,
+              so adding only `bottom` STRETCHED this fixed element between the
+              two: a 440px-wide, full-height, invisible column down the middle
+              of the screen with `pointer-events: auto`, swallowing every click
+              in it while holding no notifications at all. On a phone 440px is
+              the whole width, so the app became almost entirely untappable —
+              reported as buttons that "aren't clickable", inputs that were
+              "greyed out and not editable", and pages that "don't do
+              anything".
+
+              `pointerEvents: none` is the belt to that braces: the container
+              must never intercept anything regardless of its geometry, and
+              only the notifications themselves take clicks. */}
           <Notifications
             position="bottom-center"
-            style={{ bottom: TOAST_BOTTOM }}
+            style={{ top: "auto", bottom: TOAST_BOTTOM, pointerEvents: "none" }}
+            styles={{ notification: { pointerEvents: "auto" } }}
           />
           <PwaUpdatePrompt />
           <StaleBuildBanner />
