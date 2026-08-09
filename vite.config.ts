@@ -2,6 +2,7 @@ import { reactRouter } from "@react-router/dev/vite";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import tsconfigPaths from "vite-tsconfig-paths";
+import { SERVICE_WORKER_FILENAME } from "./release-assets";
 
 const publicHost = process.env.PUBLIC_BASE_URL
   ? new URL(process.env.PUBLIC_BASE_URL).hostname
@@ -20,6 +21,8 @@ export default defineConfig({
       // "prompt": a waiting SW NEVER auto-activates — mid-capture reloads
       // would lose work. PwaUpdatePrompt shows a toast; the user decides.
       registerType: "prompt",
+      // Not vite-plugin-pwa's default `sw.js` — see SERVICE_WORKER_FILENAME.
+      filename: SERVICE_WORKER_FILENAME,
       // Registration + head links are hand-rolled (app/root.tsx) because the
       // SPA-mode index.html is prerendered by React, not vite's HTML pipeline.
       injectRegister: false,

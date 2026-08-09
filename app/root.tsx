@@ -27,6 +27,7 @@ declare global {
 }
 
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
+import { RECOVER_URL, StaleBuildBanner } from "./components/StaleBuildBanner";
 import { TOAST_BOTTOM } from "./lib/ui";
 
 // Paint the right background on the very first frame (before JS/CSS), so a
@@ -45,6 +46,9 @@ html[data-mantine-color-scheme="light"] { background-color: #ffffff; color-schem
  */
 const BOOT_TIMEOUT_MS = 10_000;
 const BOOT_RECOVERY_KEY = "bins:boot-recovery";
+
+/** When the manual "Repair" link appears on a boot that's taking too long. */
+const BOOT_REPAIR_LINK_MS = 6_000;
 
 /**
  * Self-heal a service worker that can no longer boot the app.
@@ -70,6 +74,14 @@ const BOOT_RECOVERY_KEY = "bins:boot-recovery";
 const bootWatchdogJs = `
 (function () {
   window.__binsBooted = false;
+  // Long before the automatic attempt, give the person staring at a stuck
+  // screen something to tap. The automatic repair can't help if it already
+  // ran once this tab, or if the device is offline-but-reachable.
+  setTimeout(function () {
+    if (window.__binsBooted) return;
+    var link = document.getElementById("bins-repair");
+    if (link) link.style.display = "block";
+  }, ${BOOT_REPAIR_LINK_MS});
   setTimeout(function () {
     if (window.__binsBooted) return;
     // Offline is a legitimate reason to be slow, and dropping the precache
@@ -132,6 +144,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             style={{ bottom: TOAST_BOTTOM }}
           />
           <PwaUpdatePrompt />
+          <StaleBuildBanner />
           {children}
         </MantineProvider>
         <ScrollRestoration />
@@ -162,7 +175,23 @@ export function HydrateFallback() {
         color: "#888",
       }}
     >
-      bins…
+      <div style={{ textAlign: "center" }}>
+        bins…
+        {/* Revealed by bootWatchdogJs if this screen is still up after a few
+            seconds. A plain <a>, because in this state nothing else works. */}
+        <a
+          id="bins-repair"
+          href={RECOVER_URL}
+          style={{
+            display: "none",
+            marginTop: "1.5rem",
+            color: "#8ab4f8",
+            fontSize: "0.9rem",
+          }}
+        >
+          Taking too long? Tap to repair
+        </a>
+      </div>
     </div>
   );
 }

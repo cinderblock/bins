@@ -29,7 +29,28 @@ import { basename, dirname } from "node:path";
  * is what stops an intermediary caching it, and stops the very first
  * registration being served a stale copy.
  */
-const NEVER_CACHE = new Set(["/sw.js", "/push-sw.js"]);
+/**
+ * The generated service worker's filename.
+ *
+ * Deliberately NOT vite-plugin-pwa's default `sw.js`: that URL sat in a CDN
+ * cache for hours under a TTL we don't control, so a device that had just been
+ * repaired re-registered the STALE worker and broke again immediately. A path
+ * the CDN has never seen breaks that loop without needing a purge.
+ *
+ * Exported so vite.config.ts (which generates it), this file (which decides it
+ * is never cacheable) and scripts/precache-route-manifest.ts (which rewrites
+ * it) cannot drift apart — a rename that reached only two of the three would
+ * fail the build, or worse, ship a worker nobody patched.
+ */
+export const SERVICE_WORKER_FILENAME = "service-worker.js";
+
+const NEVER_CACHE = new Set([
+  `/${SERVICE_WORKER_FILENAME}`,
+  // The old name. Kept so any client still asking for it stops being handed a
+  // cacheable response.
+  "/sw.js",
+  "/push-sw.js",
+]);
 
 /**
  * `Cache-Control` for a static file, by request path.

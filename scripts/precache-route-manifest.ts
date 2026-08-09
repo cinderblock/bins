@@ -22,9 +22,10 @@
  * suite, so the build has to be the thing that refuses to ship it again.
  */
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { SERVICE_WORKER_FILENAME } from "../release-assets";
 
 const CLIENT_OUT = "build/client";
-const SW = `${CLIENT_OUT}/sw.js`;
+const SW = `${CLIENT_OUT}/${SERVICE_WORKER_FILENAME}`;
 
 function fail(message: string): never {
   console.error(`precache-route-manifest: ${message}`);
