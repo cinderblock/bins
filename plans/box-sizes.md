@@ -95,4 +95,24 @@ already has any `box_size` row, so a restart can't duplicate.
 ## Progress log
 
 - [x] Design + decisions locked (above).
-- [ ] Steps 1–8.
+- [x] Steps 1–8 built, 2026-08-09. Migration 0012 (`box_size` + `bin.size_id`),
+      ops + reducer + all three StateStore adapters, all THREE Dexie edits
+      (v7 store, and BOTH sync transaction lists), admin endpoints, admin
+      manager UI, picker in `EditBoxSheet`, size shown in `BinDetailPane`.
+- [x] Tests: 2 reducer convergence (definition/rename/assignment in any order;
+      archive-before-upsert) + 1 API round-trip (admin defines, wrong password
+      403s, it reaches another device by pull, archive hides it). 124 pass.
+- [x] Legacy migration verified against a real database: three boxes with
+      M/XL/M became two definitions in S/M/L/XL order, both M boxes share one
+      definition, and a second run creates nothing.
+
+## Findings / gotchas
+
+- **`DrizzleStateStore.putBin` enumerates its columns by hand.** Adding
+  `sizeId` to `BinState`, the schema and `getBin` was not enough — writes
+  silently dropped it, so definitions migrated fine while every box still read
+  `sizeId: null`. Nothing failed: no type error, no test failure, just a field
+  that never persisted. Caught only by checking the migrated rows in a real
+  database. Any future BinState field needs BOTH `getBin` and `putBin`.
+- A new op type must not be added to `api.test.ts` before the
+  "allocate stickers…" test, which asserts an exact pull count of 5.

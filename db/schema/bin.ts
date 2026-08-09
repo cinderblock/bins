@@ -25,7 +25,11 @@ export const bin = sqliteTable(
     /** Sticker secret (the #CODE in the QR URL) — written by bin.allocate. */
     secretCode: text("secret_code"),
     name: text("name"),
+    /** Legacy free-text size; superseded by sizeId, kept so old ops still read. */
     sizeClass: text("size_class"),
+    /** Chosen box_size definition. No FK: an op can name a size the reducer
+        hasn't materialized yet (arrival order isn't guaranteed). */
+    sizeId: text("size_id"),
     externalLabel: text("external_label"),
     /** Total weight in grams (canonical unit; UI renders lb/kg). */
     weightGrams: integer("weight_grams"),

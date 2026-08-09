@@ -5,6 +5,7 @@
  */
 import type {
   BinState,
+  BoxSizeState,
   EntryState,
   LabelState,
   LocationState,
@@ -18,6 +19,7 @@ export class MemoryStore implements StateStore {
   entries = new Map<string, EntryState>();
   locations = new Map<string, LocationState>();
   labels = new Map<string, LabelState>();
+  boxSizes = new Map<string, BoxSizeState>();
   suggestions = new Map<string, SuggestionState>();
 
   async getBin(id: number) {
@@ -57,6 +59,13 @@ export class MemoryStore implements StateStore {
   async putLabel(label: LabelState) {
     this.labels.set(label.id, structuredClone(label));
   }
+  async getBoxSize(id: string) {
+    const size = this.boxSizes.get(id);
+    return size ? structuredClone(size) : undefined;
+  }
+  async putBoxSize(size: BoxSizeState) {
+    this.boxSizes.set(size.id, structuredClone(size));
+  }
   async getSuggestion(id: string) {
     const suggestion = this.suggestions.get(id);
     return suggestion ? structuredClone(suggestion) : undefined;
@@ -90,6 +99,7 @@ export class MemoryStore implements StateStore {
         entries: sortByKey(this.entries),
         locations: sortByKey(this.locations),
         labels: sortByKey(this.labels),
+        boxSizes: sortByKey(this.boxSizes),
         suggestions: sortByKey(this.suggestions),
       }),
     );

@@ -9,6 +9,7 @@ import { chmodSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import { BUILD_SHA } from "./api/build";
 import { logGroupCredentials } from "./api/credentials";
+import { migrateAllLegacySizes } from "./api/migrate-sizes";
 import { handleApi } from "./api/router";
 import {
   cacheControlFor,
@@ -135,3 +136,7 @@ console.log(`bins listening on unix:${SOCKET_PATH} (build ${BUILD_SHA})`);
 // rather than being unrecoverable once forgotten. See api/credentials.ts for
 // the trade this makes.
 await logGroupCredentials();
+
+// One-shot, idempotent: turn any legacy free-text sizes into real definitions
+// so nothing loses its size when the picker switches over. See api/migrate-sizes.
+await migrateAllLegacySizes();

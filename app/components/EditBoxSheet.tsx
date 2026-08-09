@@ -15,6 +15,7 @@ import {
   Button,
   Group,
   SegmentedControl,
+  Select,
   Stack,
   Text,
   TextInput,
@@ -27,8 +28,14 @@ import { IconInfoCircle } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { setBinFields, suggestBinEdit } from "~/lib/actions";
+import { describeSize, useBoxSizes } from "~/lib/boxSizes";
 import { usePendingSuggestions } from "~/lib/suggestions";
 
+/**
+ * The legacy hardcoded list. Kept ONLY as a fallback for a replica that has
+ * not yet pulled any size definitions — a box that still carries free-text
+ * `sizeClass` must remain editable rather than silently losing its value.
+ */
 const SIZE_CLASSES = ["S", "M", "L", "XL"];
 
 export function EditBoxSheet({
@@ -45,6 +52,8 @@ export function EditBoxSheet({
 }) {
   const [name, setName] = useState(bin.name ?? "");
   const [sizeClass, setSizeClass] = useState(bin.sizeClass ?? "");
+  const [sizeId, setSizeId] = useState<string | null>(bin.sizeId ?? null);
+  const sizes = useBoxSizes();
   const [externalLabel, setExternalLabel] = useState(bin.externalLabel ?? "");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -57,6 +66,7 @@ export function EditBoxSheet({
     if (!opened) return;
     setName(bin.name ?? "");
     setSizeClass(bin.sizeClass ?? "");
+    setSizeId(bin.sizeId ?? null);
     setExternalLabel(bin.externalLabel ?? "");
     setNote("");
   }, [opened]);
@@ -67,11 +77,13 @@ export function EditBoxSheet({
     const next = {
       name: name.trim() || null,
       sizeClass: sizeClass || null,
+      sizeId,
       externalLabel: externalLabel.trim() || null,
     };
     if (next.name !== (bin.name ?? null)) fields.name = next.name;
     if (next.sizeClass !== (bin.sizeClass ?? null))
       fields.sizeClass = next.sizeClass;
+    if (next.sizeId !== (bin.sizeId ?? null)) fields.sizeId = next.sizeId;
     if (next.externalLabel !== (bin.externalLabel ?? null))
       fields.externalLabel = next.externalLabel;
     return fields;
@@ -137,18 +149,36 @@ export function EditBoxSheet({
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
         />
-        <div>
-          <Text size="sm" fw={500} mb={4}>
-            Size
-          </Text>
-          <SegmentedControl
-            fullWidth
+        {sizes.length > 0 ? (
+          // Group-defined box types (admin-managed). Clearable, because "no
+          // size recorded" is a real answer and not the same as guessing one.
+          <Select
+            label="Size"
+            placeholder="Not set"
             size="md"
-            data={SIZE_CLASSES}
-            value={SIZE_CLASSES.includes(sizeClass) ? sizeClass : ""}
-            onChange={setSizeClass}
+            clearable
+            searchable={sizes.length > 8}
+            data={sizes.map((s) => ({ value: s.id, label: describeSize(s) }))}
+            value={sizeId}
+            onChange={setSizeId}
           />
-        </div>
+        ) : (
+          <div>
+            <Text size="sm" fw={500} mb={4}>
+              Size
+            </Text>
+            {/* No definitions synced yet — fall back to the legacy free-text
+                field so an existing value stays editable. An admin defines
+                real sizes in /admin. */}
+            <SegmentedControl
+              fullWidth
+              size="md"
+              data={SIZE_CLASSES}
+              value={SIZE_CLASSES.includes(sizeClass) ? sizeClass : ""}
+              onChange={setSizeClass}
+            />
+          </div>
+        )}
         <TextInput
           label="External label"
           placeholder="what's written on the outside, e.g. K1 / red tape"

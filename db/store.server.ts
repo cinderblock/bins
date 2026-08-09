@@ -6,6 +6,7 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type {
   BinState,
+  BoxSizeState,
   EntryState,
   LabelState,
   LocationState,
@@ -28,6 +29,7 @@ export class DrizzleStateStore implements StateStore {
       secretCode: row.secretCode,
       name: row.name,
       sizeClass: row.sizeClass,
+      sizeId: row.sizeId,
       externalLabel: row.externalLabel,
       weightGrams: row.weightGrams,
       locationName: row.locationName,
@@ -50,6 +52,7 @@ export class DrizzleStateStore implements StateStore {
       secretCode: bin.secretCode,
       name: bin.name,
       sizeClass: bin.sizeClass,
+      sizeId: bin.sizeId,
       externalLabel: bin.externalLabel,
       weightGrams: bin.weightGrams,
       locationName: bin.locationName,
@@ -183,6 +186,34 @@ export class DrizzleStateStore implements StateStore {
       .insert(schema.label)
       .values(values)
       .onConflictDoUpdate({ target: schema.label.id, set: values });
+  }
+
+  async getBoxSize(id: string): Promise<BoxSizeState | undefined> {
+    const row = await db.query.boxSize.findFirst({
+      where: and(
+        eq(schema.boxSize.id, id),
+        eq(schema.boxSize.groupId, this.groupId),
+      ),
+    });
+    if (!row) return undefined;
+    return {
+      id: row.id,
+      name: row.name,
+      lengthMm: row.lengthMm,
+      widthMm: row.widthMm,
+      heightMm: row.heightMm,
+      sortOrder: row.sortOrder,
+      archived: row.archived,
+      fieldClocks: row.fieldClocks,
+    };
+  }
+
+  async putBoxSize(size: BoxSizeState): Promise<void> {
+    const values = { ...size, groupId: this.groupId };
+    await db
+      .insert(schema.boxSize)
+      .values(values)
+      .onConflictDoUpdate({ target: schema.boxSize.id, set: values });
   }
 
   async getSuggestion(id: string): Promise<SuggestionState | undefined> {

@@ -506,6 +506,79 @@ describe("reducer convergence", () => {
     expect(snapshot).toContain('"weightGrams":7000');
   });
 
+  test("box sizes: definition, rename and assignment converge in any order", async () => {
+    const sizeId = "00000000-0000-4000-8000-00000000ff01";
+    const other = "00000000-0000-4000-8000-00000000ff02";
+    const canonical = await expectConvergence([
+      op({
+        opId: "s1",
+        type: "boxSize.upsert",
+        effectiveTime: 100,
+        payload: {
+          sizeId,
+          name: "Banker box",
+          lengthMm: 380,
+          widthMm: 300,
+          heightMm: 250,
+          sortOrder: 0,
+        },
+      }),
+      op({
+        opId: "s2",
+        type: "boxSize.upsert",
+        effectiveTime: 110,
+        payload: { sizeId: other, name: "Milk crate", sortOrder: 1 },
+      }),
+      // A box picks a size BEFORE (in arrival terms) the definition exists —
+      // the assignment is just an LWW field, so it must not depend on order.
+      op({
+        opId: "s3",
+        type: "bin.claim",
+        effectiveTime: 90,
+        payload: { name: "Papers", sizeId },
+      }),
+      // Renaming and re-dimensioning the definition later wins on one clock.
+      op({
+        opId: "s4",
+        type: "boxSize.upsert",
+        effectiveTime: 200,
+        payload: {
+          sizeId,
+          name: "Banker box (lid)",
+          lengthMm: 400,
+          widthMm: 300,
+          heightMm: 260,
+          sortOrder: 0,
+        },
+      }),
+    ]);
+    expect(canonical).toContain('"name":"Banker box (lid)"');
+    expect(canonical).toContain('"lengthMm":400');
+    expect(canonical).toContain(`"sizeId":"${sizeId}"`);
+  });
+
+  test("box sizes: archive before the definition exists still converges", async () => {
+    const sizeId = "00000000-0000-4000-8000-00000000ff03";
+    const canonical = await expectConvergence([
+      op({
+        opId: "a1",
+        type: "boxSize.archive",
+        effectiveTime: 300,
+        payload: { sizeId, archived: true },
+      }),
+      op({
+        opId: "a2",
+        type: "boxSize.upsert",
+        effectiveTime: 100,
+        payload: { sizeId, name: "Retired crate", sortOrder: 3 },
+      }),
+    ]);
+    // The later archive wins even though it arrived first, and the name that
+    // showed up afterwards is still kept — separate clocks, like labels.
+    expect(canonical).toContain('"archived":true');
+    expect(canonical).toContain('"name":"Retired crate"');
+  });
+
   test("suggestion: verdict arriving before the proposal converges", async () => {
     // The interesting order on a replica: an admin's approval can be pulled
     // before the member's own suggestion has been pushed from their phone.

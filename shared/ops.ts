@@ -58,7 +58,15 @@ export type EntryKind = (typeof ENTRY_KINDS)[number];
 /** Scalar bin fields settable by bin.claim / bin.setFields (LWW per field). */
 export const binFieldsSchema = z.object({
   name: z.string().max(200).nullish(),
+  /**
+   * Legacy free-text size ("M", "banker box"). Superseded by `sizeId`, which
+   * points at a group-defined definition — but kept, and still shown when a
+   * box has no sizeId, because dropping it would make every historical op
+   * meaningless. New writes should set sizeId.
+   */
   sizeClass: z.string().max(50).nullish(),
+  /** The chosen box-size definition (boxSize.upsert), or null for none. */
+  sizeId: z.string().uuid().nullish(),
   externalLabel: z.string().max(500).nullish(),
   /**
    * Total weight of the box, in GRAMS — the canonical unit. The UI enters/
@@ -85,6 +93,7 @@ export type BinFields = z.infer<typeof binFieldsSchema>;
 export const suggestFieldsSchema = z.object({
   name: z.string().max(200).nullish(),
   sizeClass: z.string().max(50).nullish(),
+  sizeId: z.string().uuid().nullish(),
   externalLabel: z.string().max(500).nullish(),
 });
 export type SuggestFields = z.infer<typeof suggestFieldsSchema>;
@@ -96,6 +105,19 @@ export type SuggestFields = z.infer<typeof suggestFieldsSchema>;
  * bin.setLabel, materialized as `labelIds` on the bin (LWW per label, so
  * concurrent adds/removes of *different* labels never clobber each other).
  */
+/**
+ * A group-defined BOX TYPE — "Banker box", "Milk crate", "Wardrobe" — with
+ * optional real dimensions. Replaces a hardcoded S/M/L/XL list: the vocabulary
+ * belongs to the group, not the build.
+ *
+ * Dimensions are canonical MILLIMETRES (like weight is canonical grams), so
+ * every device agrees on the number and the UI converts for display. Optional
+ * because a name-only size is still useful and is how most will start.
+ */
+export const boxSizeNameSchema = z.string().min(1).max(100);
+/** 0 is meaningless for a dimension, so treat it as "unset". */
+export const dimensionMmSchema = z.number().int().positive().max(100_000);
+
 export const labelNameSchema = z.string().min(1).max(100);
 /** A Mantine color name (e.g. "grape"); free-form so the palette can grow. */
 export const labelColorSchema = z.string().max(20);
@@ -205,6 +227,30 @@ export const clientOpSchema = z.discriminatedUnion("type", [
     type: z.literal("location.archive"),
     payload: z.object({
       locationId: z.string().uuid(),
+      archived: z.boolean(),
+    }),
+  }),
+  /**
+   * SERVER-authored (admin only), like bin.allocate and bin.retire: sizes are
+   * a curated vocabulary, so a member can pick one but never invent one.
+   */
+  z.object({
+    ...opBase,
+    type: z.literal("boxSize.upsert"),
+    payload: z.object({
+      sizeId: z.string().uuid(),
+      name: boxSizeNameSchema,
+      lengthMm: dimensionMmSchema.nullish(),
+      widthMm: dimensionMmSchema.nullish(),
+      heightMm: dimensionMmSchema.nullish(),
+      sortOrder: z.number().int(),
+    }),
+  }),
+  z.object({
+    ...opBase,
+    type: z.literal("boxSize.archive"),
+    payload: z.object({
+      sizeId: z.string().uuid(),
       archived: z.boolean(),
     }),
   }),

@@ -1,6 +1,7 @@
 import type { ClientOp } from "@shared/ops";
 import type {
   BinState,
+  BoxSizeState,
   EntryState,
   LabelState,
   LocationState,
@@ -59,6 +60,7 @@ class BinsDatabase extends Dexie {
   entries!: EntityTable<EntryState, "id">;
   locations!: EntityTable<LocationState, "id">;
   labels!: EntityTable<LabelState, "id">;
+  boxSizes!: EntityTable<BoxSizeState, "id">;
   suggestions!: EntityTable<SuggestionState, "id">;
   pendingOps!: EntityTable<PendingOpRow, "opId">;
   blobs!: EntityTable<BlobRow, "hash">;
@@ -163,6 +165,21 @@ db.version(5).upgrade(async (tx) => {
       if (row.cols === undefined) row.cols = null;
       if (row.rows === undefined) row.rows = null;
     });
+});
+
+// v7: admin-defined box sizes. A fresh table, filled by the next pull —
+// nothing to backfill, since a bin with no sizeId simply shows its legacy
+// sizeClass text.
+db.version(7).stores({
+  bins: "id, updatedAt, status, *labelIds",
+  entries: "id, binId, effectiveTime",
+  locations: "id, sortOrder",
+  labels: "id, sortOrder",
+  boxSizes: "id, sortOrder",
+  suggestions: "id, binId, status, [binId+status], createdAt",
+  pendingOps: "opId",
+  blobs: "hash, status, role, lastAccessAt",
+  meta: "key",
 });
 
 // v6: suggested edits. `[binId+status]` serves the bin page's "waiting for an

@@ -5,6 +5,7 @@
  */
 import type {
   BinState,
+  BoxSizeState,
   EntryState,
   LabelState,
   LocationState,
@@ -47,6 +48,12 @@ export class DexieStateStore implements StateStore {
   }
   async putLabel(label: LabelState): Promise<void> {
     await db.labels.put(label);
+  }
+  async getBoxSize(id: string): Promise<BoxSizeState | undefined> {
+    return db.boxSizes.get(id);
+  }
+  async putBoxSize(size: BoxSizeState): Promise<void> {
+    await db.boxSizes.put(size);
   }
   async getSuggestion(id: string): Promise<SuggestionState | undefined> {
     return db.suggestions.get(id);

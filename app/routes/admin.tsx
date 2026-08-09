@@ -35,6 +35,7 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
+import { BoxSizeManager } from "~/components/BoxSizeManager";
 import { PushToggle } from "~/components/PushToggle";
 import { ShelfBuilder } from "~/components/ShelfBuilder";
 import { SuggestionQueue } from "~/components/SuggestionQueue";
@@ -447,6 +448,8 @@ export default function Admin() {
           <Paper p="md" radius="lg" withBorder>
             <ShelfBuilder />
           </Paper>
+
+          <BoxSizeManager adminPassword={password} />
 
           <Paper p="md" radius="lg" withBorder>
             <Stack gap="sm">

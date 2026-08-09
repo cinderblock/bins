@@ -51,6 +51,21 @@ const importSchema = withPassword.extend({
     .max(1000),
 });
 
+const dimension = z.number().int().positive().max(100_000).nullish();
+const boxSizeSchema = withPassword.extend({
+  /** Omitted = create; supplied = edit that definition in place. */
+  sizeId: z.string().uuid().optional(),
+  name: z.string().min(1).max(100),
+  lengthMm: dimension,
+  widthMm: dimension,
+  heightMm: dimension,
+  sortOrder: z.number().int().optional(),
+});
+const boxSizeArchiveSchema = withPassword.extend({
+  sizeId: z.string().uuid(),
+  archived: z.boolean(),
+});
+
 const revokeSchema = withPassword.extend({ deviceId: z.string().uuid() });
 
 const binStatusSchema = withPassword.extend({
@@ -171,6 +186,49 @@ async function authorBinStatusOp(
         deviceId: null,
         type,
         payload: {},
+        clientTime: now,
+        effectiveTime: now,
+        serverTime: new Date(now),
+      })
+      .returning({ seq: schema.op.seq });
+    op.seq = inserted[0]?.seq ?? null;
+    await applyOp(store, op);
+  });
+}
+
+/**
+ * Server-author a box-size op. Sizes are a curated vocabulary — the ops are
+ * written here rather than pushed by a client, the same way allocation and
+ * retire/restore are, so a member can pick a size but never invent one.
+ */
+async function authorBoxSizeOp(
+  ctx: Ctx,
+  type: "boxSize.upsert" | "boxSize.archive",
+  payload: Record<string, unknown>,
+): Promise<void> {
+  await serializedTransaction(async () => {
+    const store = new DrizzleStateStore(ctx.groupId);
+    const now = Date.now();
+    const op = {
+      opId: uuidv7(),
+      type,
+      binId: null,
+      payload,
+      clientTime: now,
+      geo: null,
+      seq: null as number | null,
+      deviceId: null,
+      effectiveTime: now,
+    } as unknown as CanonicalOp;
+    const inserted = await db
+      .insert(schema.op)
+      .values({
+        opId: op.opId,
+        groupId: ctx.groupId,
+        binId: null,
+        deviceId: null,
+        type,
+        payload,
         clientTime: now,
         effectiveTime: now,
         serverTime: new Date(now),
@@ -436,6 +494,59 @@ export async function handleAdmin(
     // rather than authoring a second verdict op for the same suggestion.
     if (row.status !== "pending") return error(409, `already ${row.status}`);
     await authorSuggestionResolution(ctx, row, parsed.data.accepted);
+    return json({ ok: true });
+  }
+
+  if (path === "/api/admin/sizes") {
+    const sizes = await db.query.boxSize.findMany({
+      where: eq(schema.boxSize.groupId, ctx.groupId),
+      orderBy: [asc(schema.boxSize.sortOrder), asc(schema.boxSize.name)],
+    });
+    return json({ sizes });
+  }
+
+  if (path === "/api/admin/sizes/upsert") {
+    const parsed = boxSizeSchema.safeParse(body);
+    if (!parsed.success) return error(400, "invalid size");
+    const p = parsed.data;
+    // Appending? Put it after everything that exists, so a new size doesn't
+    // silently land first just because 0 is the default.
+    let sortOrder = p.sortOrder;
+    if (sortOrder === undefined) {
+      const existing = await db.query.boxSize.findMany({
+        where: eq(schema.boxSize.groupId, ctx.groupId),
+        columns: { sortOrder: true },
+      });
+      sortOrder =
+        existing.reduce((max, r) => Math.max(max, r.sortOrder), -1) + 1;
+    }
+    const sizeId = p.sizeId ?? crypto.randomUUID();
+    await authorBoxSizeOp(ctx, "boxSize.upsert", {
+      sizeId,
+      name: p.name.trim(),
+      lengthMm: p.lengthMm ?? null,
+      widthMm: p.widthMm ?? null,
+      heightMm: p.heightMm ?? null,
+      sortOrder,
+    });
+    return json({ sizeId });
+  }
+
+  if (path === "/api/admin/sizes/archive") {
+    const parsed = boxSizeArchiveSchema.safeParse(body);
+    if (!parsed.success) return error(400, "invalid archive request");
+    const existing = await db.query.boxSize.findFirst({
+      where: and(
+        eq(schema.boxSize.id, parsed.data.sizeId),
+        eq(schema.boxSize.groupId, ctx.groupId),
+      ),
+      columns: { id: true },
+    });
+    if (!existing) return error(404, "no such size");
+    await authorBoxSizeOp(ctx, "boxSize.archive", {
+      sizeId: parsed.data.sizeId,
+      archived: parsed.data.archived,
+    });
     return json({ ok: true });
   }
 

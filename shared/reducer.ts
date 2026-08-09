@@ -33,7 +33,10 @@ export interface BinState {
    */
   secretCode: string | null;
   name: string | null;
+  /** Legacy free-text size; superseded by sizeId but never dropped. */
   sizeClass: string | null;
+  /** Chosen box-size definition (see BoxSizeState), or null. */
+  sizeId: string | null;
   externalLabel: string | null;
   /** Total weight in grams (canonical unit; UI renders lb/kg). LWW scalar. */
   weightGrams: number | null;
@@ -136,6 +139,25 @@ export interface SuggestionState {
   fieldClocks: Record<string, string>;
 }
 
+/**
+ * A group-defined BOX TYPE. Same op-driven shape as a label or a location,
+ * but authored only by an admin: the vocabulary is curated, so members choose
+ * from it rather than adding to it.
+ *
+ * Dimensions are canonical millimetres and optional — a name-only size is
+ * legitimate, and is where most groups will start.
+ */
+export interface BoxSizeState {
+  id: string;
+  name: string;
+  lengthMm: number | null;
+  widthMm: number | null;
+  heightMm: number | null;
+  sortOrder: number;
+  archived: boolean;
+  fieldClocks: Record<string, string>;
+}
+
 /** A group-defined category label — the same op-driven shape as a location. */
 export interface LabelState {
   id: string;
@@ -162,6 +184,8 @@ export interface StateStore {
   putLocation(location: LocationState): Promise<void>;
   getLabel(id: string): Promise<LabelState | undefined>;
   putLabel(label: LabelState): Promise<void>;
+  getBoxSize(id: string): Promise<BoxSizeState | undefined>;
+  putBoxSize(size: BoxSizeState): Promise<void>;
   getSuggestion(id: string): Promise<SuggestionState | undefined>;
   putSuggestion(suggestion: SuggestionState): Promise<void>;
 }
@@ -188,6 +212,7 @@ function newBin(id: number, time: number): BinState {
     secretCode: null,
     name: null,
     sizeClass: null,
+    sizeId: null,
     externalLabel: null,
     weightGrams: null,
     locationName: null,
@@ -239,7 +264,12 @@ export async function applyOp(
         bin.status = "active";
         bin.fieldClocks.status = clock;
       }
-      for (const field of ["name", "sizeClass", "externalLabel"] as const) {
+      for (const field of [
+        "name",
+        "sizeClass",
+        "sizeId",
+        "externalLabel",
+      ] as const) {
         const value = op.payload[field];
         if (value === undefined) continue;
         if (!wins(clock, bin.fieldClocks[field])) continue;
@@ -482,6 +512,61 @@ export async function applyOp(
         location.archived = archived;
         location.fieldClocks.archived = clock;
         await store.putLocation(location);
+      }
+      return;
+    }
+
+    case "boxSize.upsert": {
+      const { sizeId, name, lengthMm, widthMm, heightMm, sortOrder } =
+        op.payload;
+      const clock = clockOf(op);
+      const size = (await store.getBoxSize(sizeId)) ?? {
+        id: sizeId,
+        name,
+        lengthMm: lengthMm ?? null,
+        widthMm: widthMm ?? null,
+        heightMm: heightMm ?? null,
+        sortOrder,
+        archived: false,
+        fieldClocks: {},
+      };
+      // One clock for the whole definition: name and dimensions describe the
+      // same thing and are always edited together, so splitting them would
+      // let a stale edit resurrect half a definition.
+      if (wins(clock, size.fieldClocks.value)) {
+        size.name = name;
+        size.lengthMm = lengthMm ?? null;
+        size.widthMm = widthMm ?? null;
+        size.heightMm = heightMm ?? null;
+        size.sortOrder = sortOrder;
+        size.fieldClocks.value = clock;
+      }
+      await store.putBoxSize(size);
+      return;
+    }
+
+    case "boxSize.archive": {
+      const { sizeId, archived } = op.payload;
+      const clock = clockOf(op);
+      const size = await store.getBoxSize(sizeId);
+      if (!size) {
+        // archive before upsert: keep the flag, the definition arrives later.
+        await store.putBoxSize({
+          id: sizeId,
+          name: "",
+          lengthMm: null,
+          widthMm: null,
+          heightMm: null,
+          sortOrder: 0,
+          archived,
+          fieldClocks: { archived: clock },
+        });
+        return;
+      }
+      if (wins(clock, size.fieldClocks.archived)) {
+        size.archived = archived;
+        size.fieldClocks.archived = clock;
+        await store.putBoxSize(size);
       }
       return;
     }

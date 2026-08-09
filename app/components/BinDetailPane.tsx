@@ -26,6 +26,7 @@ import { IconMapPin } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link } from "react-router";
 import { PhotoImg } from "~/components/PhotoImg";
+import { useBoxSizes } from "~/lib/boxSizes";
 import { db } from "~/lib/db";
 import { relativeTime } from "~/lib/format";
 import { formatWeight } from "~/lib/labels";
@@ -48,6 +49,7 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
     [],
   );
   const labels = useLiveQuery(async () => db.labels.toArray(), [], []);
+  const sizes = useBoxSizes();
 
   if (binId == null || !bin) {
     return (
@@ -58,6 +60,11 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
       </Paper>
     );
   }
+
+  // A defined size wins; legacy free text is the fallback for boxes not yet
+  // migrated or set.
+  const sizeLabel =
+    sizes.find((s) => s.id === bin.sizeId)?.name ?? bin.sizeClass ?? null;
 
   const photos = entries.filter((e) => e.photoHash);
   const notes = entries.filter((e) => e.text);
@@ -73,7 +80,7 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
             </Title>
             <Text size="sm" c="dimmed">
               #{bin.id}
-              {bin.sizeClass ? ` · ${bin.sizeClass}` : ""}
+              {sizeLabel ? ` · ${sizeLabel}` : ""}
               {bin.weightGrams ? ` · ${formatWeight(bin.weightGrams)}` : ""}
             </Text>
           </div>

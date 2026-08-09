@@ -343,6 +343,60 @@ describe("api", () => {
     expect(bin?.name).toBe("Kitchen");
   });
 
+  test("box sizes: admin defines them, members get them by pull", async () => {
+    // The vocabulary is curated: definitions are server-authored behind the
+    // admin password, so a member can pick a size but never invent one.
+    const created = await call("POST", "/api/admin/sizes/upsert", {
+      token: tokenA,
+      body: {
+        adminPassword: "admin-pw",
+        name: "Banker box",
+        lengthMm: 380,
+        widthMm: 300,
+        heightMm: 250,
+      },
+    });
+    expect(created.status).toBe(200);
+    const { sizeId } = (await created.json()) as { sizeId: string };
+
+    // A member token alone can't define one.
+    const denied = await call("POST", "/api/admin/sizes/upsert", {
+      token: tokenA,
+      body: { adminPassword: "nope", name: "Sneaky" },
+    });
+    expect(denied.status).toBe(403);
+
+    const listed = await call("POST", "/api/admin/sizes", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw" },
+    });
+    const { sizes } = (await listed.json()) as {
+      sizes: { id: string; name: string; lengthMm: number | null }[];
+    };
+    const mine = sizes.find((x) => x.id === sizeId);
+    expect(mine?.name).toBe("Banker box");
+    expect(mine?.lengthMm).toBe(380);
+
+    // It reaches other devices as an ordinary op, like any other state.
+    const pull = await call("GET", "/api/sync/pull?since=0", { token: tokenB });
+    const body = (await pull.json()) as { ops: { type: string }[] };
+    expect(body.ops.some((o) => o.type === "boxSize.upsert")).toBe(true);
+
+    // Archiving hides it from the picker without touching boxes using it.
+    const archived = await call("POST", "/api/admin/sizes/archive", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", sizeId, archived: true },
+    });
+    expect(archived.status).toBe(200);
+    const after = (await (
+      await call("POST", "/api/admin/sizes", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw" },
+      })
+    ).json()) as { sizes: { id: string; archived: boolean }[] };
+    expect(after.sizes.find((x) => x.id === sizeId)?.archived).toBe(true);
+  });
+
   test("retire/restore is admin-only and flips bin status", async () => {
     const { eq } = await import("drizzle-orm");
     const statusOf = async () =>
