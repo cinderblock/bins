@@ -158,11 +158,25 @@ Three self-inflicted problems, all worth keeping:
    `service-worker.js` (a path the CDN never cached) and the origin now sends
    `no-cache` for it.
    NOTE: Cloudflare REWRITES that header — the response arrives as
-   `max-age=14400, must-revalidate`. Browsers bypass their own HTTP cache when
-   checking a worker for updates, so impact is limited, but the origin does
-   not have the last word here. Changing it means a Cloudflare Browser Cache
-   TTL / cache rule, which needs the operator's explicit per-change
-   authorization.
+   `max-age=14400, must-revalidate` (its Browser Cache TTL override).
+
+   **No Cloudflare rule is needed for this, and an earlier version of this
+   plan wrongly said one was.** Measured rather than assumed:
+   - The edge honours `no-cache`: repeated requests to `/service-worker.js`
+     return `cf-cache-status: EXPIRED` with **no `Age` header**, i.e. CF
+     revalidates against the origin every time and never serves a stale
+     worker. The original failure looked completely different — `HIT` with
+     `Age: 2891` — and that was back when the ORIGIN said
+     `public, max-age=3600`. Fixing the origin header fixed the edge.
+   - The rewritten `max-age` is inert for the file that matters. The
+     registration reports `updateViaCache: "imports"` (checked live), so the
+     browser never consults its HTTP cache for the top-level worker script.
+
+   Residual, and genuinely minor: `/push-sw.js` IS an imported script, so
+   "imports" means a browser may reuse it for up to 4h. It is unhashed, so a
+   changed push handler can take that long to reach a device. Nothing to do
+   with booting, and fixable in-repo (build-stamped import URL) if it ever
+   matters — still no CF change.
 3. **`no-store` on `/push-sw.js` silently killed precaching.** The generated
    worker `importScripts("/push-sw.js")` on the line ABOVE `precacheAndRoute`,
    so an unstorable response there aborted the module before precaching was
