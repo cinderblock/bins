@@ -231,6 +231,29 @@ app ignored the click", and it cost real time by making a working control look
 broken and a broken one look untested. Use `document.elementFromPoint()` at an
 element's centre — that IS the browser's hit test, the same one a finger uses.
 
+## Measured 2026-08-09: devices on the pre-incident shell CANNOT self-heal
+
+Checked rather than assumed, and it contradicts what was said earlier in the
+day. Of the Aug-4 build's chunks:
+
+- `shell-*.js`, `admin-*.js`, `entry.client-*.js` → 200 (unchanged between
+  builds, so a content hash that still exists in a newer release)
+- `root-*.js`, `manifest-*.js` → **404**
+
+Those two changed in every fix today, so their old versions existed only in
+the Aug-4 release — and roughly a dozen deploys in one afternoon pushed it out
+of the then-5-release window before the 30-release retention policy existed.
+A shell missing its root chunk and its route manifest cannot boot, so the
+prior-release fallback does NOT rescue it.
+
+Consequence: every device still on the pre-incident shell genuinely requires
+`/api/recover` once. The self-healing story applies from that point forward,
+not retroactively.
+
+Lesson worth keeping: retention is measured in DEPLOYS, not days, and an
+incident is exactly when deploys come fastest. Five was far too few precisely
+when it mattered most; 30 was chosen for that reason.
+
 ## Things not to do
 
 - Don't set only `bottom` (or only `top`) on a Mantine `Notifications`
