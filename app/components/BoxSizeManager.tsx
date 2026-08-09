@@ -9,7 +9,6 @@
  * millimetres — the same split weight already makes with grams.
  */
 import {
-  ActionIcon,
   Button,
   Group,
   NumberInput,
@@ -143,10 +142,14 @@ export function BoxSizeManager({ adminPassword }: { adminPassword: string }) {
                     </Text>
                   )}
                 </div>
-                <Group gap={4} wrap="nowrap">
-                  <ActionIcon
+                {/* Labelled, not icon-only: an unlabelled pencil next to an
+                    unlabelled box means guessing, and a hover tooltip is
+                    invisible on a touch screen. */}
+                <Group gap="xs" wrap="nowrap">
+                  <Button
+                    size="compact-sm"
                     variant="subtle"
-                    aria-label={`Edit ${size.name}`}
+                    leftSection={<IconPencil size={14} />}
                     onClick={() =>
                       setDraft({
                         sizeId: size.id,
@@ -157,16 +160,17 @@ export function BoxSizeManager({ adminPassword }: { adminPassword: string }) {
                       })
                     }
                   >
-                    <IconPencil size={16} />
-                  </ActionIcon>
-                  <ActionIcon
+                    Edit
+                  </Button>
+                  <Button
+                    size="compact-sm"
                     variant="subtle"
                     color={size.archived ? "green" : "red"}
-                    aria-label={`${size.archived ? "Restore" : "Archive"} ${size.name}`}
+                    leftSection={<IconArchive size={14} />}
                     onClick={() => void setArchived(size, !size.archived)}
                   >
-                    <IconArchive size={16} />
-                  </ActionIcon>
+                    {size.archived ? "Restore" : "Archive"}
+                  </Button>
                 </Group>
               </Group>
             );

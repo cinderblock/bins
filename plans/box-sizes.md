@@ -116,3 +116,20 @@ already has any `box_size` row, so a restart can't duplicate.
   database. Any future BinState field needs BOTH `getBin` and `putBin`.
 - A new op type must not be added to `api.test.ts` before the
   "allocate stickers…" test, which asserts an exact pull count of 5.
+- **`PhotoImg` serves the 320px THUMB whenever `thumbHash` is passed** — pass
+  `preferFull` for anything shown large. A hero built the obvious way is a
+  thumbnail stretched across the pane, which reads as "the camera is bad"
+  rather than "the wrong rendition was requested".
+- Mantine portals genuinely are unobservable mid-animation: five EMPTY
+  `.mantine-Modal-root` shells exist at all times, so "a modal root exists"
+  proves nothing. Wait, then screenshot — that is what actually showed the
+  Select rendering.
+
+## Verified in a browser (2026-08-09)
+
+Driven against the dev database, not inferred: created "Banker box" through
+the admin form (15×12×10 in), it stored as 381×305×254 mm, synced into the
+Dexie `boxSizes` table (so all three Dexie edits are right — no DexieError),
+and the box-page picker rendered the Select with
+"Banker box (15 × 12 × 10 in)" as an option instead of the old S/M/L/XL
+control.
