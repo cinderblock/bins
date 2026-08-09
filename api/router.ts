@@ -16,6 +16,7 @@ import { type Ctx, authenticate, canWrite, error } from "./context";
 import { handlePreflight, isCorsPath, withCors } from "./cors";
 import { handleLanding } from "./landing";
 import { handlePushStatus, handleUnsubscribe } from "./push";
+import { handleRecover } from "./recover";
 import { handleSetup } from "./setup";
 import { handlePull, handlePush } from "./sync";
 import { handleV1 } from "./v1";
@@ -39,6 +40,10 @@ export async function handleApi(req: Request, url: URL): Promise<Response> {
       return await handleJoinOpen(req);
     if (path === "/api/landing" && method === "GET")
       return await handleLanding();
+    // Under /api/ on purpose: that prefix is the service worker's navigation
+    // denylist, so this reaches the server even from a device a stale worker
+    // has stranded. See api/recover.ts.
+    if (path === "/api/recover" && method === "GET") return handleRecover();
     if (path === "/api/setup" && method === "POST")
       return await handleSetup(req);
 

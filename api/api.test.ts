@@ -59,6 +59,22 @@ let binId: number;
 let allocated: { id: number; code: string }[];
 
 describe("api", () => {
+  test("recover page is reachable with no token and clears workers, not data", async () => {
+    // Unauthenticated on purpose: a stranded device may have no working app to
+    // read its token from, and this page's whole job is to un-strand it.
+    const res = await call("GET", "/api/recover");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/html");
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+
+    const html = await res.text();
+    expect(html).toContain("unregister");
+    expect(html).toContain("caches.delete");
+    // Deleting IndexedDB here would destroy the replica, the op outbox and any
+    // photo not yet uploaded.
+    expect(html).not.toContain("indexedDB");
+  });
+
   test("first boot: landing → setup wizard → branded landing; then locked", async () => {
     const before = (await (await call("GET", "/api/landing")).json()) as {
       needsSetup: boolean;
