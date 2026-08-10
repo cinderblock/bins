@@ -13,6 +13,7 @@
 import { Button, Group, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { removeEntry, restoreEntry } from "./actions";
+import { warnIfStorageTight } from "./storage";
 
 /** How long the Undo toast sticks around. */
 const UNDO_MS = 8000;
@@ -32,6 +33,11 @@ export function photoSavedWithUndo(
   entryOpId: string,
   message: string,
 ): void {
+  // A capture is exactly when storage grows, so it is the honest moment to
+  // check whether the next one is about to fail.
+  void warnIfStorageTight((text) =>
+    notifications.show({ message: text, color: "orange", autoClose: 10000 }),
+  );
   const id = `undo-add-${entryOpId}`;
   notifications.show({
     id,

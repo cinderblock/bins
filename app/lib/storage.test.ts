@@ -4,7 +4,22 @@
  * reported it by typing "Ran out of photo space" into a note.
  */
 import { describe, expect, test } from "bun:test";
-import { captureErrorMessage, formatBytes, isQuotaError } from "./storage";
+import {
+  captureErrorMessage,
+  formatBytes,
+  isQuotaError,
+  resetStorageWarning,
+  warnIfStorageTight,
+} from "./storage";
+
+/** Stand in for navigator.storage.estimate, which bun:test has no DOM for. */
+function stubEstimate(usage: number | null, quota: number | null) {
+  (globalThis as { navigator?: unknown }).navigator = {
+    storage: {
+      estimate: async () => (usage == null ? {} : { usage, quota }),
+    },
+  };
+}
 
 describe("isQuotaError", () => {
   test("recognises the standard name", () => {
@@ -52,5 +67,44 @@ describe("formatBytes", () => {
     expect(formatBytes(1536)).toBe("1.5 KB");
     expect(formatBytes(5 * 1024 * 1024)).toBe("5.0 MB");
     expect(formatBytes(2 * 1024 * 1024 * 1024)).toBe("2.0 GB");
+  });
+});
+
+describe("warnIfStorageTight", () => {
+  const GB = 1024 * 1024 * 1024;
+
+  test("warns before a capture fails, naming the percentage", async () => {
+    resetStorageWarning();
+    stubEstimate(0.92 * GB, GB);
+    const seen: string[] = [];
+    expect(await warnIfStorageTight((m) => seen.push(m))).toBe(true);
+    expect(seen[0]).toContain("92%");
+    // The actionable part: syncing is what frees space.
+    expect(seen[0]).toContain("Sync");
+  });
+
+  test("stays quiet with room to spare", async () => {
+    resetStorageWarning();
+    stubEstimate(0.4 * GB, GB);
+    const seen: string[] = [];
+    expect(await warnIfStorageTight((m) => seen.push(m))).toBe(false);
+    expect(seen).toHaveLength(0);
+  });
+
+  test("warns only once a session — repeated, it becomes wallpaper", async () => {
+    resetStorageWarning();
+    stubEstimate(0.99 * GB, GB);
+    const seen: string[] = [];
+    expect(await warnIfStorageTight((m) => seen.push(m))).toBe(true);
+    expect(await warnIfStorageTight((m) => seen.push(m))).toBe(false);
+    expect(seen).toHaveLength(1);
+  });
+
+  test("stays quiet when the browser won't report a quota", async () => {
+    // Safari often refuses; guessing would mean crying wolf on every capture.
+    resetStorageWarning();
+    stubEstimate(500 * 1024 * 1024, null);
+    const seen: string[] = [];
+    expect(await warnIfStorageTight((m) => seen.push(m))).toBe(false);
   });
 });

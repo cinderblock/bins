@@ -3,6 +3,7 @@
  * engine and geo beacon once identity exists. No global chrome — the scanner
  * and bin pages own their full-screen layouts.
  */
+import { notifications } from "@mantine/notifications";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router";
@@ -15,6 +16,7 @@ import { refreshDeployment, useDeployment } from "~/lib/deployment";
 import { binIdFromScan } from "~/lib/format";
 import { startGeo } from "~/lib/geo";
 import { lockPortrait } from "~/lib/orientation";
+import { warnIfStorageTight } from "~/lib/storage";
 // Imported for its side effect too: captures `beforeinstallprompt` early.
 import "~/lib/install";
 import { startSync } from "~/lib/sync";
@@ -49,6 +51,15 @@ export default function Shell() {
   useEffect(() => {
     lockPortrait();
   }, []);
+
+  // Say it once on boot too, so a device that filled up overnight is flagged
+  // before anyone tries to photograph anything.
+  useEffect(() => {
+    if (!identity) return;
+    void warnIfStorageTight((message) =>
+      notifications.show({ message, color: "orange", autoClose: 10000 }),
+    );
+  }, [identity]);
 
   if (identity === undefined || deployment === undefined) return null;
   if (identity === null) {

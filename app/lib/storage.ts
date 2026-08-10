@@ -66,6 +66,42 @@ export async function estimateStorage(): Promise<StorageUse | null> {
   }
 }
 
+/** Past this, a capture is close enough to failing to be worth saying so. */
+const TIGHT_FRACTION = 0.85;
+
+/** Once per session — a repeated warning becomes wallpaper. */
+let warnedThisSession = false;
+
+/**
+ * Warn BEFORE a capture fails, not after.
+ *
+ * The quota message on `captureErrorMessage` is a post-mortem: by the time it
+ * shows, the photo is already lost and you are standing over an open box. This
+ * runs on boot and after each successful capture — the moments storage
+ * actually grows — so there is a chance to sync before anything fails.
+ *
+ * @returns whether it warned, so callers can test it without a DOM.
+ */
+export async function warnIfStorageTight(
+  notify: (message: string) => void,
+): Promise<boolean> {
+  if (warnedThisSession) return false;
+  const use = await estimateStorage();
+  if (!use || use.fraction == null || use.fraction < TIGHT_FRACTION) {
+    return false;
+  }
+  warnedThisSession = true;
+  notify(
+    `This device is ${Math.round(use.fraction * 100)}% full. Sync soon — photos only free up space once the server has them.`,
+  );
+  return true;
+}
+
+/** Tests only: forget that a warning was already shown. */
+export function resetStorageWarning(): void {
+  warnedThisSession = false;
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ["KB", "MB", "GB"];
