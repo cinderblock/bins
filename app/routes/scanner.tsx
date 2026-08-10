@@ -284,15 +284,6 @@ export default function Scanner() {
     }
   }
 
-  const recentBins = useLiveQuery(
-    async () =>
-      (await db.bins.orderBy("updatedAt").reverse().limit(20).toArray())
-        .filter((bin) => bin.status === "active")
-        .slice(0, 8),
-    [],
-    [],
-  );
-
   return (
     <div style={{ position: "fixed", inset: 0, background: "#000" }}>
       {/* biome-ignore lint/a11y/useMediaCaption: live camera viewfinder */}
@@ -484,92 +475,52 @@ export default function Scanner() {
                 Capture contents of #{currentBinId}
               </Button>
               {!peekOpen && (
-                <ActionIcon
+                <Button
                   variant="default"
-                  size={60}
+                  size="lg"
+                  h={60}
                   radius="md"
                   onClick={() => setPeekOpen(true)}
-                  aria-label="Show bin details"
+                  leftSection={<IconInfoCircle size={20} />}
                 >
-                  <IconInfoCircle />
-                </ActionIcon>
+                  Details
+                </Button>
               )}
             </Group>
           )}
 
-          {!peekOpen && (
-            <Group gap="xs" style={{ overflowX: "auto", flexWrap: "nowrap" }}>
-              {recentBins.map((bin) => (
-                <Badge
-                  key={bin.id}
-                  size="lg"
-                  variant="light"
-                  onClick={() => makeCurrent(bin.id)}
-                  style={{
-                    cursor: "pointer",
-                    flexShrink: 0,
-                    textTransform: "none",
-                  }}
-                >
-                  #{bin.id}
-                  {bin.name ? ` ${bin.name}` : ""}
-                </Badge>
-              ))}
-              {/* This strip is the LAST FEW boxes, in one scrolling line over a
-                  live viewfinder — there is nowhere to sort or filter, and it
-                  was being read as "the list". Always offer the way out to the
-                  real one, even before anything is recent. */}
-              <Badge
-                size="lg"
-                variant="filled"
-                leftSection={<IconSearch size={14} />}
-                onClick={() =>
-                  navigate("/bins", { state: { focusSearch: true } })
-                }
-                style={{
-                  cursor: "pointer",
-                  flexShrink: 0,
-                  textTransform: "none",
-                  minHeight: TOUCH_TARGET,
-                }}
-              >
-                All boxes
-              </Badge>
-            </Group>
-          )}
-
-          <Group justify="center" gap="xl">
-            <ActionIcon
+          {/* Labelled, not three bare circles. Nobody should have to decode
+              a glyph to find the box list, and a hover tooltip is invisible
+              on the phone this is used from. */}
+          <Group justify="center" gap="xs" grow>
+            <Button
               component={Link}
               to="/bins"
               variant="default"
-              size={56}
-              radius="xl"
-              aria-label="All boxes"
+              size="md"
+              leftSection={<IconBoxMultiple size={18} />}
             >
-              <IconBoxMultiple />
-            </ActionIcon>
-            <ActionIcon
+              All boxes
+            </Button>
+            <Button
               component={Link}
               to="/bins"
               state={{ focusSearch: true }}
               variant="default"
-              size={56}
-              radius="xl"
-              aria-label="Search"
+              size="md"
+              leftSection={<IconSearch size={18} />}
             >
-              <IconSearch />
-            </ActionIcon>
-            <ActionIcon
+              Search
+            </Button>
+            <Button
               component={Link}
               to="/settings"
               variant="default"
-              size={56}
-              radius="xl"
-              aria-label="Settings"
+              size="md"
+              leftSection={<IconSettings size={18} />}
             >
-              <IconSettings />
-            </ActionIcon>
+              Settings
+            </Button>
           </Group>
         </div>
       </div>
