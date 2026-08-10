@@ -13,6 +13,7 @@ import { Landing } from "~/components/Landing";
 import { SyncBanner } from "~/components/SyncBanner";
 import { IDENTITY_KEY, type Identity, db } from "~/lib/db";
 import { refreshDeployment, useDeployment } from "~/lib/deployment";
+import { installErrorReporting } from "~/lib/errors";
 import { binIdFromScan } from "~/lib/format";
 import { startGeo } from "~/lib/geo";
 import { lockPortrait } from "~/lib/orientation";
@@ -50,6 +51,11 @@ export default function Shell() {
   // Best effort — see lib/orientation.
   useEffect(() => {
     lockPortrait();
+  }, []);
+
+  // Before anything else: an error nobody records is an error nobody fixes.
+  useEffect(() => {
+    installErrorReporting();
   }, []);
 
   // Say it once on boot too, so a device that filled up overnight is flagged

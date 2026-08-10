@@ -36,6 +36,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { BoxSizeManager } from "~/components/BoxSizeManager";
+import { ErrorLog } from "~/components/ErrorLog";
 import { PushToggle } from "~/components/PushToggle";
 import { ShelfBuilder } from "~/components/ShelfBuilder";
 import { SuggestionQueue } from "~/components/SuggestionQueue";
@@ -450,6 +451,8 @@ export default function Admin() {
           </Paper>
 
           <BoxSizeManager adminPassword={password} />
+
+          <ErrorLog adminPassword={password} />
 
           <Paper p="md" radius="lg" withBorder>
             <Stack gap="sm">

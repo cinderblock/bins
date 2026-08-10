@@ -22,6 +22,7 @@ import {
   getMeta,
   setMeta,
 } from "./db";
+import { flushErrors } from "./errors";
 import { prunePhotoCache } from "./photos";
 import { clientStore } from "./store.client";
 
@@ -188,6 +189,9 @@ export async function syncNow(): Promise<void> {
     } while (queuedAgain);
     // Enforce the local photo-cache policy now that uploads are confirmed.
     await prunePhotoCache();
+    // Ship any errors captured while offline. Last, so a reporting failure
+    // can never hold up the work people actually care about.
+    await flushErrors();
     if (authDead) {
       // The token works again (e.g. after sign-back-in) — clear the flag.
       authDead = false;

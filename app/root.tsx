@@ -28,6 +28,7 @@ declare global {
 
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
 import { RECOVER_URL, StaleBuildBanner } from "./components/StaleBuildBanner";
+import { reportError } from "./lib/errors";
 import { TOAST_BOTTOM } from "./lib/ui";
 
 // Paint the right background on the very first frame (before JS/CSS), so a
@@ -212,6 +213,13 @@ export function HydrateFallback() {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  // A render crash is the loudest thing that can happen to a user and, until
+  // this, left no trace at all — /bins died on a hooks-order violation and the
+  // only signal was someone saying it "doesn't work".
+  useEffect(() => {
+    reportError("render", error);
+  }, [error]);
+
   let title = "Something went wrong";
   let detail = "An unexpected error occurred.";
   if (isRouteErrorResponse(error)) {

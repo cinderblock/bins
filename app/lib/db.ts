@@ -61,6 +61,8 @@ class BinsDatabase extends Dexie {
   locations!: EntityTable<LocationState, "id">;
   labels!: EntityTable<LabelState, "id">;
   boxSizes!: EntityTable<BoxSizeState, "id">;
+  /** Errors waiting to reach the server (lib/errors.ts). Diagnostics, not state. */
+  errorQueue!: EntityTable<QueuedError, "id">;
   suggestions!: EntityTable<SuggestionState, "id">;
   pendingOps!: EntityTable<PendingOpRow, "opId">;
   blobs!: EntityTable<BlobRow, "hash">;
@@ -167,6 +169,22 @@ db.version(5).upgrade(async (tx) => {
     });
 });
 
+// v8: a local queue for browser errors, so failures that happen with no
+// signal still reach the server later. Not reducer state — never in the sync
+// transaction lists.
+db.version(8).stores({
+  bins: "id, updatedAt, status, *labelIds",
+  entries: "id, binId, effectiveTime",
+  locations: "id, sortOrder",
+  labels: "id, sortOrder",
+  boxSizes: "id, sortOrder",
+  suggestions: "id, binId, status, [binId+status], createdAt",
+  pendingOps: "opId",
+  blobs: "hash, status, role, lastAccessAt",
+  errorQueue: "++id, at",
+  meta: "key",
+});
+
 // v7: admin-defined box sizes. A fresh table, filled by the next pull —
 // nothing to backfill, since a bin with no sizeId simply shows its legacy
 // sizeClass text.
@@ -222,6 +240,18 @@ export const ACCESS_CODE_KEY = "accessCode";
  * same group has campers on phones scanning and campers on laptops sorting.
  */
 export const NO_CAMERA_KEY = "noCamera";
+
+/** One queued browser error, awaiting upload. */
+export type QueuedError = {
+  id?: number;
+  kind: string;
+  message: string;
+  stack: string | null;
+  route: string | null;
+  buildSha: string | null;
+  userAgent: string | null;
+  at: number;
+};
 
 export async function getIdentity(): Promise<Identity | undefined> {
   return getMeta<Identity>(IDENTITY_KEY);

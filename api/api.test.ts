@@ -397,6 +397,70 @@ describe("api", () => {
     expect(after.sizes.find((x) => x.id === sizeId)?.archived).toBe(true);
   });
 
+  test("errors report themselves, dedupe by problem, and reach admin", async () => {
+    // The whole point: a user hitting an error leaves a record without anyone
+    // noticing or retyping it. The only trace of a real one used to be
+    // somebody writing "Ran out of photo space" into a box's notes.
+    const report = (message: string, stack: string, token = tokenA) =>
+      call("POST", "/api/errors", {
+        token,
+        body: {
+          errors: [
+            {
+              kind: "chunk",
+              message,
+              stack,
+              route: "/admin",
+              buildSha: "abc123",
+              userAgent: "test",
+            },
+          ],
+        },
+      });
+
+    const STACK_A = "Error\n  at one.js:1";
+    const STACK_B = "Error\n  at two.js:9";
+    expect((await report("boom", STACK_A)).status).toBe(200);
+    // Same problem twice — one row, count climbs, so a crash loop can't fill
+    // the disk.
+    expect((await report("boom", STACK_A, tokenB)).status).toBe(200);
+    // A different frame is a different problem.
+    await report("boom", STACK_B);
+
+    const res = await call("POST", "/api/admin/errors", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw" },
+    });
+    expect(res.status).toBe(200);
+    const { errors } = (await res.json()) as {
+      errors: { message: string; count: number; buildSha: string }[];
+    };
+    const mine = errors.filter((e) => e.message === "boom");
+    expect(mine).toHaveLength(2);
+    expect(mine.some((e) => e.count === 2)).toBe(true);
+    expect(mine.every((e) => e.buildSha === "abc123")).toBe(true);
+
+    // Reporting needs a device token, not the admin password — every member's
+    // failures must arrive, not just an admin's.
+    const noToken = await call("POST", "/api/errors", {
+      body: { errors: [{ kind: "render", message: "x" }] },
+    });
+    expect(noToken.status).toBe(401);
+
+    const cleared = await call("POST", "/api/admin/errors/clear", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw" },
+    });
+    expect(cleared.status).toBe(200);
+    const after = (await (
+      await call("POST", "/api/admin/errors", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw" },
+      })
+    ).json()) as { errors: unknown[] };
+    expect(after.errors).toHaveLength(0);
+  });
+
   test("retire/restore is admin-only and flips bin status", async () => {
     const { eq } = await import("drizzle-orm");
     const statusOf = async () =>

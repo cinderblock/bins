@@ -23,6 +23,7 @@ import {
   serializedTransaction,
   sha256Hex,
 } from "./context";
+import { handleErrorClear, handleErrorList } from "./errors";
 import { handleLabelPreview, handleLabelPrint, labelSchema } from "./label";
 import { handleSubscribe } from "./push";
 
@@ -549,6 +550,9 @@ export async function handleAdmin(
     });
     return json({ ok: true });
   }
+
+  if (path === "/api/admin/errors") return await handleErrorList(ctx);
+  if (path === "/api/admin/errors/clear") return await handleErrorClear(ctx);
 
   if (path === "/api/admin/devices") {
     // Human devices only — integrations have their own section below.

@@ -15,6 +15,7 @@ import { handleBlob } from "./blobs";
  */
 import { type Ctx, authenticate, canWrite, error } from "./context";
 import { handlePreflight, isCorsPath, withCors } from "./cors";
+import { handleErrorReport } from "./errors";
 import { handleLanding } from "./landing";
 import { handlePushStatus, handleUnsubscribe } from "./push";
 import { handleRecover } from "./recover";
@@ -86,6 +87,10 @@ async function dispatch(
   if (path === "/api/auth/me" && (method === "GET" || method === "PATCH")) {
     return await handleMe(req, ctx);
   }
+  // Any member device can report its own failures — the whole point is that
+  // errors reach us without anyone having to notice or retype them.
+  if (path === "/api/errors" && method === "POST")
+    return await handleErrorReport(req, ctx);
   if (path === "/api/devices" && method === "GET")
     return await handleDevices(ctx);
   if (path === "/api/sync/push" && method === "POST") {
