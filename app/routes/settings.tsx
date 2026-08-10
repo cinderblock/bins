@@ -72,6 +72,7 @@ import {
   prefetchAllPhotos,
   setPhotoRetention,
 } from "~/lib/photos";
+import { estimateStorage, formatBytes } from "~/lib/storage";
 import { syncNow } from "~/lib/sync";
 
 export default function Settings() {
@@ -121,6 +122,8 @@ export default function Settings() {
   const [newLabel, setNewLabel] = useState("");
   const [newLabelColor, setNewLabelColor] = useState<string | null>(null);
   const [storage, setStorage] = useState("");
+  /** 0–1 of the device quota, when the browser will say. */
+  const [storageFull, setStorageFull] = useState<number | null>(null);
   const [retention, setRetention] = useState<PhotoRetention>(
     DEFAULT_PHOTO_RETENTION,
   );
@@ -140,10 +143,17 @@ export default function Settings() {
   useEffect(() => {
     void getMeta<boolean>(GEO_OPT_IN_KEY).then((v) => setGeoOk(v ?? false));
     void getPhotoRetention().then(setRetention);
-    void navigator.storage?.estimate?.().then((est) => {
-      if (est.usage != null) {
-        setStorage(`${(est.usage / 1024 / 1024).toFixed(1)} MB used locally`);
-      }
+    // Usage alone can't tell you whether you're about to run out — show the
+    // headroom too. Someone filled a phone in the field and could only report
+    // it by typing "Ran out of photo space" into a note.
+    void estimateStorage().then((use) => {
+      if (!use) return;
+      setStorage(
+        use.quotaBytes
+          ? `${formatBytes(use.usedBytes)} of ${formatBytes(use.quotaBytes)} used on this device`
+          : `${formatBytes(use.usedBytes)} used on this device`,
+      );
+      setStorageFull(use.fraction);
     });
   }, []);
 
@@ -436,6 +446,13 @@ export default function Settings() {
             {pendingOps} ops and {pendingBlobs} photos waiting to upload.
             {storage && ` ${storage}.`}
           </Text>
+          {storageFull !== null && storageFull > 0.85 && (
+            <Alert color="orange" title="This device is nearly full">
+              New photos may fail to save. Syncing is what frees space — photos
+              are only removed from this device once the server has them.
+              Shortening “Keep photos offline” below reclaims more.
+            </Alert>
+          )}
           <Button variant="default" onClick={() => void syncNow()}>
             Sync now
           </Button>

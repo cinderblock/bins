@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { addPhoto } from "~/lib/actions";
 import { getCameraStream, stopCamera } from "~/lib/camera";
 import { captureFromVideo, processFile } from "~/lib/photos";
+import { captureErrorMessage } from "~/lib/storage";
 import { DESKTOP_MEDIA } from "~/lib/ui";
 import { photoSavedWithUndo } from "~/lib/undo";
 
@@ -72,7 +73,7 @@ export function CaptureOverlay({
     try {
       await save(await captureFromVideo(video));
     } catch (err) {
-      notifications.show({ message: `Capture failed: ${err}`, color: "red" });
+      notifications.show({ message: captureErrorMessage(err), color: "red" });
       setBusy(false);
     }
   }
@@ -83,7 +84,7 @@ export function CaptureOverlay({
     try {
       await save(await processFile(file));
     } catch (err) {
-      notifications.show({ message: `Photo failed: ${err}`, color: "red" });
+      notifications.show({ message: captureErrorMessage(err), color: "red" });
       setBusy(false);
     }
   }

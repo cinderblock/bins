@@ -50,6 +50,7 @@ import { db, getMeta, setMeta } from "~/lib/db";
 import { setDeskMode } from "~/lib/deskMode";
 import { type ScanTarget, binIdFromScan } from "~/lib/format";
 import { captureFromVideo } from "~/lib/photos";
+import { captureErrorMessage } from "~/lib/storage";
 import { DESKTOP_MEDIA, PAGE_MAXW, TOUCH_TARGET } from "~/lib/ui";
 import { photoSavedWithUndo } from "~/lib/undo";
 
@@ -278,7 +279,7 @@ export default function Scanner() {
         `Contents photo saved to #${currentBinId}`,
       );
     } catch (err) {
-      notifications.show({ message: `Capture failed: ${err}`, color: "red" });
+      notifications.show({ message: captureErrorMessage(err), color: "red" });
     } finally {
       setCapturing(false);
     }
