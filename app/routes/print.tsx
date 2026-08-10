@@ -143,7 +143,7 @@ export default function Print() {
     return (
       <Stack
         p="md"
-        pt="max(var(--mantine-spacing-md), env(safe-area-inset-top))"
+        pt="max(var(--mantine-spacing-md), calc(env(safe-area-inset-top) + var(--bins-banner-h, 0px)))"
         maw={520}
         mx="auto"
       >
@@ -188,7 +188,7 @@ export default function Print() {
   return (
     <Stack
       p="md"
-      pt="max(var(--mantine-spacing-md), env(safe-area-inset-top))"
+      pt="max(var(--mantine-spacing-md), calc(env(safe-area-inset-top) + var(--bins-banner-h, 0px)))"
       maw={PAGE_MAXW}
       mx="auto"
     >

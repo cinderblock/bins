@@ -38,7 +38,6 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import wasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url";
 import { BinPeek } from "~/components/BinPeek";
-import { SyncBadge } from "~/components/SyncBadge";
 import { addPhoto } from "~/lib/actions";
 import {
   getCameraStream,
@@ -341,7 +340,7 @@ export default function Scanner() {
         p="md"
         style={{
           position: "absolute",
-          top: "env(safe-area-inset-top)",
+          top: "calc(env(safe-area-inset-top) + var(--bins-banner-h, 0px))",
           left: 0,
           right: 0,
         }}
@@ -350,7 +349,6 @@ export default function Scanner() {
           bins
         </Text>
         <Group gap="xs">
-          <SyncBadge />
           {torchAvailable && (
             <ActionIcon
               variant="default"

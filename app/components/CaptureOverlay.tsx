@@ -151,7 +151,7 @@ export function CaptureOverlay({
         ta="center"
         style={{
           position: "absolute",
-          top: "max(12px, env(safe-area-inset-top))",
+          top: "max(12px, calc(env(safe-area-inset-top) + var(--bins-banner-h, 0px)))",
           left: 0,
           right: 0,
         }}

@@ -325,7 +325,7 @@ export default function Bins() {
   const list = (
     <Stack
       p="md"
-      pt="max(var(--mantine-spacing-md), env(safe-area-inset-top))"
+      pt="max(var(--mantine-spacing-md), calc(env(safe-area-inset-top) + var(--bins-banner-h, 0px)))"
       gap="md"
       maw={twoPane ? undefined : PAGE_MAXW}
       mx={twoPane ? undefined : "auto"}

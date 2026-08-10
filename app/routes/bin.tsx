@@ -50,7 +50,6 @@ import { LabelPrintSheet } from "~/components/LabelSheet.print";
 import { LocationSheet } from "~/components/LocationSheet";
 import { NoteSheet } from "~/components/NoteSheet";
 import { PhotoImg, usePhotoUrl } from "~/components/PhotoImg";
-import { SyncBadge } from "~/components/SyncBadge";
 import { useAdminPassword } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { db } from "~/lib/db";
@@ -186,7 +185,7 @@ export default function BinPage() {
       <Group
         justify="space-between"
         p="sm"
-        pt="max(var(--mantine-spacing-sm), env(safe-area-inset-top))"
+        pt="max(var(--mantine-spacing-sm), calc(env(safe-area-inset-top) + var(--bins-banner-h, 0px)))"
         maw={PAGE_MAXW}
         mx="auto"
       >
@@ -265,7 +264,6 @@ export default function BinPage() {
               Label
             </Button>
           )}
-          <SyncBadge />
         </Group>
       </Group>
 

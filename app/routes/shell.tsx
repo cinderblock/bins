@@ -9,6 +9,7 @@ import { Navigate, Outlet, useLocation } from "react-router";
 import { FirstRun } from "~/components/FirstRun";
 import { InstallHint } from "~/components/InstallHint";
 import { Landing } from "~/components/Landing";
+import { SyncBanner } from "~/components/SyncBanner";
 import { IDENTITY_KEY, type Identity, db } from "~/lib/db";
 import { refreshDeployment, useDeployment } from "~/lib/deployment";
 import { binIdFromScan } from "~/lib/format";
@@ -83,6 +84,7 @@ export default function Shell() {
   }
   return (
     <>
+      <SyncBanner />
       <InstallHint />
       <Outlet />
     </>
