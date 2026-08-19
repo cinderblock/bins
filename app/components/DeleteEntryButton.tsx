@@ -18,18 +18,28 @@ export function DeleteEntryButton({
   binId,
   entryId,
   what,
+  armed: armedProp,
+  onArmedChange,
 }: {
   binId: number;
   entryId: string;
   /** Names the thing in the toast ("Note", "Contents photo") — a bare noun. */
   what: string;
+  /**
+   * Controlled arming, for a parent that also arms/fires via keyboard (the
+   * desk pane's Delete key). Pass both or neither; uncontrolled otherwise.
+   */
+  armed?: boolean;
+  onArmedChange?: (armed: boolean) => void;
 }) {
-  const [armed, setArmed] = useState(false);
+  const [ownArmed, setOwnArmed] = useState(false);
+  const armed = armedProp ?? ownArmed;
+  const setArmed = onArmedChange ?? setOwnArmed;
   useEffect(() => {
     if (!armed) return;
     const t = setTimeout(() => setArmed(false), DISARM_MS);
     return () => clearTimeout(t);
-  }, [armed]);
+  }, [armed, setArmed]);
 
   if (armed) {
     return (

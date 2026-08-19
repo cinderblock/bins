@@ -13,7 +13,10 @@
  * DELETING a photo or note: spotting the wrong one is exactly what this pane
  * is for, and routing through the box page lost your place in the list. The
  * delete control is shared (DeleteEntryButton) and two-tap, so nothing here
- * drifts or dies to a stray click.
+ * drifts or dies to a stray click — and the Delete key arms/fires the hero's
+ * delete the same way, pairing with the arrow keys that walk the list. The
+ * collapsed Deleted section mirrors the bin page's, so a delete made here can
+ * also be taken back here.
  */
 import {
   Anchor,
@@ -26,18 +29,21 @@ import {
   Title,
   UnstyledButton,
 } from "@mantine/core";
+import type { EntryState } from "@shared/reducer";
 import { hasContent } from "@shared/reducer";
 import { IconMapPin } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { DeleteEntryButton } from "~/components/DeleteEntryButton";
+import { DeletedEntries } from "~/components/DeletedEntries";
 import { PhotoImg } from "~/components/PhotoImg";
 import { useAuthors } from "~/lib/authors";
 import { useBoxSizes } from "~/lib/boxSizes";
 import { db } from "~/lib/db";
 import { relativeTime } from "~/lib/format";
 import { formatWeight } from "~/lib/labels";
+import { deleteEntryWithUndo } from "~/lib/undo";
 
 export function BinDetailPane({ binId }: { binId: number | null }) {
   const bin = useLiveQuery(
@@ -45,13 +51,14 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
     [binId],
     null,
   );
-  const entries = useLiveQuery(
+  // Live AND deleted — the tombstones feed the Deleted section below.
+  // hasContent skips remove/restore stubs awaiting their entry.add.
+  const allEntries = useLiveQuery(
     async () =>
       binId == null
         ? []
         : (await db.entries.where("binId").equals(binId).toArray())
-            // hasContent skips remove/restore stubs awaiting their entry.add.
-            .filter((e) => !e.deletedByOpId && hasContent(e))
+            .filter(hasContent)
             .sort((a, b) => b.effectiveTime - a.effectiveTime),
     [binId],
     [],
@@ -69,7 +76,52 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
   );
   const activeId = active?.binId === binId ? active.id : null;
 
+  /**
+   * Delete key = the keyboard twin of the hero's two-tap delete button: first
+   * press arms it (the button shows "Delete?"), second press fires. Armed
+   * state is keyed by ENTRY id, so switching boxes or photos disarms rather
+   * than carrying a primed delete onto something else. A ref feeds the
+   * handler the current hero (same pattern as the list's arrow keys); the
+   * hook sits above the early return so the hook count stays stable.
+   */
+  const heroRef = useRef<EntryState | null>(null);
+  const [armedId, setArmedId] = useState<string | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" || e.repeat) return;
+      // In a text field Delete edits text — except the search box, which
+      // keeps focus while arrows walk the list, so an EMPTY input still
+      // counts as "delete the photo" intent. (target can be document/window
+      // for synthetic dispatches, hence the instanceof.)
+      const editable =
+        e.target instanceof Element
+          ? e.target.closest("input, textarea, [contenteditable]")
+          : null;
+      if (
+        editable &&
+        !(editable instanceof HTMLInputElement && editable.value === "")
+      )
+        return;
+      const hero = heroRef.current;
+      if (!hero) return;
+      e.preventDefault();
+      if (armedId === hero.id) {
+        setArmedId(null);
+        deleteEntryWithUndo(
+          hero.binId,
+          hero.id,
+          hero.kind === "contents_photo" ? "Contents photo" : "Item photo",
+        );
+      } else {
+        setArmedId(hero.id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [armedId]);
+
   if (binId == null || !bin) {
+    heroRef.current = null;
     return (
       <Paper p="xl" radius="lg" withBorder h="100%">
         <Text c="dimmed" ta="center">
@@ -84,8 +136,11 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
   const sizeLabel =
     sizes.find((s) => s.id === bin.sizeId)?.name ?? bin.sizeClass ?? null;
 
+  const entries = allEntries.filter((e) => !e.deletedByOpId);
+  const deleted = allEntries.filter((e) => e.deletedByOpId);
   const photos = entries.filter((e) => e.photoHash);
   const hero = photos.find((e) => e.id === activeId) ?? photos[0] ?? null;
+  heroRef.current = hero;
   const notes = entries.filter((e) => e.text);
   const binLabels = labels.filter((l) => bin.labelIds?.includes(l.id));
 
@@ -178,6 +233,8 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
               what={
                 hero.kind === "contents_photo" ? "Contents photo" : "Item photo"
               }
+              armed={armedId === hero.id}
+              onArmedChange={(a) => setArmedId(a ? hero.id : null)}
             />
           </Group>
         )}
@@ -238,6 +295,10 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
             </Stack>
           </ScrollArea>
         )}
+
+        {/* Recovery, same as the bin page — a delete made HERE shouldn't need
+            a navigation to take back once its undo toast is gone. */}
+        <DeletedEntries entries={deleted} authors={authors} />
       </Stack>
     </Paper>
   );

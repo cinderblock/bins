@@ -495,9 +495,28 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   Peek photo thumbs became tappable → `PhotoLightbox`, the lightbox
   extracted from bin.tsx (delete stays one-tap inside it: opening it IS the
   deliberate look). Also extracted `lib/authors.ts` `useAuthors()` (was
-  inline in bin.tsx; desk pane now attributes hero/notes). Not done, listed
-  as candidates: move-photo-to-other-box, DeletedEntries on desk pane,
-  Delete-key shortcut in desk mode.
+  inline in bin.tsx; desk pane now attributes hero/notes). Move-photo-to-
+  other-box was proposed and REJECTED by the user ("no moving pictures").
+- [x] **Deleted section on desk pane + Delete key + who-deleted**
+  (2026-08-19, user request, round 2 of the above). (1) `DeletedEntries`
+  now also renders at the bottom of `BinDetailPane`, so a desk-mode delete
+  can be taken back without navigating. (2) Delete KEY in desk mode arms
+  the hero photo's delete ("Delete?" appears), second press fires —
+  keyed by entry id so switching boxes/photos disarms; ignored while a
+  NON-EMPTY input has focus (the search box keeps focus during arrow
+  navigation, so an empty one passes through). `DeleteEntryButton` grew
+  optional controlled `armed`/`onArmedChange` for this. (3) EntryState
+  gains `deletedByDeviceId` + `deletedAt`, set/cleared by the reducer
+  together with `deletedByOpId` under the same `deletedClock` verdict
+  (order-independence preserved; 4 new test assertions). Migration 0014
+  (additive bin_entry columns), Dexie v9 (null backfill). Legacy
+  tombstones stay null — replicas never re-apply old ops, so only a
+  from-scratch resync backfills; display-only, cosmetic gap. UI: Deleted
+  rows show "deleted by X · when". Browser-verified end-to-end on a
+  seeded dev instance (two devices; deletes attributed correctly from
+  both server pull and local optimistic apply; restore of another
+  device's delete; Delete-key arm→fire with hero fallback; two-tap
+  arm + 4s auto-disarm).
 - [ ] Phase 5 — AI embellishment: server job (gated on ANTHROPIC_API_KEY) runs
   Claude vision over new contents photos → server-authored `bin.aiItems` ops →
   feeds search for free. Schema/op type not yet defined.

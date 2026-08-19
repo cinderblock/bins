@@ -84,6 +84,16 @@ export interface EntryState {
   /** Tombstone: opId of the entry.remove that deleted this entry. */
   deletedByOpId: string | null;
   /**
+   * Author of the winning entry.remove — who deleted it. Set/cleared together
+   * with deletedByOpId under the same clock. Null while live, and on
+   * tombstones materialized before this field existed (a replica never
+   * re-applies old ops, so only a from-scratch resync backfills those —
+   * display-only metadata, so the gap is cosmetic, not divergence).
+   */
+  deletedByDeviceId: string | null;
+  /** effectiveTime of the winning entry.remove; null while live / legacy. */
+  deletedAt: number | null;
+  /**
    * LWW clock of the last entry.remove/entry.restore applied — deletion is the
    * only mutable bit on an entry, so it gets a single clock rather than the
    * `fieldClocks` map the multi-field entities carry. Null means no
@@ -412,6 +422,8 @@ export async function applyOp(
         geoLng: op.geo?.lng ?? null,
         geoAcc: op.geo?.acc ?? null,
         deletedByOpId: existing?.deletedByOpId ?? null,
+        deletedByDeviceId: existing?.deletedByDeviceId ?? null,
+        deletedAt: existing?.deletedAt ?? null,
         deletedClock: existing?.deletedClock ?? null,
       });
       await refreshDerived(store, op.binId, op.effectiveTime);
@@ -445,12 +457,16 @@ export async function applyOp(
           geoLng: null,
           geoAcc: null,
           deletedByOpId: deleted ? op.opId : null,
+          deletedByDeviceId: deleted ? op.deviceId : null,
+          deletedAt: deleted ? op.effectiveTime : null,
           deletedClock: clock,
         });
       } else if (wins(clock, entry.deletedClock ?? undefined)) {
         await store.putEntry({
           ...entry,
           deletedByOpId: deleted ? op.opId : null,
+          deletedByDeviceId: deleted ? op.deviceId : null,
+          deletedAt: deleted ? op.effectiveTime : null,
           deletedClock: clock,
         });
       }

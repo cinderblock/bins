@@ -169,6 +169,21 @@ db.version(5).upgrade(async (tx) => {
     });
 });
 
+// v9: entries gain `deletedByDeviceId`/`deletedAt` — who deleted a thing, and
+// when, shown in the Deleted section. Backfill explicit nulls (same shape as
+// freshly-reduced rows); tombstones materialized before this stay null on
+// this device, since a replica never re-applies old ops. Display-only, so
+// that gap is cosmetic, not divergence.
+db.version(9).upgrade((tx) =>
+  tx
+    .table("entries")
+    .toCollection()
+    .modify((row: Record<string, unknown>) => {
+      if (row.deletedByDeviceId === undefined) row.deletedByDeviceId = null;
+      if (row.deletedAt === undefined) row.deletedAt = null;
+    }),
+);
+
 // v8: a local queue for browser errors, so failures that happen with no
 // signal still reach the server later. Not reducer state — never in the sync
 // transaction lists.

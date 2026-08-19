@@ -87,13 +87,22 @@ export function DeletedEntries({
                           ? "Contents photo"
                           : "Item photo")}
                     </Text>
-                    {/* Who ADDED it, and when — the op log knows who deleted
-                        it, but the replica only materializes the tombstone's
-                        opId, so claiming an author here would be a guess. */}
+                    {/* Who ADDED it, and when. */}
                     <Text size="xs" c="dimmed">
                       {(entry.deviceId && authors[entry.deviceId]) ?? ""}{" "}
                       {relativeTime(entry.effectiveTime)}
                     </Text>
+                    {/* Who DELETED it — materialized off the winning remove
+                        op. Absent on tombstones from before that shipped:
+                        this replica never re-applies old ops, so those stay
+                        anonymous here (a from-scratch resync would know). */}
+                    {entry.deletedByDeviceId && entry.deletedAt != null && (
+                      <Text size="xs" c="dimmed">
+                        deleted by{" "}
+                        {authors[entry.deletedByDeviceId] ?? "someone"}{" "}
+                        {relativeTime(entry.deletedAt)}
+                      </Text>
+                    )}
                   </div>
                 </Group>
                 <Button

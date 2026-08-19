@@ -205,6 +205,7 @@ describe("reducer convergence", () => {
       add2,
       op({
         type: "entry.remove",
+        deviceId: "device-b",
         effectiveTime: 400,
         payload: { entryOpId: add2.opId },
       }),
@@ -213,6 +214,9 @@ describe("reducer convergence", () => {
     // add2 (the newer contents shot) was removed -> primary falls back to add1.
     expect(snapshot).toContain(`"primaryPhotoHash":"${hashA}"`);
     expect(snapshot).toContain(`"deletedByOpId"`);
+    // Who deleted it, and when, materialize off the winning remove op.
+    expect(snapshot).toContain(`"deletedByDeviceId":"device-b"`);
+    expect(snapshot).toContain(`"deletedAt":400`);
   });
 
   test("entry.restore undoes a remove and brings the primary photo back", async () => {
@@ -249,6 +253,9 @@ describe("reducer convergence", () => {
     // more the newest contents shot.
     expect(snapshot).toContain(`"primaryPhotoHash":"${hashB}"`);
     expect(snapshot).not.toContain(`"deletedByOpId":"`);
+    // The restore clears the deleter attribution along with the tombstone.
+    expect(snapshot).not.toContain(`"deletedByDeviceId":"`);
+    expect(snapshot).toContain(`"deletedAt":null`);
   });
 
   test("a stale restore loses to a later remove (LWW, not last-arrived)", async () => {

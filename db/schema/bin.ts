@@ -76,6 +76,10 @@ export const binEntry = sqliteTable(
     geoLng: real("geo_lng"),
     geoAcc: real("geo_acc"),
     deletedByOpId: text("deleted_by_op_id"),
+    /** Author + time of the winning entry.remove (see shared/reducer.ts).
+        Null on tombstones that predate these columns — not backfilled. */
+    deletedByDeviceId: text("deleted_by_device_id"),
+    deletedAt: integer("deleted_at"),
     /** LWW clock of the last entry.remove/entry.restore (see shared/reducer.ts). */
     deletedClock: text("deleted_clock"),
   },

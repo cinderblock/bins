@@ -92,6 +92,8 @@ export class DrizzleStateStore implements StateStore {
       geoLng: row.geoLng,
       geoAcc: row.geoAcc,
       deletedByOpId: row.deletedByOpId,
+      deletedByDeviceId: row.deletedByDeviceId,
+      deletedAt: row.deletedAt,
       deletedClock: row.deletedClock,
     };
   }
@@ -130,6 +132,8 @@ export class DrizzleStateStore implements StateStore {
       geoLng: row.geoLng,
       geoAcc: row.geoAcc,
       deletedByOpId: row.deletedByOpId,
+      deletedByDeviceId: row.deletedByDeviceId,
+      deletedAt: row.deletedAt,
       deletedClock: row.deletedClock,
     };
   }

@@ -49,9 +49,13 @@ where.
   (sha256) storage, latest top-down shot automatically becomes the bin's
   primary picture.
 - **Deleting is undoable, for everyone**: deleting a photo or note offers an
-  Undo toast, and every bin page keeps a collapsed "N deleted" section you can
-  restore from later — including something a housemate deleted on their
-  phone last week. Nothing is really erased: the op log is append-only and
+  Undo toast, and the bin page and desk-mode pane keep a collapsed "N deleted"
+  section — showing who deleted what, and when — that anyone can restore
+  from later, including something a housemate deleted on their phone last
+  week. Deletes are available wherever you spot the mistake (bin page,
+  desk-mode pane, scanner peek); away from the bin page they take two taps —
+  or two presses of the Delete key in desk mode — so a stray touch can't
+  fire one. Nothing is really erased: the op log is append-only and
   photo blobs are never garbage-collected, so a restore is just another op
   that syncs to every device.
 - **Phone-first, desktop-aware**: phones boot straight into the live
