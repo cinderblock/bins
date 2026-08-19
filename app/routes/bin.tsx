@@ -13,8 +13,6 @@ import {
   Button,
   Center,
   Group,
-  Image,
-  Modal,
   Paper,
   SimpleGrid,
   Stack,
@@ -22,8 +20,7 @@ import {
   Title,
   UnstyledButton,
 } from "@mantine/core";
-import { useDocumentTitle, useMediaQuery } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
+import { useDocumentTitle } from "@mantine/hooks";
 import type { EntryState } from "@shared/reducer";
 import { hasContent } from "@shared/reducer";
 import {
@@ -49,16 +46,17 @@ import { LabelSheet } from "~/components/LabelSheet";
 import { LabelPrintSheet } from "~/components/LabelSheet.print";
 import { LocationSheet } from "~/components/LocationSheet";
 import { NoteSheet } from "~/components/NoteSheet";
-import { PhotoImg, usePhotoUrl } from "~/components/PhotoImg";
+import { PhotoImg } from "~/components/PhotoImg";
+import { PhotoLightbox } from "~/components/PhotoLightbox";
 import { useAdminPassword } from "~/lib/admin";
-import { apiJson } from "~/lib/api";
+import { useAuthors } from "~/lib/authors";
 import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
 import { relativeTime } from "~/lib/format";
 import { formatWeight, labelColor } from "~/lib/labels";
 import { usePendingSuggestions } from "~/lib/suggestions";
 import { syncNow } from "~/lib/sync";
-import { ACTION_BAR_HEIGHT, PAGE_MAXW, PHONE_MEDIA } from "~/lib/ui";
+import { ACTION_BAR_HEIGHT, PAGE_MAXW } from "~/lib/ui";
 import { deleteEntryWithUndo } from "~/lib/undo";
 
 export default function BinPage() {
@@ -87,22 +85,7 @@ export default function BinPage() {
     [binId],
     [],
   );
-  const authors = useLiveQuery(
-    async () => {
-      const devices = (await db.meta.get("devices"))?.value as
-        | Record<string, string>
-        | undefined;
-      const identity = (await db.meta.get("identity"))?.value as
-        | { deviceId: string; displayName: string }
-        | undefined;
-      return {
-        ...devices,
-        ...(identity ? { [identity.deviceId]: identity.displayName } : {}),
-      };
-    },
-    [],
-    {} as Record<string, string>,
-  );
+  const authors = useAuthors();
 
   // The group's label rows, to render a bin's labelIds as named, colored chips.
   const labelById = useLiveQuery(
@@ -131,12 +114,6 @@ export default function BinPage() {
   const canEditDirectly = typeof adminPassword === "string";
   const pendingSuggestions = usePendingSuggestions(binId ?? 0);
   const [lightbox, setLightbox] = useState<EntryState | null>(null);
-
-  // The lightbox fills the screen on a phone; on desktop that would be a 4K
-  // modal around a modest image, so it gets a normal centered dialog there.
-  const phone = useMediaQuery(PHONE_MEDIA, true, {
-    getInitialValueInEffect: false,
-  });
 
   useDocumentTitle(
     binId === null
@@ -559,60 +536,7 @@ export default function BinPage() {
       />
 
       {/* Lightbox */}
-      <Modal
-        opened={lightbox !== null}
-        onClose={() => setLightbox(null)}
-        fullScreen={phone}
-        size="xl"
-        centered
-        padding="xs"
-        title={
-          lightbox && (
-            <Text size="sm" c="dimmed">
-              {lightbox.kind === "contents_photo" ? "Contents" : "Item"} ·{" "}
-              {(lightbox.deviceId && authors[lightbox.deviceId]) ?? ""}{" "}
-              {relativeTime(lightbox.effectiveTime)}
-            </Text>
-          )
-        }
-      >
-        {lightbox?.photoHash && (
-          <Lightbox entry={lightbox} onDeleted={() => setLightbox(null)} />
-        )}
-      </Modal>
+      <PhotoLightbox entry={lightbox} onClose={() => setLightbox(null)} />
     </div>
-  );
-}
-
-function Lightbox({
-  entry,
-  onDeleted,
-}: { entry: EntryState; onDeleted: () => void }) {
-  const url = usePhotoUrl(entry.photoHash, null, true);
-  return (
-    <Stack>
-      {url ? (
-        <Image src={url} radius="md" alt="photo" fit="contain" mah="75dvh" />
-      ) : (
-        <Center h={200}>
-          <Text c="dimmed">loading…</Text>
-        </Center>
-      )}
-      <Button
-        color="red"
-        variant="light"
-        leftSection={<IconTrash size={16} />}
-        onClick={() => {
-          deleteEntryWithUndo(
-            entry.binId,
-            entry.id,
-            entry.kind === "contents_photo" ? "Contents photo" : "Item photo",
-          );
-          onDeleted();
-        }}
-      >
-        Delete photo
-      </Button>
-    </Stack>
   );
 }

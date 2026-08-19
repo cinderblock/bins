@@ -484,6 +484,20 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   reducer convergence + 1 API round-trip (70 pass). Verified in a browser on
   an isolated dev instance: delete→Undo, delete→Deleted→Restore, primary photo
   recompute both ways, and the v3→v4 Dexie upgrade on a seeded pre-undo db.
+- [x] **Delete photos/notes from the browse surfaces** (2026-08-19, user:
+  found the lightbox delete eventually, wants it findable elsewhere + a
+  confirm where a stray tap is easy). The bin page keeps its one-tap deletes
+  (you're looking straight at the thing; undo toast is the guard). New:
+  `DeleteEntryButton` (shared two-tap arm→"Delete?" control, auto-disarms
+  4s; still routes through `deleteEntryWithUndo` so undo backs it up) on the
+  desk-mode `BinDetailPane` (hero photo caption row + note rows — pane is no
+  longer strictly read-only, comment updated) and on `BinPeek` note rows.
+  Peek photo thumbs became tappable → `PhotoLightbox`, the lightbox
+  extracted from bin.tsx (delete stays one-tap inside it: opening it IS the
+  deliberate look). Also extracted `lib/authors.ts` `useAuthors()` (was
+  inline in bin.tsx; desk pane now attributes hero/notes). Not done, listed
+  as candidates: move-photo-to-other-box, DeletedEntries on desk pane,
+  Delete-key shortcut in desk mode.
 - [ ] Phase 5 — AI embellishment: server job (gated on ANTHROPIC_API_KEY) runs
   Claude vision over new contents photos → server-authored `bin.aiItems` ops →
   feeds search for free. Schema/op type not yet defined.

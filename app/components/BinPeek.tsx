@@ -1,10 +1,22 @@
 /**
  * Bottom "peek" panel for auto-scan mode: the last-scanned bin's contents and
- * history floated over the live camera. Read-only by design — the capture
- * button lives next to it, and everything else (item photos, notes, location,
- * retire) belongs to the full bin page, one tap on the header away.
+ * history floated over the live camera. Mostly read-only — the capture button
+ * lives next to it, and editing belongs to the full bin page, one tap on the
+ * header away. The exception is deleting: a wrong photo or note spotted while
+ * scanning down a shelf shouldn't cost a navigation. Photos open the shared
+ * lightbox (delete inside); notes carry the shared two-tap delete, so a
+ * stray tap over a live camera can't destroy anything.
  */
-import { ActionIcon, Badge, Group, Paper, Stack, Text } from "@mantine/core";
+import {
+  ActionIcon,
+  Badge,
+  Group,
+  Paper,
+  Stack,
+  Text,
+  UnstyledButton,
+} from "@mantine/core";
+import type { EntryState } from "@shared/reducer";
 import { hasContent } from "@shared/reducer";
 import {
   IconChevronDown,
@@ -12,8 +24,11 @@ import {
   IconMapPin,
 } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useState } from "react";
 import { Link } from "react-router";
+import { DeleteEntryButton } from "~/components/DeleteEntryButton";
 import { PhotoImg } from "~/components/PhotoImg";
+import { PhotoLightbox } from "~/components/PhotoLightbox";
 import { db } from "~/lib/db";
 import { relativeTime } from "~/lib/format";
 
@@ -38,6 +53,8 @@ export function BinPeek({
     [binId],
     [],
   );
+
+  const [lightbox, setLightbox] = useState<EntryState | null>(null);
 
   if (!bin) return null;
   const photos = entries.filter((e) => e.photoHash);
@@ -92,19 +109,24 @@ export function BinPeek({
           style={{ overflowX: "auto", flexWrap: "nowrap" }}
         >
           {photos.map((entry) => (
-            <PhotoImg
+            <UnstyledButton
               key={entry.id}
-              hash={entry.photoHash as string}
-              thumbHash={entry.thumbHash}
-              alt={entry.kind === "contents_photo" ? "contents" : "item"}
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: 8,
-                flexShrink: 0,
-                display: "block",
-              }}
-            />
+              onClick={() => setLightbox(entry)}
+              style={{ flexShrink: 0, lineHeight: 0 }}
+              aria-label="Open photo"
+            >
+              <PhotoImg
+                hash={entry.photoHash as string}
+                thumbHash={entry.thumbHash}
+                alt={entry.kind === "contents_photo" ? "contents" : "item"}
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: 8,
+                  display: "block",
+                }}
+              />
+            </UnstyledButton>
           ))}
         </Group>
       )}
@@ -116,9 +138,16 @@ export function BinPeek({
               <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>
                 {note.text}
               </Text>
-              <Text size="xs" c="dimmed">
-                {relativeTime(note.effectiveTime)}
-              </Text>
+              <Group justify="space-between" wrap="nowrap">
+                <Text size="xs" c="dimmed">
+                  {relativeTime(note.effectiveTime)}
+                </Text>
+                <DeleteEntryButton
+                  binId={bin.id}
+                  entryId={note.id}
+                  what="Note"
+                />
+              </Group>
             </Paper>
           ))}
         </Stack>
@@ -129,6 +158,8 @@ export function BinPeek({
           Nothing recorded yet — open the box and capture its contents.
         </Text>
       )}
+
+      <PhotoLightbox entry={lightbox} onClose={() => setLightbox(null)} />
     </Paper>
   );
 }

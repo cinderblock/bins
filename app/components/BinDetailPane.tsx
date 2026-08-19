@@ -8,8 +8,12 @@
  * the list and your scroll position; keeping the list alive next to a big
  * photo is the whole point.
  *
- * Read-only on purpose. Editing lives on the full box page, one click away,
- * so there is no second copy of the edit logic to drift.
+ * Nearly read-only. Editing lives on the full box page, one click away, so
+ * there is no second copy of the edit logic to drift. The one exception is
+ * DELETING a photo or note: spotting the wrong one is exactly what this pane
+ * is for, and routing through the box page lost your place in the list. The
+ * delete control is shared (DeleteEntryButton) and two-tap, so nothing here
+ * drifts or dies to a stray click.
  */
 import {
   Anchor,
@@ -27,7 +31,9 @@ import { IconMapPin } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { Link } from "react-router";
+import { DeleteEntryButton } from "~/components/DeleteEntryButton";
 import { PhotoImg } from "~/components/PhotoImg";
+import { useAuthors } from "~/lib/authors";
 import { useBoxSizes } from "~/lib/boxSizes";
 import { db } from "~/lib/db";
 import { relativeTime } from "~/lib/format";
@@ -52,6 +58,7 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
   );
   const labels = useLiveQuery(async () => db.labels.toArray(), [], []);
   const sizes = useBoxSizes();
+  const authors = useAuthors();
   /**
    * Which photo fills the hero slot. Stored WITH its box so moving to another
    * box falls back to that box's newest photo automatically — derived rather
@@ -156,6 +163,25 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
           </div>
         )}
 
+        {/* Caption for the hero: what it is, who took it, when — and the
+            delete for exactly the photo on screen. */}
+        {hero && (
+          <Group justify="space-between" wrap="nowrap" gap="xs">
+            <Text size="xs" c="dimmed" truncate>
+              {hero.kind === "contents_photo" ? "Contents" : "Item"} ·{" "}
+              {(hero.deviceId && authors[hero.deviceId]) ?? ""}{" "}
+              {relativeTime(hero.effectiveTime)}
+            </Text>
+            <DeleteEntryButton
+              binId={bin.id}
+              entryId={hero.id}
+              what={
+                hero.kind === "contents_photo" ? "Contents photo" : "Item photo"
+              }
+            />
+          </Group>
+        )}
+
         {/* Other photos stay one click away instead of one scroll away. */}
         {photos.length > 1 && (
           <Group gap="xs" wrap="nowrap" style={{ overflowX: "auto" }}>
@@ -196,9 +222,17 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
               {notes.map((e) => (
                 <Paper key={e.id} p="xs" radius="md" withBorder>
                   <Text size="sm">{e.text}</Text>
-                  <Text size="xs" c="dimmed">
-                    {relativeTime(e.effectiveTime)}
-                  </Text>
+                  <Group justify="space-between" wrap="nowrap">
+                    <Text size="xs" c="dimmed">
+                      {(e.deviceId && authors[e.deviceId]) ?? ""}{" "}
+                      {relativeTime(e.effectiveTime)}
+                    </Text>
+                    <DeleteEntryButton
+                      binId={bin.id}
+                      entryId={e.id}
+                      what="Note"
+                    />
+                  </Group>
                 </Paper>
               ))}
             </Stack>
