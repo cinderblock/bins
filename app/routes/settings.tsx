@@ -41,7 +41,7 @@ import {
   upsertLabel,
   upsertLocation,
 } from "~/lib/actions";
-import { apiJson } from "~/lib/api";
+import { BUILD_SHA, apiJson } from "~/lib/api";
 import { signBackIn } from "~/lib/auth";
 import {
   AUTH_DEAD_KEY,
@@ -625,6 +625,18 @@ export default function Settings() {
       >
         Leave group (clear this device)
       </Button>
+
+      {/* Which code is this device actually running? Deploys land silently
+          (appUpdate.ts reloads when idle), so "did my phone update yet" is
+          otherwise unanswerable. The audio-session note diagnoses the
+          camera-pauses-music fix (lib/camera.ts): without the API the fix
+          can't work on this device. */}
+      <Text size="xs" c="dimmed" ta="center">
+        Build {BUILD_SHA.slice(0, 7)} ·{" "}
+        {"audioSession" in navigator
+          ? "audio session API available"
+          : "audio session API not available"}
+      </Text>
     </Stack>
   );
 }
