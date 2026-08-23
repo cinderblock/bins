@@ -646,13 +646,28 @@ unreachable, and "recreate the database" was very nearly the remedy.
 - Windows dev environment: TCP ports 2980–3079 sit in a Hyper-V excluded
   range, so `bun run dev` port-hunts past 3080. Environment quirk, not app.
 - **iOS pauses Music/podcasts when the camera opens, even video-only** —
-  WebKit takes a record-category OS audio session for any capture. Fixed
-  2026-08-23: `getCameraStream` sets `navigator.audioSession.type =
-  "ambient"` (Safari-only API, no-op elsewhere) before getUserMedia.
-  CAVEAT: with an explicit ambient session, `getUserMedia({ audio: true })
+  attempted fix 2026-08-23: `getCameraStream` sets
+  `navigator.audioSession.type = "ambient"` (Safari-only API, no-op
+  elsewhere) before getUserMedia. First on-device test reported "didn't
+  work", but it very likely ran the OLD build: appUpdate.ts blocks the
+  silent reload while the camera is live, and on a phone the camera starts
+  at open — the new code only lands after backgrounding once. Settings now
+  shows a build-sha + audioSession-availability footer so retests are
+  conclusive. WebKit source trace (2026-08-23) says ambient SHOULD hold:
+  DOMAudioSession::setType → setCategoryOverride wins over everything in
+  MediaSessionManagerCocoa::updateSessionState (video-only capture doesn't
+  even force PlayAndRecord there — only audio capture does), and the GPU
+  process picks Ambient as the mixable category. MDN BCD: `type` default-on
+  since Safari 16.4 (`state` is the flagged part). Residual suspect if a
+  clean retest still fails: AVCaptureSession's automatic app-audio-session
+  configuration in the capture process, which WebKit never opts out of.
+  CAVEAT: with an explicit ambient session, `getUserMedia({ audio: true })`
   would FAIL — if mic capture is ever added, that line must change to
   "play-and-record" for the duration. Fine today: voice notes are
-  dictation-first by decision, the app never captures audio.
+  dictation-first by decision, the app never captures audio. Also:
+  DOMAudioSession::setType silently no-ops when the Microphone
+  permissions-policy is disabled for the document (fine for our top-level
+  PWA).
 
 ## Things not to do
 
