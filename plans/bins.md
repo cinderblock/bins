@@ -660,7 +660,18 @@ unreachable, and "recreate the database" was very nearly the remedy.
   process picks Ambient as the mixable category. MDN BCD: `type` default-on
   since Safari 16.4 (`state` is the flagged part). Residual suspect if a
   clean retest still fails: AVCaptureSession's automatic app-audio-session
-  configuration in the capture process, which WebKit never opts out of.
+  configuration — Apple's header says the default (YES) "ensures the
+  application's audio session is set to the PlayAndRecord category", and
+  iOS 18 added `configuresApplicationAudioSessionToMixWithOthers`
+  (default NO, app-level only) precisely because capture otherwise
+  interrupts ongoing audio. WebKit sets neither property, and nothing
+  web-side can counter it after the fact: AudioSession::setCategoryOverride
+  early-returns on an unchanged value, so a same-value re-assert from JS is
+  a no-op, and toggling through "auto" to force re-application risks a
+  transient record category (the very bug). If it comes to that, it's a
+  WebKit bug to file, not something the app can work around. Hardening
+  shipped cd64bab: ambient is asserted at module load (before the first
+  permission prompt) as well as before each getUserMedia.
   CAVEAT: with an explicit ambient session, `getUserMedia({ audio: true })`
   would FAIL — if mic capture is ever added, that line must change to
   "play-and-record" for the duration. Fine today: voice notes are
