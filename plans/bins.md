@@ -645,6 +645,14 @@ unreachable, and "recreate the database" was very nearly the remedy.
   hashed asset is precached (`wasm` in globPatterns, 5 MB size cap).
 - Windows dev environment: TCP ports 2980–3079 sit in a Hyper-V excluded
   range, so `bun run dev` port-hunts past 3080. Environment quirk, not app.
+- **iOS pauses Music/podcasts when the camera opens, even video-only** —
+  WebKit takes a record-category OS audio session for any capture. Fixed
+  2026-08-23: `getCameraStream` sets `navigator.audioSession.type =
+  "ambient"` (Safari-only API, no-op elsewhere) before getUserMedia.
+  CAVEAT: with an explicit ambient session, `getUserMedia({ audio: true })
+  would FAIL — if mic capture is ever added, that line must change to
+  "play-and-record" for the duration. Fine today: voice notes are
+  dictation-first by decision, the app never captures audio.
 
 ## Things not to do
 

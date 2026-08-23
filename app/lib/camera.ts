@@ -13,6 +13,16 @@ export async function getCameraStream(): Promise<MediaStream> {
     return stream;
   }
   stopCamera();
+  // iOS pauses/ducks other apps' audio (Music, podcasts) when ANY capture
+  // starts — WebKit activates a record-category OS audio session even for
+  // video-only. Declaring our session "ambient" (mixable, never takes audio
+  // focus) keeps music playing. Safari-only API; must be set before
+  // getUserMedia. Caveat: with an explicit "ambient" session, a future
+  // getUserMedia({ audio: true }) would fail — fine here, this app never
+  // captures mic audio (voice notes are dictation-first by decision).
+  const audioSession = (navigator as { audioSession?: { type: string } })
+    .audioSession;
+  if (audioSession) audioSession.type = "ambient";
   stream = await navigator.mediaDevices.getUserMedia({
     video: {
       facingMode: "environment",
