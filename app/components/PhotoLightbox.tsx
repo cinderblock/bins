@@ -2,15 +2,20 @@
  * Full-size photo viewer, shared by every surface with a photo strip (bin
  * page, scanner peek).
  *
- * It pages through the WHOLE strip in place — swipe on a touch screen, arrow
- * keys or the edge buttons anywhere else. Reported from the field: the strip
- * is a contact sheet of one box, so comparing two shots is the normal thing
- * to want, and it used to cost a close and a re-tap for every single photo.
+ * It pages through the WHOLE strip in place — swipe or flick on a touch
+ * screen, arrow keys or the edge buttons anywhere else — and pinch or
+ * double-tap to zoom into a photo. Reported from the field: the strip is a
+ * contact sheet of one box, so comparing two shots is the normal thing to
+ * want, and reading a label in one of them is the next thing.
+ *
+ * The gesture arbitration (pan vs. page, flick projection, pinch anchoring)
+ * lives in `~/lib/photoGestures` and is ported from PhotoSwipe's handlers —
+ * see the credit and the explanation of each borrowed technique there.
  *
  * Delete stays one-tap with no confirm: opening the lightbox is already a
  * deliberate look at exactly this photo, and the undo toast catches the rest.
- * It now advances to the next photo instead of dumping you back to the page —
- * clearing out several bad shots is one pass, not one round trip each.
+ * It advances to the next photo instead of dumping you back to the page, so
+ * clearing out several bad shots is one pass.
  *
  * Fills the screen on a phone; a normal centered dialog on desktop, where
  * full-screen would be a 4K modal around a modest image.
@@ -31,19 +36,24 @@ import {
   IconChevronRight,
   IconTrash,
 } from "@tabler/icons-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useAuthors } from "~/lib/authors";
 import { relativeTime } from "~/lib/format";
+import { usePhotoGestures } from "~/lib/photoGestures";
 import { PHONE_MEDIA, TOUCH_TARGET } from "~/lib/ui";
 import { deleteEntryWithUndo } from "~/lib/undo";
 import { usePhotoUrl } from "./PhotoImg";
 
-/** Horizontal travel (px) past which letting go means "next photo". */
-const SWIPE_THRESHOLD = 56;
-/** A drag commits to horizontal or vertical once it moves this far (px). */
-const DIRECTION_SLOP = 8;
 /** Slide height. Fixed so the image doesn't jump around between photos. */
 const SLIDE_HEIGHT = "70dvh";
+/** Must match SNAP_MS in ~/lib/photoGestures so React and the engine agree. */
+const SNAP = "transform 260ms cubic-bezier(0.22, 1, 0.36, 1)";
 
 export function PhotoLightbox({
   photos,
@@ -77,6 +87,7 @@ export function PhotoLightbox({
   const currentId = activeId ?? openedId;
   const index = photos.findIndex((p) => p.id === currentId);
   const current = index >= 0 ? photos[index] : entry;
+  const safeIndex = Math.max(index, 0);
 
   // Where to land if the photo on screen disappears (another device deleted
   // it, or our own delete raced the live query): hold the position in the
@@ -94,13 +105,34 @@ export function PhotoLightbox({
   }, [entry, index, photos, onClose]);
 
   const go = useCallback(
-    (delta: number) => {
-      if (index < 0) return;
+    (delta: number): boolean => {
+      if (index < 0) return false;
       const next = photos[index + delta];
-      if (next) setActiveId(next.id);
+      if (!next) return false;
+      setActiveId(next.id);
+      return true;
     },
     [index, photos],
   );
+
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const activeImgRef = useRef<HTMLImageElement>(null);
+
+  const { reset } = usePhotoGestures({
+    viewportRef,
+    trackRef,
+    imgRef: activeImgRef,
+    index: safeIndex,
+    count: photos.length,
+    onPage: go,
+    enabled: entry !== null && photos.length > 0,
+  });
+  // Arrow keys, the pager buttons and delete all change the photo without
+  // going through a gesture — the engine's zoom/pan has to come back to rest
+  // with them, not just when a swipe ends.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: currentId is the trigger, not a value read here.
+  useEffect(() => reset(), [currentId, reset]);
 
   const multi = photos.length > 1;
 
@@ -115,44 +147,6 @@ export function PhotoLightbox({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [entry, multi, go]);
-
-  // Drag-to-page. Hand-rolled rather than pulling in a carousel: the whole
-  // behavior is one axis, and this app stays installable-and-offline cheap.
-  const [dragX, setDragX] = useState(0);
-  const drag = useRef<{ x: number; y: number; horizontal: boolean | null }>(
-    null,
-  );
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    const t = e.touches[0];
-    if (!t || !multi) return;
-    drag.current = { x: t.clientX, y: t.clientY, horizontal: null };
-  };
-  const onTouchMove = (e: React.TouchEvent) => {
-    const d = drag.current;
-    const t = e.touches[0];
-    if (!d || !t) return;
-    const dx = t.clientX - d.x;
-    const dy = t.clientY - d.y;
-    if (d.horizontal === null) {
-      if (Math.abs(dx) < DIRECTION_SLOP && Math.abs(dy) < DIRECTION_SLOP)
-        return;
-      // A mostly-vertical drag belongs to the modal's own scrolling.
-      d.horizontal = Math.abs(dx) > Math.abs(dy);
-    }
-    if (!d.horizontal) return;
-    // Resist at the ends, so the strip reads as bounded rather than stuck.
-    const atEnd =
-      (dx > 0 && index <= 0) || (dx < 0 && index >= photos.length - 1);
-    setDragX(atEnd ? dx / 4 : dx);
-  };
-  const endDrag = () => {
-    const d = drag.current;
-    drag.current = null;
-    if (d?.horizontal && Math.abs(dragX) > SWIPE_THRESHOLD)
-      go(dragX < 0 ? 1 : -1);
-    setDragX(0);
-  };
 
   const deleteCurrent = () => {
     if (!current || index < 0) return;
@@ -196,20 +190,24 @@ export function PhotoLightbox({
       {entry !== null && photos.length > 0 && (
         <Stack gap="xs">
           <Box
-            style={{ position: "relative", overflow: "hidden" }}
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={endDrag}
-            onTouchCancel={endDrag}
+            ref={viewportRef}
+            style={{
+              position: "relative",
+              overflow: "hidden",
+              // Every axis is ours: horizontal pages, vertical and pinch pan
+              // and zoom the photo. Leaving any of it to the browser means
+              // the two fight over the same fingers.
+              touchAction: "none",
+              userSelect: "none",
+            }}
           >
             <div
+              ref={trackRef}
               style={{
                 display: "flex",
-                // Vertical panning still belongs to the page; we take over
-                // the horizontal axis so a swipe doesn't also scroll.
-                touchAction: "pan-y",
-                transform: `translateX(calc(${-Math.max(index, 0) * 100}% + ${dragX}px))`,
-                transition: drag.current ? "none" : "transform 200ms ease-out",
+                willChange: "transform",
+                transform: `translate3d(calc(${-safeIndex * 100}%), 0, 0)`,
+                transition: SNAP,
               }}
             >
               {photos.map((photo, i) => (
@@ -221,7 +219,8 @@ export function PhotoLightbox({
                   // renditions because someone opened one. Neighbours ARE
                   // fetched, so the next swipe is instant instead of a flash
                   // of "loading…".
-                  load={Math.abs(i - Math.max(index, 0)) <= 1}
+                  load={Math.abs(i - safeIndex) <= 1}
+                  imgRef={i === safeIndex ? activeImgRef : undefined}
                 />
               ))}
             </div>
@@ -256,7 +255,15 @@ export function PhotoLightbox({
   );
 }
 
-function Slide({ entry, load }: { entry: EntryState; load: boolean }) {
+function Slide({
+  entry,
+  load,
+  imgRef,
+}: {
+  entry: EntryState;
+  load: boolean;
+  imgRef?: RefObject<HTMLImageElement | null>;
+}) {
   const url = usePhotoUrl(load ? entry.photoHash : null, null, true);
   return (
     <Box
@@ -269,6 +276,7 @@ function Slide({ entry, load }: { entry: EntryState; load: boolean }) {
     >
       {url ? (
         <img
+          ref={imgRef}
           src={url}
           alt={entry.kind === "contents_photo" ? "Box contents" : "An item"}
           draggable={false}
@@ -278,6 +286,12 @@ function Slide({ entry, load }: { entry: EntryState; load: boolean }) {
             objectFit: "contain",
             borderRadius: 12,
             display: "block",
+            willChange: "transform",
+            // The gesture engine writes these directly. Declaring them here
+            // means a re-render (paging away, the strip changing) puts a
+            // photo we're no longer looking at back to rest.
+            transform: "none",
+            transition: SNAP,
           }}
         />
       ) : (

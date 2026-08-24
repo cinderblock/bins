@@ -524,6 +524,15 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   closing. Only the visible slide and its two neighbours fetch renditions.
   Details + the two ordering traps in `plans/mobile-ux-and-suggestions.md`
   ("Round 2").
+- [x] **Pinch/double-tap zoom in the photo viewer** (2026-08-23, field report)
+  — `app/lib/photoGestures.ts`, a Pointer Events engine whose behaviour is
+  ported from PhotoSwipe (MIT, credited in the file) rather than adopting the
+  library, which would have replaced the modal and its delete-with-undo UI.
+  Pinch anchors on the fingers, limits resist and spring back, and pan/page
+  are one arbitrated gesture. Paging is decided by PROJECTED VELOCITY, not
+  distance — see the plan for why no distance threshold can work. The pure
+  math is exported and unit-tested (21 tests) because multi-touch is the one
+  thing the browser automation can't drive.
 - [ ] Phase 5 — AI embellishment: server job (gated on ANTHROPIC_API_KEY) runs
   Claude vision over new contents photos → server-authored `bin.aiItems` ops →
   feeds search for free. Schema/op type not yet defined.

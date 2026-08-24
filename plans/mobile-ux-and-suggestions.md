@@ -204,6 +204,84 @@ Two ordering traps handled, both worth not reintroducing:
 phone — the swipe itself is the part automation can't honestly prove (see the
 Chrome-automation gotcha below). Worth one pass on-device.
 
+**Shipped** as `c329b6a`, deployed to both instances.
+
+### 2 — pinch to zoom ✅ DONE
+
+Reported second-hand ("someone said they wanted pinch to zoom"), then steered
+by the user: *"can we just use the technique shown in PhotoSwipe's sources to
+make ours better?"* — after an initial lean toward adopting PhotoSwipe itself.
+That call was right and is now a locked decision.
+
+**Decision (user, 2026-08-23): port PhotoSwipe's technique, don't adopt the
+library.** Adopting it would have replaced the Mantine modal outright, taking
+the title, author line, and delete-with-undo against a live-shrinking strip
+with it — more disruption than the feature is worth, plus ~40KB of precache.
+PhotoSwipe is MIT and so is this repo, so deriving from it is clean; the
+credit lives in the header of `app/lib/photoGestures.ts`.
+
+**A regression report 1 introduced, now fixed.** Item 1 set `touch-action:
+pan-y` on the swipe track. Per spec that permits *only* vertical panning, so
+it silently killed the browser's own pinch-zoom inside the lightbox — which
+had worked, since the viewport meta (`app/root.tsx`) sets no `user-scalable=no`
+or `maximum-scale`. The viewport is now `touch-action: none` and every axis is
+handled explicitly, which is the right answer anyway: sharing axes with the
+browser means the two fight over the same fingers.
+
+**Built** — `app/lib/photoGestures.ts`, a Pointer Events engine (so mouse, pen
+and touch are one code path) that writes transforms straight to the DOM. React
+owns *which* photo is showing and must never re-render per pointermove.
+
+What was borrowed, and why each one matters:
+
+| Technique | PhotoSwipe's answer |
+| --- | --- |
+| Axis lock | `AXIS_SWIPE_HYSTERESIS = 10`px |
+| Out-of-bounds drag | `PAN_END_FRICTION = 0.35` |
+| Does a release page? | project velocity: `v * rate / (1 - rate)`, rate `0.995` |
+| Flick floor | `MIN_NEXT_SLIDE_SPEED = 0.5` px/ms |
+| Pinch anchor | `pan = zoomPoint - (startZoomPoint - startPan) * zoomFactor` |
+| Overzoom | `UPPER_ZOOM_FRICTION = 0.05`, `LOWER_ZOOM_FRICTION = 0.15` |
+| Double tap | within `300`ms and `25`px |
+
+The two that a from-scratch attempt gets wrong:
+
+- **Paging is decided by PROJECTED VELOCITY, not distance.** A fast flick over
+  20px means "next"; a slow drag over 150px means "let me look". No distance
+  threshold can separate those — the 56px threshold shipped in item 1 was
+  wrong for one of the two, always. This also makes drag-out-then-flick-back
+  cancel correctly, which a threshold cannot express at all.
+- **Pan and page are ONE gesture, with a condition.** Dragging a zoomed photo
+  pans it and the leftover past its edge feeds the pager — but only if the
+  photo was *already* against that edge when the drag began. Without that,
+  panning across a zoomed photo flips to the next one the instant it reaches
+  the edge.
+
+Deliberate deviations from PhotoSwipe:
+
+- **Centre-origin coordinates.** PhotoSwipe pans from the element's top-left;
+  we use CSS `translate(pan) scale(zoom)` about the centre, so bounds are
+  symmetric `±(scaled - viewport)/2` and the pinch formula is rewritten
+  against that origin. Same technique, less arithmetic.
+- **No spring.** PhotoSwipe settles with a velocity-seeded critically-damped
+  spring (dampingRatio 1, naturalFrequency 40). We use a fixed 260ms ease-out:
+  it differs only on a hard flick and costs no animation loop. Revisit if the
+  settle ever feels wrong; don't "fix" it blind.
+- **No drag-down-to-close.** PhotoSwipe has it (`MIN_RATIO_TO_CLOSE = 0.4`).
+  Ours would fight the modal's own scrolling and the delete button below.
+
+**Verified:** 21 new unit tests (`app/lib/photoGestures.test.ts`) over the
+extracted pure math — 157 total pass — plus typecheck, lint and a production
+build. The formulas are exported as pure functions specifically so they could
+be tested: multi-touch is the one thing the Chrome automation genuinely cannot
+drive, so the arithmetic is where the confidence had to come from. The tests
+assert the properties, not the outputs — e.g. that the content under the
+fingers is *unchanged* across a pinch, including while the fingers move, and
+one test pins the naive centre-scaling version as WRONG so nobody
+"simplifies" the anchor formula away.
+
+Still unproven by hand: the gestures themselves on a real touchscreen.
+
 ## Merging phase 2
 
 The branch was cut from `dacaf07`, before the concurrent undo/restore work
