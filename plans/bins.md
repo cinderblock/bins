@@ -517,6 +517,13 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   both server pull and local optimistic apply; restore of another
   device's delete; Delete-key arm→fire with hero fallback; two-tap
   arm + 4s auto-disarm).
+- [x] **Swipe between a box's photos** (2026-08-23, field report) —
+  `PhotoLightbox` pages through the whole strip instead of showing the one
+  photo it was handed: swipe on touch, arrow keys / edge buttons elsewhere,
+  an `n/total` counter, and delete advancing to the next photo rather than
+  closing. Only the visible slide and its two neighbours fetch renditions.
+  Details + the two ordering traps in `plans/mobile-ux-and-suggestions.md`
+  ("Round 2").
 - [ ] Phase 5 — AI embellishment: server job (gated on ANTHROPIC_API_KEY) runs
   Claude vision over new contents photos → server-authored `bin.aiItems` ops →
   feeds search for free. Schema/op type not yet defined.

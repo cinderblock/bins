@@ -535,8 +535,13 @@ export default function BinPage() {
         onClose={() => setEditOpen(false)}
       />
 
-      {/* Lightbox */}
-      <PhotoLightbox entry={lightbox} onClose={() => setLightbox(null)} />
+      {/* Lightbox — pages through the whole strip, so it opens on the photo
+          that was tapped but isn't limited to it. */}
+      <PhotoLightbox
+        photos={photos}
+        entry={lightbox}
+        onClose={() => setLightbox(null)}
+      />
     </div>
   );
 }

@@ -145,6 +145,65 @@ Reported, verbatim:
     so there is nothing waiting on a human — a notification for it would be
     noise, and noise is how people turn notifications off.
 
+## Round 2 — field reports 2026-08-23
+
+A second batch from the live deployment. Same rules as round 1: reports go in
+verbatim, diagnosis separate from the words the user actually said.
+
+Reported, verbatim:
+
+1. "I would like to be able to you swipe between different images in a box
+   rather than having to exit out and I'm I'm going up into another one on
+   mobile"
+
+(more expected — this section is being filled in as they arrive)
+
+### 1 — swipe between a box's photos ✅ DONE
+
+**Diagnosis.** `PhotoLightbox` took a SINGLE `entry` and knew nothing about
+the strip it came from, so it was a dead end by construction: every other
+photo cost a close, a re-aim at a 72–84px thumb, and a re-open. That is the
+wrong shape for what a box's photos *are* — a contact sheet of one container,
+where comparing two shots is the normal thing to want, not an edge case.
+
+**Built.** The lightbox now takes the whole `photos` array plus which one was
+tapped, and pages through it in place:
+
+- **Swipe** on touch — hand-rolled drag on one axis (no carousel dependency),
+  with the image tracking the finger, end-resistance at the first/last photo,
+  and a direction lock (`DIRECTION_SLOP`) so a mostly-vertical drag still
+  belongs to the modal's own scrolling. `touch-action: pan-y` on the track.
+- **Arrow keys** and **edge buttons** everywhere else, disabled at the ends.
+  Buttons are `TOUCH_TARGET` (44px) on a phone, 36px otherwise.
+- **`3/12` counter** in the title, so the strip's size is legible from inside.
+- **Neighbour prefetch only** — the slide on screen and the two beside it
+  fetch their display renditions; the rest render nothing. A box with 30
+  photos must not pull 30 full-size renditions because someone opened one,
+  and prefetching exactly the neighbours is what makes the next swipe instant
+  instead of a flash of "loading…".
+- **Delete advances** instead of closing, so clearing several bad shots is one
+  pass rather than a round trip each. Undo still backs every one of them.
+
+Both call sites updated (`routes/bin.tsx`, `components/BinPeek.tsx`) — the
+scanner peek gets the same pager for free.
+
+Two ordering traps handled, both worth not reintroducing:
+
+- **Which photo is showing is a FALLBACK, not an assignment.** The open effect
+  *clears* the internal `activeId` and rendering falls back to the tapped
+  entry's id. Setting it instead would leave the first render after opening
+  disagreeing with the effect, and a second effect could then "recover" to
+  the wrong photo. It also makes re-tapping the same thumb start there again
+  rather than resuming wherever the last visit swiped to.
+- **The strip is live and shrinks under the viewer.** If the photo on screen
+  disappears — another device deleted it, or our own delete raced the Dexie
+  live query — the viewer holds its POSITION in the strip, not the identity of
+  a thing that's gone, and only closes when there is genuinely nothing left.
+
+**Verified:** typecheck, lint, and 136 tests green. NOT yet hand-verified on a
+phone — the swipe itself is the part automation can't honestly prove (see the
+Chrome-automation gotcha below). Worth one pass on-device.
+
 ## Merging phase 2
 
 The branch was cut from `dacaf07`, before the concurrent undo/restore work

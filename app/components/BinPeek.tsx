@@ -159,7 +159,11 @@ export function BinPeek({
         </Text>
       )}
 
-      <PhotoLightbox entry={lightbox} onClose={() => setLightbox(null)} />
+      <PhotoLightbox
+        photos={photos}
+        entry={lightbox}
+        onClose={() => setLightbox(null)}
+      />
     </Paper>
   );
 }
