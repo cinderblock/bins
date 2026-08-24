@@ -115,12 +115,17 @@ export function PhotoLightbox({
     [index, photos],
   );
 
-  const viewportRef = useRef<HTMLDivElement>(null);
+  // State, not a ref, and the difference is load-bearing: Mantine's Portal
+  // renders null on its first pass, so a ref here is still null when the
+  // gesture effect first runs — and a ref filling in later can't re-trigger an
+  // effect. Every gesture was dead for exactly that reason while the pager
+  // buttons kept working. See the note on PhotoGestureOptions.viewport.
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const activeImgRef = useRef<HTMLImageElement>(null);
 
   const { reset } = usePhotoGestures({
-    viewportRef,
+    viewport,
     trackRef,
     imgRef: activeImgRef,
     index: safeIndex,
@@ -190,7 +195,7 @@ export function PhotoLightbox({
       {entry !== null && photos.length > 0 && (
         <Stack gap="xs">
           <Box
-            ref={viewportRef}
+            ref={setViewport}
             style={{
               position: "relative",
               overflow: "hidden",

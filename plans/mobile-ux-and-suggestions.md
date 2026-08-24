@@ -334,6 +334,25 @@ identity) but worth confirming it's the intent.
 
 ## Findings / gotchas
 
+- **Mantine's Portal renders null on its first pass, so a ref to anything
+  inside it is null when your effect first runs — and never becomes a reason
+  to run it again.** `Portal.mjs` ends with `if (!mounted || !nodeRef.current)
+  return null`, mounting children only on the pass after. `usePhotoGestures`
+  took a `viewportRef` and bailed on `if (!viewport) return`, so it attached
+  no pointer listeners, and nothing in its dependency array
+  (`[enabled, viewportRef, …]`) changes when a ref's `.current` fills in.
+  **Every gesture was dead from the first commit — swipe, pinch and
+  double-tap — on every build.** It reported as "swipe didn't seem to do
+  anything" while the pager arrows worked fine, which is the tell: arrows are
+  React `onClick` props and the arrow KEYS go on `window`, so both are immune.
+  Fixed by passing the ELEMENT (`viewport`, held in `useState` via a callback
+  `ref={setViewport}`) instead of a ref, making the node a real dependency.
+  **The rule: anything mounted in a portal must reach an effect as state, not
+  as a ref, whenever the effect needs the node at attach time.** Refs are still
+  right for `trackRef`/`imgRef`, which are only read inside handlers long after
+  mount. Note how well this hid: typecheck, lint and 157 tests were all green,
+  the gesture arithmetic was correct and unit-tested, and the feature was
+  100% non-functional.
 - **React's style diff can't see an imperative write, so anything a gesture
   turns off stays off.** React compares each render's `style` prop against the
   PREVIOUS RENDER'S, never against the element. The photo viewer writes

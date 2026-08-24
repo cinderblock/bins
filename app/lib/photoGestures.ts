@@ -184,8 +184,23 @@ export function pageDelta(
 }
 
 export interface PhotoGestureOptions {
-  /** Clipping box that receives the pointer events. */
-  viewportRef: RefObject<HTMLDivElement | null>;
+  /**
+   * Clipping box that receives the pointer events — the ELEMENT, not a ref.
+   *
+   * This has to be a value React can depend on. The viewer lives inside a
+   * Mantine Portal, which renders null on its first pass and mounts its
+   * children only on the pass after (`Portal.mjs`: `if (!mounted) return
+   * null`). A ref handed to this hook is therefore still null when the effect
+   * below first runs, and a ref's `.current` filling in later is invisible to
+   * a dependency array — so the listeners would never attach and every gesture
+   * would be dead, while the pager buttons went on working because they're
+   * React props. Passing the node makes it a dependency and the effect re-runs
+   * the moment it exists.
+   *
+   * `trackRef`/`imgRef` stay refs on purpose: they're only read inside
+   * handlers, long after mount, and the active image changes as you page.
+   */
+  viewport: HTMLDivElement | null;
   /** Flex track holding every slide; slides horizontally. */
   trackRef: RefObject<HTMLDivElement | null>;
   /** The <img> of the slide currently on screen. */
@@ -198,7 +213,7 @@ export interface PhotoGestureOptions {
 }
 
 export function usePhotoGestures({
-  viewportRef,
+  viewport,
   trackRef,
   imgRef,
   index,
@@ -242,7 +257,6 @@ export function usePhotoGestures({
   }, [state]);
 
   useEffect(() => {
-    const viewport = viewportRef.current;
     if (!viewport || !enabled) return;
 
     /** Image geometry, sampled once per gesture — it can't change mid-drag. */
@@ -551,7 +565,7 @@ export function usePhotoGestures({
       viewport.removeEventListener("pointerup", onPointerUp);
       viewport.removeEventListener("pointercancel", onPointerUp);
     };
-  }, [enabled, viewportRef, trackRef, imgRef, state, reset]);
+  }, [enabled, viewport, trackRef, imgRef, state, reset]);
 
   return { reset };
 }
