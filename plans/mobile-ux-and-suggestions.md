@@ -334,6 +334,26 @@ identity) but worth confirming it's the intent.
 
 ## Findings / gotchas
 
+- **React's style diff can't see an imperative write, so anything a gesture
+  turns off stays off.** React compares each render's `style` prop against the
+  PREVIOUS RENDER'S, never against the element. The photo viewer writes
+  `transition: none` straight to the DOM while a drag is in flight; the track's
+  style prop has said `transition: SNAP` the whole time, so React sees no
+  change and never restores it — and the very next transform it writes (the new
+  slide index) lands with no animation. The photo being paged away from has the
+  same problem in the other direction: its prop has always said `transform:
+  none`, so the zoom the drag left on it would persist until something else
+  touched it, and swiping back would show it still zoomed. Fixed by `handBack()`
+  in `photoGestures.ts`, called before `reset()` on the paging path: it restores
+  the transition and sends the outgoing photo home, but deliberately does NOT
+  touch the track's transform, because React's write of the new index *is* the
+  animation. Ordering is load-bearing — `onPage` only queues the state change
+  (we're inside a pointer handler, so React batches and flushes after it
+  returns), which is what leaves `imgRef` still pointing at the outgoing photo.
+  **The general rule: any element whose style both React and an imperative
+  handler write must be handed back explicitly.** Neither the unit tests nor
+  typecheck can see this class of bug — the arithmetic was right and the seam
+  was wrong.
 - Mantine input `leftSection`/`rightSection` do not receive pointer events
   unless `leftSectionPointerEvents="all"` — never put an action-looking icon
   in one without it. This is the exact bug in report 1.

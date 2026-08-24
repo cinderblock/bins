@@ -285,6 +285,32 @@ export function usePhotoGestures({
       }
     };
 
+    /**
+     * Put the DOM back the way React believes it is, so the re-render that
+     * follows a page ANIMATES instead of teleporting.
+     *
+     * Everything `apply` writes is invisible to React: it diffs each render's
+     * style prop against the PREVIOUS RENDER'S, never against the element. The
+     * track's prop has said `transition: SNAP` all along, so when the drag set
+     * `transition: none` on the element, React had no way to notice and no
+     * reason to write it again — the next transform it wrote would land
+     * instantly. Same seam leaves the photo we're paging away from sitting at
+     * whatever zoom the drag left it at, because its prop has always said
+     * `transform: none`.
+     */
+    const handBack = () => {
+      const transition = `transform ${SNAP_MS}ms ${SNAP_EASING}`;
+      const track = trackRef.current;
+      // Transform is deliberately untouched here — React is about to write the
+      // new index, and that write is the animation.
+      if (track) track.style.transition = transition;
+      const img = imgRef.current;
+      if (img) {
+        img.style.transition = transition;
+        img.style.transform = "none";
+      }
+    };
+
     const beginDrag = (x: number, y: number) => {
       state.mode = "drag";
       // Zoomed in, both axes pan; at rest, the drag has to pick an axis first.
@@ -463,7 +489,12 @@ export function usePhotoGestures({
         const delta = pageDelta(state.trackX, state.velocity, vw);
         if (delta !== 0 && nav.current.onPage(delta)) {
           // React re-renders at the new index and animates there; the photo we
-          // came from springs back to rest on its way out.
+          // came from springs back to rest on its way out. Neither happens on
+          // its own — see handBack. Ordering matters: onPage only queued the
+          // state change (we're inside a pointer handler, so React batches and
+          // flushes after it returns), which is exactly why imgRef still points
+          // at the OUTGOING photo and can still be sent home.
+          handBack();
           reset();
           return;
         }
