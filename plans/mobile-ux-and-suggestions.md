@@ -332,6 +332,45 @@ change location, categories, weight, and add/delete photos and notes freely.
 Moderating only name/size/external-label is defensible (those are the box's
 identity) but worth confirming it's the intent.
 
+## Verified in a browser (2026-08-24)
+
+All four gestures driven against the running dev app on bin 104 (seeded with
+three extra 1600×1200 photos so the strip had somewhere to page), by
+dispatching synthetic `PointerEvent`s at the viewport and reading back the
+inline transforms the engine writes. This is the ONLY oracle that has caught
+anything here — typecheck, lint and 157 unit tests were green through a total
+feature outage.
+
+| Gesture | Evidence |
+| --- | --- |
+| Swipe pages | title counter `1/4` → `2/4` |
+| Track follows the finger | mid-drag `translate3d(calc(0% - 460px))`, `transition: none` |
+| `handBack` restores the animation | post-page `transition: transform 260ms cubic-bezier(…)`, not `none` |
+| Pinch zooms + clamps | spread to ~5× settled at `scale(2.11193)` = `clamp(1600/757.6, 2, 6)` exactly |
+| Double-tap toggles | `scale(2.11193)` → `scale(1)` on the second tap |
+
+How to redo it (this took several false starts):
+
+- **Stub `setPointerCapture`/`hasPointerCapture`/`releasePointerCapture` on the
+  viewport first.** It throws `NotFoundError` for a pointerId that isn't
+  genuinely down, so `onPointerDown` dies before `beginDrag` and every
+  synthetic gesture silently does nothing. Real fingers are unaffected — this
+  is a test artifact, not something to "fix" in the app.
+- **`element.click()` does not open the lightbox**, and a `[role=dialog]` query
+  right after one finds nothing. A real `computer` click does. The portal also
+  needs ~1s before it's queryable; the first probe reported "no modal" while a
+  screenshot showed it plainly open.
+- **Identify the active slide by which `<img>` the engine wrote to, not by
+  geometry.** A zoomed image is wider than the viewport, so "the img whose rect
+  spans the centre" matches a neighbour and reads a stale `transform: none` —
+  that false negative made pinch and double-tap both look broken when both
+  worked.
+- Authenticate by writing an `Identity` (`token`/`deviceId`/`groupId`/
+  `groupName`/`displayName`) into IndexedDB `bins` → store `meta` → key
+  `identity`, then reload. Far more reliable than driving the join form.
+- Dev-data note: the dev db's bin 104 now carries three flat-colour photos and
+  a "Gesture Verifier" device. Gitignored, harmless, don't be confused by it.
+
 ## Findings / gotchas
 
 - **Mantine's Portal renders null on its first pass, so a ref to anything
