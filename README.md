@@ -100,8 +100,16 @@ SOCKET_PATH=/run/bins/bins.sock DATABASE_PATH=/srv/bins/data/bins.db \
 ```
 
 SQLite migrates itself on boot; the first visit to a fresh instance opens the
-setup wizard. `.github/workflows/deploy.yml` holds the reference release-tree
-deploy (atomic symlink flip + `/_version` health check).
+setup wizard.
+
+The `Dockerfile` builds the same server into an image. `.github/workflows/build.yml`
+publishes it to `ghcr.io/cinderblock/bins:<sha>` on every push to `master` —
+and stops there. **Pushing does not deploy.** Which build each deployment runs is
+pinned in the ops repo (`cinderblock/ops`, `servers/<host>/stacks/<name>/pin.json`,
+one per instance), and only an ops push applies it; the build's job summary
+prints the block to paste. Rollback is reverting that pin. The container's
+entrypoint stages each release at `/srv/bins/releases/<sha>` on the app volume
+and runs from there, which is what keeps the asset fallback below working.
 
 Optional extras are all env-gated and off by default — see `.env.example`.
 For push notifications, generate a keypair once and keep it in the

@@ -8,9 +8,10 @@
  * someone clears the worker by hand: the update prompt that would replace the
  * worker is a component inside the app that can no longer boot.
  *
- * deploy.yml keeps the last few release trees, so those files are still right
- * there. Serving them lets a stale shell boot, sync, and show the normal
- * update prompt — no user action, no data loss.
+ * The container entrypoint stages each release onto the app volume and keeps
+ * the last few trees there (older ones stripped to just their client build),
+ * so those files are still right there. Serving them lets a stale shell boot,
+ * sync, and show the normal update prompt — no user action, no data loss.
  *
  * Lives apart from server.ts so it can be tested: server.ts binds a unix
  * socket at import time and can't be loaded on a dev machine.
