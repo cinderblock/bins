@@ -37,6 +37,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { DeleteEntryButton } from "~/components/DeleteEntryButton";
 import { DeletedEntries } from "~/components/DeletedEntries";
+import { describeFillLevel } from "~/components/FillLevel";
 import { PhotoImg } from "~/components/PhotoImg";
 import { useAuthors } from "~/lib/authors";
 import {
@@ -164,10 +165,16 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
                 boxNumber(bin, numbersInternal),
                 sizeLabel,
                 bin.weightGrams ? formatWeight(bin.weightGrams) : null,
+                bin.fillLevel != null ? describeFillLevel(bin.fillLevel) : null,
               ]
                 .filter(Boolean)
                 .join(" · ")}
             </Text>
+            {bin.description && (
+              <Text size="sm" style={{ whiteSpace: "pre-line" }}>
+                {bin.description}
+              </Text>
+            )}
           </div>
           <Anchor component={Link} to={boxPath(bin, numbersInternal)} size="sm">
             Open

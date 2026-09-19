@@ -1,7 +1,7 @@
 /**
  * "All boxes" — the one browse surface: every box in the group, with search
- * ("which box is X in" — MiniSearch over names, external labels, locations,
- * notes; prefix + fuzzy so "sharpee" finds the Sharpies) and category filter
+ * ("which box is X in" — MiniSearch over names, subtext, locations, notes;
+ * prefix + fuzzy so "sharpee" finds the Sharpies) and category filter
  * chips. Everyone can open a box and bulk-select boxes to MOVE (relocate)
  * them together. Admins (unlock with the group admin password) additionally
  * see retired boxes and get per-box edit + retire/restore. Retire/restore
@@ -21,6 +21,7 @@ import {
   Stack,
   Text,
   TextInput,
+  Textarea,
   Title,
   UnstyledButton,
 } from "@mantine/core";
@@ -43,6 +44,7 @@ import type MiniSearch from "minisearch";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { BinDetailPane } from "~/components/BinDetailPane";
+import { FillLevelBadge, FillLevelInput } from "~/components/FillLevel";
 import { LabelChips } from "~/components/LabelChips";
 import { PhotoImg } from "~/components/PhotoImg";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
@@ -548,6 +550,7 @@ export default function Bins() {
                             {formatWeight(bin.weightGrams)}
                           </Badge>
                         )}
+                        <FillLevelBadge percent={bin.fillLevel} />
                         {bin.labelIds.map((id) => {
                           const label = labelById.get(id);
                           if (!label) return null;
@@ -562,6 +565,9 @@ export default function Bins() {
                             </Badge>
                           );
                         })}
+                        {/* Legacy field: no longer editable, still shown
+                            where a box carries one so nothing typed on an
+                            older deployment silently vanishes. */}
                         {bin.externalLabel && (
                           <Text size="xs" c="dimmed" truncate>
                             {bin.externalLabel}
@@ -741,11 +747,12 @@ function MoveSheet({
 function EditSheet({ bin, onClose }: { bin: BinState; onClose: () => void }) {
   const numbersInternal = useBoxNumbersInternal();
   const [name, setName] = useState(bin.name ?? "");
-  const [label, setLabel] = useState(bin.externalLabel ?? "");
+  const [description, setDescription] = useState(bin.description ?? "");
   const [locationName, setLocationName] = useState(bin.locationName ?? "");
   const [weightGrams, setWeightGrams] = useState<number | null>(
     bin.weightGrams,
   );
+  const [fillLevel, setFillLevel] = useState<number | null>(bin.fillLevel);
   const [busy, setBusy] = useState(false);
 
   async function save() {
@@ -753,8 +760,9 @@ function EditSheet({ bin, onClose }: { bin: BinState; onClose: () => void }) {
     try {
       await setBinFields(bin.id, {
         name: name.trim() || null,
-        externalLabel: label.trim() || null,
+        description: description.trim() || null,
         weightGrams,
+        fillLevel,
       });
       if ((locationName.trim() || null) !== (bin.locationName ?? null)) {
         await setBinLocation(bin.id, locationName.trim() || null);
@@ -780,16 +788,21 @@ function EditSheet({ bin, onClose }: { bin: BinState; onClose: () => void }) {
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
         />
+        <Textarea
+          label="Subtext"
+          description="A few short lines under the title — printed on the label."
+          autosize
+          minRows={2}
+          maxRows={4}
+          value={description}
+          onChange={(e) => setDescription(e.currentTarget.value)}
+        />
         <TextInput
           label="Location"
           value={locationName}
           onChange={(e) => setLocationName(e.currentTarget.value)}
         />
-        <TextInput
-          label="External label"
-          value={label}
-          onChange={(e) => setLabel(e.currentTarget.value)}
-        />
+        <FillLevelInput value={fillLevel} onChange={setFillLevel} />
         <WeightInput grams={weightGrams} onChange={setWeightGrams} />
         <div>
           <Text size="sm" fw={500} mb={4}>

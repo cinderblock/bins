@@ -117,10 +117,9 @@ export function SuggestionQueue({
           {pending.length > 0 && <Badge color="blue">{pending.length}</Badge>}
         </Group>
         <Text size="xs" c="dimmed">
-          Members propose changes to a box's name, size, and external label;
-          everything else they change themselves. Approving applies the change
-          as a normal edit — if someone has since renamed the box, the newer
-          name wins.
+          Members propose changes to a box's name, size, and subtext; everything
+          else they change themselves. Approving applies the change as a normal
+          edit — if someone has since renamed the box, the newer name wins.
         </Text>
 
         {rows === null && (

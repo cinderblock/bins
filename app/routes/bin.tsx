@@ -42,6 +42,7 @@ import { CaptureOverlay } from "~/components/CaptureOverlay";
 import { ClaimBin } from "~/components/ClaimBin";
 import { DeletedEntries } from "~/components/DeletedEntries";
 import { EditBoxSheet } from "~/components/EditBoxSheet";
+import { FillLevelBadge } from "~/components/FillLevel";
 import { LabelSheet } from "~/components/LabelSheet";
 import { LabelPrintSheet } from "~/components/LabelSheet.print";
 import { LocationSheet } from "~/components/LocationSheet";
@@ -213,9 +214,15 @@ export default function BinPage() {
                   {formatWeight(bin.weightGrams)}
                 </Badge>
               )}
+              <FillLevelBadge percent={bin.fillLevel} />
               {bin.status === "retired" && <Badge color="gray">retired</Badge>}
             </Group>
             {!numbersInternal && bin.name && <Text size="sm">{bin.name}</Text>}
+            {bin.description && (
+              <Text size="sm" c="dimmed" style={{ whiteSpace: "pre-line" }}>
+                {bin.description}
+              </Text>
+            )}
           </div>
           {/* Naming and sizing a box used to be reachable only from the
               all-boxes list, behind the admin password — so nobody found it.
@@ -350,7 +357,9 @@ export default function BinPage() {
               leftSection={<IconTag size={14} />}
               onClick={() => setLabelsOpen(true)}
             >
-              {bin.labelIds.length > 0 ? "Edit" : "Add categories"}
+              {bin.labelIds.length > 0 || bin.fillLevel != null
+                ? "Edit"
+                : "Categories & fill"}
             </Button>
           </Group>
 
@@ -533,6 +542,7 @@ export default function BinPage() {
         binId={bin.id}
         labelIds={bin.labelIds}
         weightGrams={bin.weightGrams}
+        fillLevel={bin.fillLevel}
         opened={labelsOpen}
         onClose={() => setLabelsOpen(false)}
       />

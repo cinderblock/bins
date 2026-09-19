@@ -1,5 +1,5 @@
 /**
- * Editing a box's identity — name, size, external label — from the bin page.
+ * Editing a box's identity — name, size, subtext — from the bin page.
  *
  * One sheet, two outcomes. An admin with the password unlocked writes straight
  * through (bin.setFields, like any other edit). Everyone else SUGGESTS: the
@@ -55,7 +55,7 @@ export function EditBoxSheet({
   const [sizeClass, setSizeClass] = useState(bin.sizeClass ?? "");
   const [sizeId, setSizeId] = useState<string | null>(bin.sizeId ?? null);
   const sizes = useBoxSizes();
-  const [externalLabel, setExternalLabel] = useState(bin.externalLabel ?? "");
+  const [description, setDescription] = useState(bin.description ?? "");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const pending = usePendingSuggestions(bin.id);
@@ -70,7 +70,7 @@ export function EditBoxSheet({
     setName(bin.name ?? "");
     setSizeClass(bin.sizeClass ?? "");
     setSizeId(bin.sizeId ?? null);
-    setExternalLabel(bin.externalLabel ?? "");
+    setDescription(bin.description ?? "");
     setNote("");
   }, [opened]);
 
@@ -81,14 +81,14 @@ export function EditBoxSheet({
       name: name.trim() || null,
       sizeClass: sizeClass || null,
       sizeId,
-      externalLabel: externalLabel.trim() || null,
+      description: description.trim() || null,
     };
     if (next.name !== (bin.name ?? null)) fields.name = next.name;
     if (next.sizeClass !== (bin.sizeClass ?? null))
       fields.sizeClass = next.sizeClass;
     if (next.sizeId !== (bin.sizeId ?? null)) fields.sizeId = next.sizeId;
-    if (next.externalLabel !== (bin.externalLabel ?? null))
-      fields.externalLabel = next.externalLabel;
+    if (next.description !== (bin.description ?? null))
+      fields.description = next.description;
     return fields;
   }
 
@@ -130,9 +130,9 @@ export function EditBoxSheet({
             p="xs"
           >
             <Text size="sm">
-              A box's name and size are how everyone finds it, so changes go to
-              an admin first. Location, categories, weight, photos and notes you
-              can change yourself, right away.
+              A box's name, size and subtext are how everyone finds it, so
+              changes go to an admin first. Location, categories, fill level,
+              weight, photos and notes you can change yourself, right away.
             </Text>
           </Alert>
         )}
@@ -180,12 +180,16 @@ export function EditBoxSheet({
             />
           </div>
         )}
-        <TextInput
-          label="External label"
-          placeholder="what's written on the outside, e.g. K1 / red tape"
+        <Textarea
+          label="Subtext"
+          description="A few short lines under the title — printed on the label."
+          placeholder={"e.g. USB-A to USB-C\nData cables\nVarious lengths"}
           size="md"
-          value={externalLabel}
-          onChange={(e) => setExternalLabel(e.currentTarget.value)}
+          autosize
+          minRows={2}
+          maxRows={4}
+          value={description}
+          onChange={(e) => setDescription(e.currentTarget.value)}
         />
         {!canEditDirectly && (
           <Textarea

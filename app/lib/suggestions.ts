@@ -1,6 +1,6 @@
 /**
  * Suggested edits — the read side. Members propose changes to a box's identity
- * fields (name / size / external label) and an admin decides; see
+ * fields (name / size / subtext) and an admin decides; see
  * shared/ops.ts `bin.suggest` for why only those fields.
  *
  * Everything a MEMBER needs comes from the local replica (suggestions ride
@@ -18,6 +18,9 @@ import { syncNow } from "./sync";
 export const SUGGEST_FIELDS = [
   { key: "name", label: "Name" },
   { key: "sizeClass", label: "Size" },
+  { key: "description", label: "Subtext" },
+  // Legacy: no longer proposable, but an old pending suggestion may still
+  // carry one and deserves to be readable.
   { key: "externalLabel", label: "External label" },
 ] as const satisfies readonly { key: keyof SuggestFields; label: string }[];
 

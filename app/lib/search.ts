@@ -10,6 +10,9 @@ import { db } from "./db";
 export interface SearchDoc {
   id: number;
   name: string;
+  /** The label subtext — what someone wrote about the contents. */
+  description: string;
+  /** Legacy free-text marking; still indexed so old data stays findable. */
   externalLabel: string;
   locationName: string;
   labels: string;
@@ -32,12 +35,19 @@ export async function buildSearchIndex(): Promise<MiniSearch<SearchDoc>> {
   const labelName = new Map(labels.map((l) => [l.id, l.name]));
 
   const index = new MiniSearch<SearchDoc>({
-    fields: ["name", "externalLabel", "locationName", "labels", "notes"],
+    fields: [
+      "name",
+      "description",
+      "externalLabel",
+      "locationName",
+      "labels",
+      "notes",
+    ],
     storeFields: ["name", "locationName"],
     searchOptions: {
       prefix: true,
       fuzzy: 0.2,
-      boost: { name: 2, externalLabel: 2, labels: 2 },
+      boost: { name: 2, description: 2, externalLabel: 2, labels: 2 },
     },
   });
   index.addAll(
@@ -46,6 +56,7 @@ export async function buildSearchIndex(): Promise<MiniSearch<SearchDoc>> {
       .map((bin) => ({
         id: bin.id,
         name: bin.name ?? "",
+        description: bin.description ?? "",
         externalLabel: bin.externalLabel ?? "",
         locationName: bin.locationName ?? "",
         labels: bin.labelIds.map((id) => labelName.get(id) ?? "").join(" "),

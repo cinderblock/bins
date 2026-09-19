@@ -80,7 +80,14 @@ async function buildLabel(
   const title =
     bin.name?.trim() || (internal ? "Untitled box" : `Box ${bin.id}`);
 
-  const lines: string[] = [];
+  // The subtext is what the label SAYS; it always prints. The location only
+  // on explicit request: boxes move, and a printed shelf goes stale the first
+  // time one does (operator decision 2026-09-19 — the app is the live truth).
+  const lines: string[] = (bin.description ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .slice(0, 4);
   if (input.includeDetails && bin.locationName) lines.push(bin.locationName);
 
   // The QR carries the box's handle where numbers are internal (a box
