@@ -21,6 +21,8 @@ export const location = sqliteTable(
     /** Grid of a shelf, when it has one. Null = an unstructured place. */
     cols: integer("cols"),
     rows: integer("rows"),
+    /** Vertical size in shelf units when drawn in a bay; null = 1. */
+    span: integer("span"),
     archived: integer("archived", { mode: "boolean" }).notNull().default(false),
     fieldClocks: text("field_clocks", { mode: "json" })
       .notNull()

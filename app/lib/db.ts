@@ -184,6 +184,52 @@ db.version(9).upgrade((tx) =>
     }),
 );
 
+// v10: box handles + the warehouse batch (fill level, description, art
+// fields; a place's span; a size's icon). `handle` is indexed because the
+// /b/<handle> route resolves it on every load. Backfill explicit nulls so
+// replica rows keep the same shape as freshly-reduced ones (see v5).
+db.version(10)
+  .stores({
+    bins: "id, updatedAt, status, *labelIds, handle",
+    entries: "id, binId, effectiveTime",
+    locations: "id, sortOrder",
+    labels: "id, sortOrder",
+    boxSizes: "id, sortOrder",
+    suggestions: "id, binId, status, [binId+status], createdAt",
+    pendingOps: "opId",
+    blobs: "hash, status, role, lastAccessAt",
+    errorQueue: "++id, at",
+    meta: "key",
+  })
+  .upgrade(async (tx) => {
+    await tx
+      .table("bins")
+      .toCollection()
+      .modify((row: Record<string, unknown>) => {
+        for (const key of [
+          "handle",
+          "fillLevel",
+          "description",
+          "artPrompt",
+          "labelArtHash",
+        ]) {
+          if (row[key] === undefined) row[key] = null;
+        }
+      });
+    await tx
+      .table("locations")
+      .toCollection()
+      .modify((row: Record<string, unknown>) => {
+        if (row.span === undefined) row.span = null;
+      });
+    await tx
+      .table("boxSizes")
+      .toCollection()
+      .modify((row: Record<string, unknown>) => {
+        if (row.icon === undefined) row.icon = null;
+      });
+  });
+
 // v8: a local queue for browser errors, so failures that happen with no
 // signal still reach the server later. Not reducer state — never in the sync
 // transaction lists.

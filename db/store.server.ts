@@ -25,6 +25,7 @@ export class DrizzleStateStore implements StateStore {
     if (!row) return undefined;
     return {
       id: row.id,
+      handle: row.handle,
       status: row.status as BinState["status"],
       secretCode: row.secretCode,
       name: row.name,
@@ -32,6 +33,10 @@ export class DrizzleStateStore implements StateStore {
       sizeId: row.sizeId,
       externalLabel: row.externalLabel,
       weightGrams: row.weightGrams,
+      fillLevel: row.fillLevel,
+      description: row.description,
+      artPrompt: row.artPrompt,
+      labelArtHash: row.labelArtHash,
       locationName: row.locationName,
       locationId: row.locationId,
       slot: row.slot,
@@ -48,6 +53,7 @@ export class DrizzleStateStore implements StateStore {
     const values = {
       id: bin.id,
       groupId: this.groupId,
+      handle: bin.handle,
       status: bin.status,
       secretCode: bin.secretCode,
       name: bin.name,
@@ -55,7 +61,17 @@ export class DrizzleStateStore implements StateStore {
       sizeId: bin.sizeId,
       externalLabel: bin.externalLabel,
       weightGrams: bin.weightGrams,
+      fillLevel: bin.fillLevel,
+      description: bin.description,
+      artPrompt: bin.artPrompt,
+      labelArtHash: bin.labelArtHash,
       locationName: bin.locationName,
+      // These two were missing here until 2026-09-19: the reducer set them
+      // and the server silently dropped them, so a structured placement never
+      // persisted server-side. getBin reads them, so the round trip is now
+      // whole.
+      locationId: bin.locationId,
+      slot: bin.slot,
       labelIds: bin.labelIds,
       primaryPhotoHash: bin.primaryPhotoHash,
       primaryThumbHash: bin.primaryThumbHash,
@@ -153,6 +169,7 @@ export class DrizzleStateStore implements StateStore {
       parentId: row.parentId,
       cols: row.cols,
       rows: row.rows,
+      span: row.span,
       archived: row.archived,
       fieldClocks: row.fieldClocks,
     };
@@ -207,6 +224,7 @@ export class DrizzleStateStore implements StateStore {
       widthMm: row.widthMm,
       heightMm: row.heightMm,
       sortOrder: row.sortOrder,
+      icon: row.icon,
       archived: row.archived,
       fieldClocks: row.fieldClocks,
     };

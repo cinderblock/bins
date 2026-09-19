@@ -25,6 +25,12 @@ export type BinStatus = "unclaimed" | "active" | "retired";
 export interface BinState {
   /** The global short ID (the number in the QR URL). */
   id: number;
+  /**
+   * Opaque public identifier (UUID), the URL/QR handle on deployments that
+   * keep numbers internal. Written only by bin.allocate (sole writer, no
+   * clock). Null on boxes allocated before handles existed and on stubs.
+   */
+  handle: string | null;
   status: BinStatus;
   /**
    * The sticker secret (`/{id}#{CODE}`). Written only by bin.allocate — the
@@ -40,6 +46,14 @@ export interface BinState {
   externalLabel: string | null;
   /** Total weight in grams (canonical unit; UI renders lb/kg). LWW scalar. */
   weightGrams: number | null;
+  /** How full, integer percent 0..100, or null when not recorded. LWW. */
+  fillLevel: number | null;
+  /** Subtext under the title (label lines). LWW scalar. */
+  description: string | null;
+  /** Extra instructions for the label drawing. LWW scalar. */
+  artPrompt: string | null;
+  /** sha256 of the chosen label artwork PNG in the blob store. LWW scalar. */
+  labelArtHash: string | null;
   locationName: string | null;
   /**
    * Structured location: the configured place this box sits in, and an opaque
@@ -112,6 +126,8 @@ export interface LocationState {
   /** Grid of a shelf, when it has one. Null = an unstructured place. */
   cols: number | null;
   rows: number | null;
+  /** Vertical size in shelf units when drawn in a bay; null = 1. */
+  span: number | null;
   archived: boolean;
   fieldClocks: Record<string, string>;
 }
@@ -138,6 +154,7 @@ export interface SuggestionState {
     name?: string | null;
     sizeClass?: string | null;
     externalLabel?: string | null;
+    description?: string | null;
   };
   note: string | null;
   status: SuggestionStatus;
@@ -164,6 +181,8 @@ export interface BoxSizeState {
   widthMm: number | null;
   heightMm: number | null;
   sortOrder: number;
+  /** Key into the app's size icon set, or null for the generic box. */
+  icon: string | null;
   archived: boolean;
   fieldClocks: Record<string, string>;
 }
@@ -218,6 +237,7 @@ function wins(next: string, prev: string | undefined): boolean {
 function newBin(id: number, time: number): BinState {
   return {
     id,
+    handle: null,
     status: "unclaimed",
     secretCode: null,
     name: null,
@@ -225,6 +245,10 @@ function newBin(id: number, time: number): BinState {
     sizeId: null,
     externalLabel: null,
     weightGrams: null,
+    fillLevel: null,
+    description: null,
+    artPrompt: null,
+    labelArtHash: null,
     locationName: null,
     locationId: null,
     slot: null,
@@ -262,6 +286,10 @@ export async function applyOp(
     case "bin.allocate": {
       const bin = await touchBin(store, op);
       bin.secretCode = op.payload.code;
+      // Sole writer, like the code: the one allocate per bin sets it, so no
+      // clock. `?? null` keeps replicas byte-identical whether the op carried
+      // the field or predates it.
+      bin.handle = op.payload.handle ?? null;
       await store.putBin(bin);
       return;
     }
@@ -279,6 +307,9 @@ export async function applyOp(
         "sizeClass",
         "sizeId",
         "externalLabel",
+        "description",
+        "artPrompt",
+        "labelArtHash",
       ] as const) {
         const value = op.payload[field];
         if (value === undefined) continue;
@@ -293,6 +324,13 @@ export async function applyOp(
       ) {
         bin.weightGrams = op.payload.weightGrams ?? null;
         bin.fieldClocks.weightGrams = clock;
+      }
+      if (
+        op.payload.fillLevel !== undefined &&
+        wins(clock, bin.fieldClocks.fillLevel)
+      ) {
+        bin.fillLevel = op.payload.fillLevel ?? null;
+        bin.fieldClocks.fillLevel = clock;
       }
       await store.putBin(bin);
       return;
@@ -488,6 +526,7 @@ export async function applyOp(
         parentId: null,
         cols: null,
         rows: null,
+        span: null,
         archived: false,
         fieldClocks: {},
       };
@@ -500,6 +539,7 @@ export async function applyOp(
         location.parentId = op.payload.parentId ?? null;
         location.cols = op.payload.cols ?? null;
         location.rows = op.payload.rows ?? null;
+        location.span = op.payload.span ?? null;
         location.fieldClocks.value = clock;
       }
       await store.putLocation(location);
@@ -519,6 +559,7 @@ export async function applyOp(
           parentId: null,
           cols: null,
           rows: null,
+          span: null,
           archived,
           fieldClocks: { archived: clock },
         });
@@ -533,7 +574,7 @@ export async function applyOp(
     }
 
     case "boxSize.upsert": {
-      const { sizeId, name, lengthMm, widthMm, heightMm, sortOrder } =
+      const { sizeId, name, lengthMm, widthMm, heightMm, sortOrder, icon } =
         op.payload;
       const clock = clockOf(op);
       const size = (await store.getBoxSize(sizeId)) ?? {
@@ -543,6 +584,7 @@ export async function applyOp(
         widthMm: widthMm ?? null,
         heightMm: heightMm ?? null,
         sortOrder,
+        icon: icon ?? null,
         archived: false,
         fieldClocks: {},
       };
@@ -555,6 +597,7 @@ export async function applyOp(
         size.widthMm = widthMm ?? null;
         size.heightMm = heightMm ?? null;
         size.sortOrder = sortOrder;
+        size.icon = icon ?? null;
         size.fieldClocks.value = clock;
       }
       await store.putBoxSize(size);
@@ -574,6 +617,7 @@ export async function applyOp(
           widthMm: null,
           heightMm: null,
           sortOrder: 0,
+          icon: null,
           archived,
           fieldClocks: { archived: clock },
         });

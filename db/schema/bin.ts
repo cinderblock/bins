@@ -10,6 +10,7 @@ import {
   real,
   sqliteTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import { group } from "./group";
 
@@ -18,6 +19,9 @@ export const bin = sqliteTable(
   {
     /** The global short ID — the number in the QR URL (your-host/123). */
     id: integer("id").primaryKey(),
+    /** Opaque public handle (UUID) — the URL on internal-number deployments
+        (your-host/b/<handle>). Written by bin.allocate; null before handles. */
+    handle: text("handle"),
     groupId: text("group_id")
       .notNull()
       .references(() => group.id, { onDelete: "cascade" }),
@@ -33,6 +37,14 @@ export const bin = sqliteTable(
     externalLabel: text("external_label"),
     /** Total weight in grams (canonical unit; UI renders lb/kg). */
     weightGrams: integer("weight_grams"),
+    /** How full, integer percent 0..100. */
+    fillLevel: integer("fill_level"),
+    /** Subtext under the title (printed on the label). */
+    description: text("description"),
+    /** Extra instructions for the label drawing. */
+    artPrompt: text("art_prompt"),
+    /** sha256 of the chosen label artwork PNG in the blob store. */
+    labelArtHash: text("label_art_hash"),
     locationName: text("location_name"),
     /** Structured location — see shared/reducer.ts; shares one clock with
         locationName so a box is only ever in one place. */
@@ -52,7 +64,12 @@ export const bin = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (t) => [index("bin_group").on(t.groupId)],
+  (t) => [
+    index("bin_group").on(t.groupId),
+    // Handles are looked up on every /b/<handle> request. Unique across the
+    // deployment (SQLite lets many NULLs coexist, so legacy rows are fine).
+    uniqueIndex("bin_handle").on(t.handle),
+  ],
 );
 
 export const binEntry = sqliteTable(

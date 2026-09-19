@@ -25,6 +25,8 @@ export const boxSize = sqliteTable(
     widthMm: integer("width_mm"),
     heightMm: integer("height_mm"),
     sortOrder: integer("sort_order").notNull().default(0),
+    /** Key into the app's size icon set, or null. */
+    icon: text("icon"),
     archived: integer("archived", { mode: "boolean" }).notNull().default(false),
     fieldClocks: text("field_clocks", { mode: "json" })
       .notNull()

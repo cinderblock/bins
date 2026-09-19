@@ -513,6 +513,62 @@ describe("reducer convergence", () => {
     expect(snapshot).toContain('"weightGrams":7000');
   });
 
+  test("fill level is LWW like weight; description and art fields ride the string loop", async () => {
+    const art =
+      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const ops = [
+      op({
+        type: "bin.allocate",
+        deviceId: null,
+        effectiveTime: 100,
+        payload: { code: null, handle: "00000000-0000-4000-8000-0000000000aa" },
+      }),
+      op({
+        type: "bin.claim",
+        deviceId: "device-a",
+        effectiveTime: 200,
+        payload: { name: "Cables", fillLevel: 25, description: "USB\nHDMI" },
+      }),
+      op({
+        type: "bin.setFields",
+        deviceId: "device-b",
+        effectiveTime: 300,
+        payload: {
+          fillLevel: 75,
+          artPrompt: "a coiled cable",
+          labelArtHash: art,
+        },
+      }),
+      // A stale clear (250) must not beat the 300 write.
+      op({
+        type: "bin.setFields",
+        deviceId: "device-a",
+        effectiveTime: 250,
+        payload: { fillLevel: null, labelArtHash: null },
+      }),
+    ] as CanonicalOp[];
+    const snapshot = await expectConvergence(ops);
+    expect(snapshot).toContain('"fillLevel":75');
+    expect(snapshot).toContain('"description":"USB\\nHDMI"');
+    expect(snapshot).toContain('"artPrompt":"a coiled cable"');
+    expect(snapshot).toContain(`"labelArtHash":"${art}"`);
+    expect(snapshot).toContain(
+      '"handle":"00000000-0000-4000-8000-0000000000aa"',
+    );
+  });
+
+  test("an allocate without a handle (pre-handle op) leaves it null", async () => {
+    const snapshot = await expectConvergence([
+      op({
+        type: "bin.allocate",
+        deviceId: null,
+        effectiveTime: 100,
+        payload: { code: "QK4M" },
+      }),
+    ] as CanonicalOp[]);
+    expect(snapshot).toContain('"handle":null');
+  });
+
   test("box sizes: definition, rename and assignment converge in any order", async () => {
     const sizeId = "00000000-0000-4000-8000-00000000ff01";
     const other = "00000000-0000-4000-8000-00000000ff02";
@@ -708,6 +764,31 @@ describe("structured locations", () => {
     expect(snapshot).toContain('"name":"H4"');
     expect(snapshot).toContain('"cols":3');
     expect(snapshot).toContain('"rows":2');
+  });
+
+  test("a shelf's span and a size's icon ride their definitions", async () => {
+    const sizeId = "00000000-0000-4000-8000-00000000ff11";
+    const snapshot = await expectConvergence([
+      op({
+        type: "location.upsert",
+        effectiveTime: 1000,
+        payload: { locationId: shelf, name: "A1", sortOrder: 1, span: 2 },
+      }),
+      op({
+        type: "boxSize.upsert",
+        deviceId: null,
+        effectiveTime: 1000,
+        payload: { sizeId, name: "S", sortOrder: 0, icon: "pencil-case" },
+      }),
+      // A later upsert without span clears it (assigned, not merged).
+      op({
+        type: "location.upsert",
+        effectiveTime: 2000,
+        payload: { locationId: aisle, name: "Bay A", sortOrder: 0 },
+      }),
+    ] as CanonicalOp[]);
+    expect(snapshot).toContain('"span":2');
+    expect(snapshot).toContain('"icon":"pencil-case"');
   });
 
   test("a box in a slot converges, and re-upsert can drop a grid", async () => {

@@ -50,7 +50,7 @@ export const allocateSchema = z.object({
 export async function allocateBins(
   ctx: Ctx,
   count: number,
-): Promise<{ id: number; code: string | null }[]> {
+): Promise<{ id: number; code: string | null; handle: string }[]> {
   return serializedTransaction(async () => {
     const store = new DrizzleStateStore(ctx.groupId);
     // The ID sequence is global across groups (URLs can't carry a group).
@@ -60,7 +60,7 @@ export async function allocateBins(
     });
     let nextId = Math.max((top?.id ?? 0) + 1, FIRST_BIN_ID);
 
-    const allocated: { id: number; code: string | null }[] = [];
+    const allocated: { id: number; code: string | null; handle: string }[] = [];
     const now = Date.now();
     for (let i = 0; i < count; i++) {
       const binId = nextId++;
@@ -68,11 +68,15 @@ export async function allocateBins(
       // network is the proof of access, so a per-bin secret would be
       // ceremony with no security benefit.
       const code = isOpenAccess() ? null : generateSecretCode();
+      // The opaque public handle. Random (v4), not time-ordered: it is the
+      // thing a deployment may put in URLs instead of the number, and a
+      // guessable handle would defeat the point.
+      const handle = crypto.randomUUID();
       const op: CanonicalOp = {
         opId: uuidv7(),
         type: "bin.allocate",
         binId,
-        payload: { code },
+        payload: { code, handle },
         clientTime: now,
         geo: null,
         seq: null,
@@ -95,7 +99,7 @@ export async function allocateBins(
         .returning({ seq: schema.op.seq });
       op.seq = inserted[0]?.seq ?? null;
       await applyOp(store, op);
-      allocated.push({ id: binId, code });
+      allocated.push({ id: binId, code, handle });
     }
     return allocated;
   });

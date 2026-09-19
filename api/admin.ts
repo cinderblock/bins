@@ -61,6 +61,7 @@ const boxSizeSchema = withPassword.extend({
   widthMm: dimension,
   heightMm: dimension,
   sortOrder: z.number().int().optional(),
+  icon: z.string().max(40).nullish(),
 });
 const boxSizeArchiveSchema = withPassword.extend({
   sizeId: z.string().uuid(),
@@ -529,6 +530,7 @@ export async function handleAdmin(
       widthMm: p.widthMm ?? null,
       heightMm: p.heightMm ?? null,
       sortOrder,
+      icon: p.icon ?? null,
     });
     return json({ sizeId });
   }

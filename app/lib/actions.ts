@@ -168,6 +168,7 @@ export async function upsertLocation(
     parentId?: string | null;
     cols?: number | null;
     rows?: number | null;
+    span?: number | null;
   },
 ) {
   await enqueueOp({
@@ -180,6 +181,7 @@ export async function upsertLocation(
       parentId: shape?.parentId ?? null,
       cols: shape?.cols ?? null,
       rows: shape?.rows ?? null,
+      span: shape?.span ?? null,
     },
   });
 }

@@ -74,6 +74,34 @@ export const binFieldsSchema = z.object({
    * keeps the protocol unit-agnostic. `null` clears a previously-set weight.
    */
   weightGrams: z.number().int().nonnegative().max(100_000_000).nullish(),
+  /**
+   * How full the box is, as an integer PERCENT (0 = empty, 100 = full). Stored
+   * as a percent so a finer scale later costs nothing; the UI offers a few
+   * steps. `null` = not recorded. Member-editable directly, like weight:
+   * fullness changes with use and a wrong value is self-correcting.
+   */
+  fillLevel: z.number().int().min(0).max(100).nullish(),
+  /**
+   * Subtext under the title: a few short lines describing what the box holds,
+   * printed on the label and shown in the app. Identity-ish (it is what the
+   * label says), so members suggest it rather than set it — see
+   * suggestFieldsSchema.
+   */
+  description: z.string().max(500).nullish(),
+  /**
+   * Extra instructions for the label's line drawing ("show a coiled cable"),
+   * kept on the box so a reprint regenerates consistently.
+   */
+  artPrompt: z.string().max(500).nullish(),
+  /**
+   * The chosen label artwork: sha256 of a PNG in the group's blob store,
+   * content-addressed like a photo rendition. LWW scalar, not an entry — a box
+   * has ONE current label picture, and regenerating simply replaces it.
+   */
+  labelArtHash: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .nullish(),
 });
 export type BinFields = z.infer<typeof binFieldsSchema>;
 
@@ -95,6 +123,7 @@ export const suggestFieldsSchema = z.object({
   sizeClass: z.string().max(50).nullish(),
   sizeId: z.string().uuid().nullish(),
   externalLabel: z.string().max(500).nullish(),
+  description: z.string().max(500).nullish(),
 });
 export type SuggestFields = z.infer<typeof suggestFieldsSchema>;
 
@@ -220,6 +249,12 @@ export const clientOpSchema = z.discriminatedUnion("type", [
       parentId: z.string().uuid().nullable().optional(),
       cols: z.number().int().min(1).max(64).nullable().optional(),
       rows: z.number().int().min(1).max(64).nullable().optional(),
+      /**
+       * Vertical size in shelf units, for DRAWING a bay: a double-height
+       * bottom shelf is `span: 2`. Rendering only — it changes no capacity and
+       * no slot. Null/absent = 1.
+       */
+      span: z.number().int().min(1).max(8).nullable().optional(),
     }),
   }),
   z.object({
@@ -244,6 +279,13 @@ export const clientOpSchema = z.discriminatedUnion("type", [
       widthMm: dimensionMmSchema.nullish(),
       heightMm: dimensionMmSchema.nullish(),
       sortOrder: z.number().int(),
+      /**
+       * Key into the app's built-in size icon set (see app/lib/sizeIcons.tsx),
+       * so a picker can show the shape at a glance. Free-form string so the
+       * set can grow without a protocol change; unknown keys fall back to the
+       * generic box.
+       */
+      icon: z.string().max(40).nullish(),
     }),
   }),
   z.object({
@@ -312,7 +354,16 @@ export const serverOpSchema = z.discriminatedUnion("type", [
     // Null on perimeter-protected deployments (OPEN_ACCESS), where stickers
     // carry no secret and the QR is a bare `/{id}`. Nullable rather than
     // absent so old ops keep parsing unchanged.
-    payload: z.object({ code: secretCodeSchema.nullable() }),
+    //
+    // `handle` is the box's opaque public identifier, a UUID minted with the
+    // id. Deployments that keep box numbers internal put it in URLs and QR
+    // codes instead of the integer (`/b/{handle}`), so the number never
+    // surfaces; the integer stays the primary key everywhere (never reused,
+    // never renumbered). Absent on ops from before handles existed.
+    payload: z.object({
+      code: secretCodeSchema.nullable(),
+      handle: z.string().uuid().nullish(),
+    }),
   }),
   // Retiring/restoring a bin flips its status. Server-authored (never pushed):
   // it's an admin action, gated by the group's admin password on the
