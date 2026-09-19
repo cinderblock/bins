@@ -695,6 +695,14 @@ unreachable, and "recreate the database" was very nearly the remedy.
   DOMAudioSession::setType silently no-ops when the Microphone
   permissions-policy is disabled for the document (fine for our top-level
   PWA).
+- **A healthy container can still 502 (2026-09-19).** The app listens on a
+  unix socket in a volume shared with the reverse proxy. Anything that deletes
+  that socket FILE while the process runs (a deploy hook "cleaning up") leaves
+  the process holding an unlinked listener: container up, logs clean,
+  `/_version` unreachable, proxy 502. `server.ts` already unlinks a stale
+  socket before binding, so no external cleanup is ever needed; if the proxy
+  502s and the container is up, check `ls` in the socket volume first and
+  restart the container. Verified live across two deployments.
 
 ## Things not to do
 
