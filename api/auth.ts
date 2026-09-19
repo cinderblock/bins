@@ -26,12 +26,22 @@ const joinByAdminSchema = z.object({
   deviceId,
 });
 
-const joinByBinSchema = z.object({
-  binId: z.number().int().positive(),
-  code: secretCodeSchema,
-  displayName,
-  deviceId,
-});
+/**
+ * A sticker names its box by number (`/123#CODE`) or, on deployments that
+ * keep numbers internal, by opaque handle (`/b/<uuid>#CODE`). Either works
+ * here; the code is what proves anything.
+ */
+const joinByBinSchema = z
+  .object({
+    binId: z.number().int().positive().optional(),
+    handle: z.string().uuid().optional(),
+    code: secretCodeSchema,
+    displayName,
+    deviceId,
+  })
+  .refine((v) => v.binId !== undefined || v.handle !== undefined, {
+    message: "binId or handle required",
+  });
 
 const joinOpenSchema = z.object({ displayName, deviceId });
 
@@ -120,11 +130,15 @@ export async function handleJoinByAdmin(req: Request): Promise<Response> {
 export async function handleJoinByBin(req: Request): Promise<Response> {
   const parsed = joinByBinSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return error(400, "invalid join request");
-  const { binId, code, displayName, deviceId } = parsed.data;
+  const { binId, handle, code, displayName, deviceId } = parsed.data;
 
-  // Short IDs are globally unique across groups; the bin resolves the group.
+  // Short IDs (and handles) are globally unique across groups; the bin
+  // resolves the group.
   const bin = await db.query.bin.findFirst({
-    where: eq(schema.bin.id, binId),
+    where:
+      binId !== undefined
+        ? eq(schema.bin.id, binId)
+        : eq(schema.bin.handle, (handle as string).toLowerCase()),
     columns: { groupId: true, secretCode: true },
   });
   if (

@@ -3,14 +3,24 @@ import { binIdFromScan, shortBuild } from "./format";
 
 describe("binIdFromScan", () => {
   test("bare numbers and plain URLs (no secret)", () => {
-    expect(binIdFromScan("123")).toEqual({ binId: 123, code: null });
-    expect(binIdFromScan(" 123 ")).toEqual({ binId: 123, code: null });
+    expect(binIdFromScan("123")).toEqual({
+      binId: 123,
+      handle: null,
+      code: null,
+    });
+    expect(binIdFromScan(" 123 ")).toEqual({
+      binId: 123,
+      handle: null,
+      code: null,
+    });
     expect(binIdFromScan("https://host.example/123")).toEqual({
       binId: 123,
+      handle: null,
       code: null,
     });
     expect(binIdFromScan("https://host.example/123/")).toEqual({
       binId: 123,
+      handle: null,
       code: null,
     });
   });
@@ -18,10 +28,12 @@ describe("binIdFromScan", () => {
   test("fragment carries the sticker secret (the printed format)", () => {
     expect(binIdFromScan("https://host.example/123#7HX6")).toEqual({
       binId: 123,
+      handle: null,
       code: "7HX6",
     });
     expect(binIdFromScan("https://host.example/123#code=7HX6")).toEqual({
       binId: 123,
+      handle: null,
       code: "7HX6",
     });
   });
@@ -29,12 +41,30 @@ describe("binIdFromScan", () => {
   test("query-string forms tolerated (hand-typed / legacy)", () => {
     expect(binIdFromScan("https://host.example/123?7HX6")).toEqual({
       binId: 123,
+      handle: null,
       code: "7HX6",
     });
     expect(binIdFromScan("https://host.example/123?code=7HX6")).toEqual({
       binId: 123,
+      handle: null,
       code: "7HX6",
     });
+  });
+
+  test("handles: bare, in a URL, upper-cased as printed, with a code", () => {
+    const handle = "9b2c6d1e-1f3a-4c5b-8d7e-0123456789ab";
+    expect(binIdFromScan(handle)).toEqual({ binId: null, handle, code: null });
+    expect(binIdFromScan(`https://host.example/b/${handle}`)).toEqual({
+      binId: null,
+      handle,
+      code: null,
+    });
+    // Sticker URLs are upper-cased for QR density; the handle comes back in
+    // its stored (lower) case so a replica lookup matches.
+    expect(
+      binIdFromScan(`HTTPS://HOST.EXAMPLE/B/${handle.toUpperCase()}#7HX6`),
+    ).toEqual({ binId: null, handle, code: "7HX6" });
+    expect(binIdFromScan("https://host.example/b/not-a-handle")).toBeNull();
   });
 
   test("non-bin values rejected", () => {

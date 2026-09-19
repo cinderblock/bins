@@ -14,6 +14,9 @@ export default [
     route("scan", "routes/scanner.tsx"),
     // "/123" — one URL per physical box; also the claim flow for fresh stickers.
     route(":binId", "routes/bin.tsx"),
+    // "/b/<uuid>" — the same page by opaque handle, the form deployments that
+    // keep box numbers internal print on their stickers (see lib/boxRef.ts).
+    route("b/:handle", "routes/bin.tsx", { id: "routes/bin-by-handle" }),
     // Browse + search every box; bulk-move for members, retire/restore +
     // edit for admins. /search is a legacy alias that redirects here.
     route("bins", "routes/bins.tsx"),

@@ -21,29 +21,52 @@ export function relativeTime(ms: number): string {
   return new Date(ms).toLocaleDateString();
 }
 
+/**
+ * One of the two is set: the box's number (`/123`) or its opaque handle
+ * (`/b/<uuid>`, printed by deployments that keep numbers internal). Handles
+ * are returned lower-cased, matching how they are stored — sticker URLs are
+ * upper-cased for QR density.
+ */
 export interface ScanTarget {
-  binId: number;
+  binId: number | null;
+  handle: string | null;
   /** The sticker secret (`/{id}#{CODE}`) when the scan carried one. */
   code: string | null;
 }
 
+const HANDLE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Extract a bin target from a scanned QR value: our URL (with or without the
- * secret code) or a bare number. The code rides the RAW fragment (`/1#7HX6`)
- * so it never appears in server/proxy logs; query-string (`/1?7HX6`) and
- * `code=` forms are tolerated for hand-typed or legacy inputs.
+ * secret code), a bare number, or a bare handle. The code rides the RAW
+ * fragment (`/1#7HX6`) so it never appears in server/proxy logs; query-string
+ * (`/1?7HX6`) and `code=` forms are tolerated for hand-typed or legacy inputs.
+ *
+ * Every historical form stays accepted forever: stickers are physical and
+ * outlive any change of scheme (plans/multi-instance.md).
  */
 export function binIdFromScan(raw: string): ScanTarget | null {
   const trimmed = raw.trim();
-  if (/^\d{1,9}$/.test(trimmed)) return { binId: Number(trimmed), code: null };
+  if (/^\d{1,9}$/.test(trimmed))
+    return { binId: Number(trimmed), handle: null, code: null };
+  if (HANDLE.test(trimmed))
+    return { binId: null, handle: trimmed.toLowerCase(), code: null };
   try {
     const url = new URL(trimmed);
-    const match = url.pathname.match(/^\/(\d{1,9})\/?$/);
-    if (match?.[1]) {
+    const byNumber = url.pathname.match(/^\/(\d{1,9})\/?$/);
+    const byHandle = url.pathname.match(
+      /^\/b\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i,
+    );
+    if (byNumber?.[1] || byHandle?.[1]) {
       const code = [url.hash.replace(/^#/, ""), url.search.replace(/^\?/, "")]
         .map((c) => (/^code=/i.test(c) ? c.slice("code=".length) : c))
         .find((c) => c !== "");
-      return { binId: Number(match[1]), code: code ?? null };
+      return {
+        binId: byNumber?.[1] ? Number(byNumber[1]) : null,
+        handle: byHandle?.[1] ? byHandle[1].toLowerCase() : null,
+        code: code ?? null,
+      };
     }
   } catch {}
   return null;

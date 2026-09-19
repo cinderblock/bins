@@ -77,7 +77,15 @@ export default function Shell() {
       `https://local${location.pathname}${location.search}${location.hash}`,
     );
     if (target?.code != null) {
-      return <FirstRun sticker={{ binId: target.binId, code: target.code }} />;
+      return (
+        <FirstRun
+          sticker={{
+            binId: target.binId,
+            handle: target.handle,
+            code: target.code,
+          }}
+        />
+      );
     }
     // The two unauthenticated routes handle themselves: the unlinked /join
     // (access-code bootstrap/fallback) and first-boot /setup.
@@ -97,7 +105,7 @@ export default function Shell() {
     // shared without its sticker code) grants nothing by design, but it does
     // tell us WHICH box the visitor wanted — worth saying, instead of
     // dropping them on generic branding with no idea what went wrong.
-    return <Landing binId={target?.binId} />;
+    return <Landing binId={target?.binId ?? undefined} />;
   }
   return (
     <>

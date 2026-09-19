@@ -26,6 +26,7 @@ import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { rememberAdmin, useAdminPassword, verifyAdmin } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
+import { boxPath } from "~/lib/boxRef";
 import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
 import { syncNow } from "~/lib/sync";
@@ -68,23 +69,27 @@ export default function Print() {
     .map((s) => Number(s))
     .filter((n) => Number.isInteger(n) && n > 0);
 
-  // Sticker secrets come from the replica (they ride the bin.allocate ops),
-  // which is also what lets an old batch re-export long after allocation.
-  const codeById = useLiveQuery(
+  // Sticker secrets (and handles) come from the replica — they ride the
+  // bin.allocate ops — which is also what lets an old batch re-export long
+  // after allocation.
+  const byId = useLiveQuery(
     async () =>
       new Map(
         (await db.bins.where("id").anyOf(ids).toArray()).map((bin) => [
           bin.id,
-          bin.secretCode,
+          { code: bin.secretCode, handle: bin.handle },
         ]),
       ),
     [params.get("ids")],
-    new Map<number, string | null>(),
+    new Map<number, { code: string | null; handle: string | null }>(),
   );
 
+  const deployment = useDeployment();
   // Perimeter-protected deployments print bare `/{id}` stickers, so the code
   // column is dropped from the export entirely rather than left blank.
-  const codeless = useDeployment()?.openAccess === true;
+  const codeless = deployment?.openAccess === true;
+  // Internal-number deployments put the opaque handle in the URL instead.
+  const numbersInternal = deployment?.boxNumbers === "internal";
   const origin = typeof window === "undefined" ? "" : window.location.origin;
 
   async function allocate() {
@@ -124,15 +129,20 @@ export default function Print() {
   // the pad is 2).
   const pad = Math.max(1, Number(idDigits) || 1);
   const exportRows = ids
-    .filter((id) => codeById.has(id))
-    .map((id) => ({ id, code: codeById.get(id) ?? null }));
+    .filter((id) => byId.has(id))
+    .map((id) => ({
+      id,
+      code: byId.get(id)?.code ?? null,
+      handle: byId.get(id)?.handle ?? null,
+    }));
   const pending = ids.length - exportRows.length;
   const exportText = [
     codeless ? "id\turl" : "id\tcode\turl",
     ...exportRows.map((r) => {
+      const path = boxPath(r, numbersInternal);
       // Upper-cased so the whole URL stays in QR alphanumeric mode = tighter code.
       const url = (
-        r.code ? `${origin}/${r.id}#${r.code}` : `${origin}/${r.id}`
+        r.code ? `${origin}${path}#${r.code}` : `${origin}${path}`
       ).toUpperCase();
       const id = String(r.id).padStart(pad, "0");
       return codeless ? `${id}\t${url}` : `${id}\t${r.code ?? ""}\t${url}`;

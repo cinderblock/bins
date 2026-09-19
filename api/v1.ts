@@ -17,12 +17,20 @@ import { type Ctx, error, json } from "./context";
 function binView(row: typeof schema.bin.$inferSelect) {
   return {
     id: row.id,
+    /** Opaque public handle; the URL form on internal-number deployments. */
+    handle: row.handle,
     status: row.status,
     name: row.name,
+    description: row.description,
     sizeClass: row.sizeClass,
+    sizeId: row.sizeId,
     externalLabel: row.externalLabel,
     weightGrams: row.weightGrams,
+    fillLevel: row.fillLevel,
+    labelArtHash: row.labelArtHash,
     locationName: row.locationName,
+    locationId: row.locationId,
+    slot: row.slot,
     labelIds: row.labelIds ?? [],
     primaryPhotoHash: row.primaryPhotoHash,
     primaryThumbHash: row.primaryThumbHash,
@@ -45,11 +53,20 @@ async function listBins(ctx: Ctx, url: URL): Promise<Response> {
   return json({ bins: rows.map(binView) });
 }
 
-async function getBin(ctx: Ctx, binId: number): Promise<Response> {
+async function getBin(
+  ctx: Ctx,
+  ref: { id: number } | { handle: string },
+): Promise<Response> {
   const row = await db.query.bin.findFirst({
-    where: and(eq(schema.bin.id, binId), eq(schema.bin.groupId, ctx.groupId)),
+    where: and(
+      "id" in ref
+        ? eq(schema.bin.id, ref.id)
+        : eq(schema.bin.handle, ref.handle.toLowerCase()),
+      eq(schema.bin.groupId, ctx.groupId),
+    ),
   });
   if (!row) return error(404, "no such bin");
+  const binId = row.id;
 
   const entries = await db.query.binEntry.findMany({
     where: and(
@@ -104,7 +121,16 @@ async function listLocations(ctx: Ctx): Promise<Response> {
   const rows = await db.query.location.findMany({
     where: eq(schema.location.groupId, ctx.groupId),
     orderBy: [asc(schema.location.sortOrder), asc(schema.location.name)],
-    columns: { id: true, name: true, sortOrder: true, archived: true },
+    columns: {
+      id: true,
+      name: true,
+      sortOrder: true,
+      parentId: true,
+      cols: true,
+      rows: true,
+      span: true,
+      archived: true,
+    },
   });
   return json({ locations: rows });
 }
@@ -121,7 +147,13 @@ export async function handleV1(
   if (path === "/api/v1/locations") return await listLocations(ctx);
 
   const binMatch = path.match(/^\/api\/v1\/bins\/(\d+)$/);
-  if (binMatch?.[1]) return await getBin(ctx, Number(binMatch[1]));
+  if (binMatch?.[1]) return await getBin(ctx, { id: Number(binMatch[1]) });
+  // The same box by its opaque handle, for integrations that only hold what
+  // was scanned off a sticker.
+  const handleMatch = path.match(
+    /^\/api\/v1\/bins\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i,
+  );
+  if (handleMatch?.[1]) return await getBin(ctx, { handle: handleMatch[1] });
 
   return error(404, "no such endpoint");
 }

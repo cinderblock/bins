@@ -39,6 +39,12 @@ import { DeleteEntryButton } from "~/components/DeleteEntryButton";
 import { DeletedEntries } from "~/components/DeletedEntries";
 import { PhotoImg } from "~/components/PhotoImg";
 import { useAuthors } from "~/lib/authors";
+import {
+  boxNumber,
+  boxPath,
+  boxTitle,
+  useBoxNumbersInternal,
+} from "~/lib/boxRef";
 import { useBoxSizes } from "~/lib/boxSizes";
 import { db } from "~/lib/db";
 import { relativeTime } from "~/lib/format";
@@ -65,6 +71,7 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
   );
   const labels = useLiveQuery(async () => db.labels.toArray(), [], []);
   const sizes = useBoxSizes();
+  const numbersInternal = useBoxNumbersInternal();
   const authors = useAuthors();
   /**
    * Which photo fills the hero slot. Stored WITH its box so moving to another
@@ -150,15 +157,19 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
         <Group justify="space-between" wrap="nowrap" align="flex-start">
           <div style={{ minWidth: 0 }}>
             <Title order={3} lineClamp={2}>
-              {bin.name || `Box #${bin.id}`}
+              {boxTitle(bin, numbersInternal)}
             </Title>
             <Text size="sm" c="dimmed">
-              #{bin.id}
-              {sizeLabel ? ` · ${sizeLabel}` : ""}
-              {bin.weightGrams ? ` · ${formatWeight(bin.weightGrams)}` : ""}
+              {[
+                boxNumber(bin, numbersInternal),
+                sizeLabel,
+                bin.weightGrams ? formatWeight(bin.weightGrams) : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </Text>
           </div>
-          <Anchor component={Link} to={`/${bin.id}`} size="sm">
+          <Anchor component={Link} to={boxPath(bin, numbersInternal)} size="sm">
             Open
           </Anchor>
         </Group>

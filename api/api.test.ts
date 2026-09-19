@@ -59,7 +59,7 @@ const uuid = () =>
 let tokenA: string;
 let tokenB: string;
 let binId: number;
-let allocated: { id: number; code: string }[];
+let allocated: { id: number; code: string; handle: string }[];
 
 describe("api", () => {
   test("recover page is reachable with no token and clears workers, not data", async () => {
@@ -283,6 +283,13 @@ describe("api", () => {
     allocated = ((await alloc.json()) as { bins: typeof allocated }).bins;
     expect(allocated).toHaveLength(3);
     expect(Math.min(...allocated.map((b) => b.id))).toBeGreaterThanOrEqual(10);
+    // Every box gets an opaque handle alongside its number.
+    for (const { handle } of allocated) {
+      expect(handle).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+    }
+    expect(new Set(allocated.map((b) => b.handle)).size).toBe(3);
     // Every sticker gets a secret from the confusable-free alphabet.
     for (const { code } of allocated) {
       expect(code).toMatch(/^[0-9ABCDEFGHJKMNPRSTUVWXYZ]{4}$/);
@@ -823,7 +830,11 @@ describe("api", () => {
 
   test("join-by-bin: sticker pair joins (even unclaimed); bare id never does", async () => {
     // Happy path on an UNCLAIMED bin, with the code typed in the wrong case.
-    const fresh = allocated[2] as { id: number; code: string };
+    const fresh = allocated[2] as {
+      id: number;
+      code: string;
+      handle: string;
+    };
     const res = await call("POST", "/api/auth/join-by-bin", {
       body: {
         binId: fresh.id,
@@ -872,6 +883,27 @@ describe("api", () => {
       });
       expect(bare.status).toBe(400);
     }
+
+    // The handle form — what an internal-number deployment prints — joins the
+    // same way, and arrives upper-cased off a QR.
+    const byHandle = await call("POST", "/api/auth/join-by-bin", {
+      body: {
+        handle: fresh.handle.toUpperCase(),
+        code: fresh.code,
+        displayName: "Dee",
+        deviceId: crypto.randomUUID(),
+      },
+    });
+    expect(byHandle.status).toBe(200);
+    // Neither reference at all is a malformed request, not a 403.
+    const neither = await call("POST", "/api/auth/join-by-bin", {
+      body: {
+        code: fresh.code,
+        displayName: "Eve",
+        deviceId: crypto.randomUUID(),
+      },
+    });
+    expect(neither.status).toBe(400);
   });
 
   test("admin: password-gated config, branding, import; revoke kills tokens", async () => {
@@ -1118,6 +1150,16 @@ describe("api", () => {
     expect(ours).toBeDefined();
     // The sticker secret must never ride the public read surface.
     for (const b of binsBody.bins) expect(b).not.toHaveProperty("secretCode");
+
+    // The same box by handle: an integration may only hold what it scanned.
+    const first = allocated[0] as { id: number; handle: string };
+    const viaHandle = await call("GET", `/api/v1/bins/${first.handle}`, {
+      token: readToken,
+    });
+    expect(viaHandle.status).toBe(200);
+    expect(
+      ((await viaHandle.json()) as { bin: { id: number; handle: string } }).bin,
+    ).toMatchObject({ id: first.id, handle: first.handle });
 
     const one = await call("GET", `/api/v1/bins/${binId}`, {
       token: readToken,

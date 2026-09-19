@@ -461,7 +461,14 @@ export async function handleAdmin(
     });
     const bins = await db.query.bin.findMany({
       where: eq(schema.bin.groupId, ctx.groupId),
-      columns: { id: true, name: true, sizeClass: true, externalLabel: true },
+      columns: {
+        id: true,
+        handle: true,
+        name: true,
+        sizeClass: true,
+        externalLabel: true,
+        description: true,
+      },
     });
     const binById = new Map(bins.map((b) => [b.id, b]));
     return json({

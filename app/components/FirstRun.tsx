@@ -27,7 +27,12 @@ import type { Identity } from "~/lib/db";
 export function FirstRun({
   sticker,
 }: {
-  sticker: { binId: number; code: string } | null;
+  /** The box the sticker names — by number or by opaque handle. */
+  sticker: {
+    binId: number | null;
+    handle: string | null;
+    code: string;
+  } | null;
 }) {
   const [displayName, setDisplayName] = useState("");
   const [geoOk, setGeoOk] = useState(true);
@@ -47,7 +52,14 @@ export function FirstRun({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              ...(sticker ? { binId: sticker.binId, code: sticker.code } : {}),
+              ...(sticker
+                ? {
+                    ...(sticker.binId !== null
+                      ? { binId: sticker.binId }
+                      : { handle: sticker.handle }),
+                    code: sticker.code,
+                  }
+                : {}),
               displayName: displayName.trim(),
               deviceId: crypto.randomUUID(),
             }),
@@ -76,7 +88,7 @@ export function FirstRun({
           <Title order={2}>bins</Title>
           <Text c="dimmed" size="sm">
             {sticker
-              ? `You scanned bin #${sticker.binId} — that's your ticket in. Just add a name (shown next to your photos and notes).`
+              ? "You scanned a box's sticker — that's your ticket in. Just add a name (shown next to your photos and notes)."
               : "Add a name to get started — it's shown next to your photos and notes."}
           </Text>
           <TextInput

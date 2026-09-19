@@ -55,6 +55,7 @@ import {
   verifyAdmin,
 } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
+import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
 import { formatWeight, labelColor } from "~/lib/labels";
@@ -208,7 +209,7 @@ export default function Bins() {
     // Side by side, a click selects rather than navigates — the detail is
     // already on screen, and leaving would throw away the list and its scroll.
     else if (twoPane) setPreviewId(bin.id);
-    else navigate(`/${bin.id}`);
+    else navigate(boxPath(bin, numbersInternal));
   }
 
   async function moveSelected(name: string | null) {
@@ -249,17 +250,16 @@ export default function Bins() {
   async function createBox() {
     setCreating(true);
     try {
-      const response = await apiJson<{ bins: { id: number }[] }>(
-        "/api/admin/bins/allocate",
-        {
-          method: "POST",
-          body: JSON.stringify({ adminPassword, count: 1 }),
-        },
-      );
+      const response = await apiJson<{
+        bins: { id: number; handle: string | null }[];
+      }>("/api/admin/bins/allocate", {
+        method: "POST",
+        body: JSON.stringify({ adminPassword, count: 1 }),
+      });
       const created = response.bins[0];
       if (!created) throw new Error("server allocated nothing");
       await syncNow();
-      navigate(`/${created.id}`);
+      navigate(boxPath(created, numbersInternal));
     } catch (err) {
       fail(err);
     } finally {
@@ -486,9 +486,7 @@ export default function Bins() {
                 )}
                 <UnstyledButton
                   onClick={() => activate(bin)}
-                  aria-label={
-                    selecting ? `Select box ${bin.id}` : `Open box ${bin.id}`
-                  }
+                  aria-label={`${selecting ? "Select" : "Open"} ${boxTitle(bin, numbersInternal)}`}
                   style={{ flex: 1, minWidth: 0 }}
                 >
                   <Group wrap="nowrap">
@@ -517,11 +515,11 @@ export default function Bins() {
                     )}
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <Group gap={8}>
-                        {/* Name leads where the number is just a handle;
-                            unnamed boxes still fall back to it. */}
-                        {numbersInternal && bin.name ? (
+                        {/* Name leads where numbers are internal; an unnamed
+                            box says so rather than showing the number. */}
+                        {numbersInternal ? (
                           <Text fw={600} truncate>
-                            {bin.name}
+                            {boxTitle(bin, true)}
                           </Text>
                         ) : (
                           <>
@@ -577,7 +575,7 @@ export default function Bins() {
                   <Group gap={4} wrap="nowrap">
                     <ActionIcon
                       variant="subtle"
-                      aria-label={`Edit box ${bin.id}`}
+                      aria-label={`Edit ${boxTitle(bin, numbersInternal)}`}
                       onClick={() => setEditing(bin)}
                     >
                       <IconPencil size={18} />
@@ -586,7 +584,7 @@ export default function Bins() {
                       <ActionIcon
                         variant="subtle"
                         color="green"
-                        aria-label={`Restore box ${bin.id}`}
+                        aria-label={`Restore ${boxTitle(bin, numbersInternal)}`}
                         onClick={() => void setStatus(bin.id, "restore")}
                       >
                         <IconArchiveOff size={18} />
@@ -595,7 +593,7 @@ export default function Bins() {
                       <ActionIcon
                         variant="subtle"
                         color="red"
-                        aria-label={`Retire box ${bin.id}`}
+                        aria-label={`Retire ${boxTitle(bin, numbersInternal)}`}
                         onClick={() => void setStatus(bin.id, "retire")}
                       >
                         <IconArchive size={18} />
@@ -741,6 +739,7 @@ function MoveSheet({
 }
 
 function EditSheet({ bin, onClose }: { bin: BinState; onClose: () => void }) {
+  const numbersInternal = useBoxNumbersInternal();
   const [name, setName] = useState(bin.name ?? "");
   const [label, setLabel] = useState(bin.externalLabel ?? "");
   const [locationName, setLocationName] = useState(bin.locationName ?? "");
@@ -760,7 +759,7 @@ function EditSheet({ bin, onClose }: { bin: BinState; onClose: () => void }) {
       if ((locationName.trim() || null) !== (bin.locationName ?? null)) {
         await setBinLocation(bin.id, locationName.trim() || null);
       }
-      notifications.show({ message: `Saved #${bin.id}`, color: "green" });
+      notifications.show({ message: "Saved", color: "green" });
       onClose();
     } catch (err) {
       fail(err);
@@ -770,7 +769,11 @@ function EditSheet({ bin, onClose }: { bin: BinState; onClose: () => void }) {
   }
 
   return (
-    <ResponsiveSheet opened onClose={onClose} title={`Edit #${bin.id}`}>
+    <ResponsiveSheet
+      opened
+      onClose={onClose}
+      title={`Edit ${boxTitle(bin, numbersInternal)}`}
+    >
       <Stack gap="sm" pb="env(safe-area-inset-bottom)">
         <TextInput
           label="Name"

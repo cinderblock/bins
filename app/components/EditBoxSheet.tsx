@@ -28,6 +28,7 @@ import { IconInfoCircle } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { setBinFields, suggestBinEdit } from "~/lib/actions";
+import { boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import { describeSize, useBoxSizes } from "~/lib/boxSizes";
 import { usePendingSuggestions } from "~/lib/suggestions";
 
@@ -58,6 +59,8 @@ export function EditBoxSheet({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const pending = usePendingSuggestions(bin.id);
+  const numbersInternal = useBoxNumbersInternal();
+  const title = boxTitle(bin, numbersInternal);
 
   // The sheet stays mounted; re-seed from the live bin each time it opens so
   // it never shows values that went stale while it was closed.
@@ -97,7 +100,7 @@ export function EditBoxSheet({
     try {
       if (canEditDirectly) {
         await setBinFields(bin.id, fields);
-        notifications.show({ message: `Saved #${bin.id}`, color: "green" });
+        notifications.show({ message: "Saved", color: "green" });
       } else {
         await suggestBinEdit(bin.id, fields, note.trim() || null);
         notifications.show({
@@ -115,9 +118,7 @@ export function EditBoxSheet({
     <ResponsiveSheet
       opened={opened}
       onClose={onClose}
-      title={
-        canEditDirectly ? `Edit #${bin.id}` : `Suggest a change to #${bin.id}`
-      }
+      title={canEditDirectly ? `Edit ${title}` : `Suggest a change to ${title}`}
       dismissLabel="Cancel"
     >
       <Stack gap="sm">

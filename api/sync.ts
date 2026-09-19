@@ -14,6 +14,7 @@ import {
   pushRequestSchema,
 } from "../shared/ops";
 import { applyOp } from "../shared/reducer";
+import { boxNumbers } from "./config";
 import { type Ctx, error, json, serializedTransaction } from "./context";
 import { notifyGroupAdmins } from "./push";
 
@@ -128,17 +129,29 @@ export async function handlePush(req: Request, ctx: Ctx): Promise<Response> {
       name: string | null;
     };
     const more = result.suggested.length - 1;
-    void notifyGroupAdmins(ctx.groupId, ctx.deviceId, {
-      title:
-        more > 0
-          ? `${result.suggested.length} suggested edits`
-          : "Suggested edit",
-      body:
-        (name ? `Box #${binId}: rename to "${name}"` : `Box #${binId}`) +
-        (more > 0 ? ` and ${more} more` : ""),
-      url: "/admin",
-      tag: "bins-suggestion",
-    });
+    void (async () => {
+      // Name the box the way the app does: by number, or — where numbers are
+      // internal — by its current name, never "#12".
+      let box = `Box #${binId}`;
+      if (boxNumbers() === "internal") {
+        const current = await db.query.bin.findFirst({
+          where: eq(schema.bin.id, binId),
+          columns: { name: true },
+        });
+        box = current?.name?.trim() || "An untitled box";
+      }
+      await notifyGroupAdmins(ctx.groupId, ctx.deviceId, {
+        title:
+          more > 0
+            ? `${result.suggested.length} suggested edits`
+            : "Suggested edit",
+        body:
+          (name ? `${box}: rename to "${name}"` : box) +
+          (more > 0 ? ` and ${more} more` : ""),
+        url: "/admin",
+        tag: "bins-suggestion",
+      });
+    })();
   }
 
   const { suggested: _suggested, ...response } = result;

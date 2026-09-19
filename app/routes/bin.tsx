@@ -50,6 +50,7 @@ import { PhotoImg } from "~/components/PhotoImg";
 import { PhotoLightbox } from "~/components/PhotoLightbox";
 import { useAdminPassword } from "~/lib/admin";
 import { useAuthors } from "~/lib/authors";
+import { HANDLE_RE, boxTitle, normalizeHandle } from "~/lib/boxRef";
 import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
 import { relativeTime } from "~/lib/format";
@@ -62,15 +63,29 @@ import { deleteEntryWithUndo } from "~/lib/undo";
 export default function BinPage() {
   const params = useParams();
   const navigate = useNavigate();
-  const binId = /^\d{1,9}$/.test(params.binId ?? "")
+  // Two URL forms, one page: `/123` by number, `/b/<uuid>` by handle. Either
+  // resolves to the same replica row; everything below keys on `bin.id`.
+  const idParam = /^\d{1,9}$/.test(params.binId ?? "")
     ? Number(params.binId)
     : null;
+  const handleParam = HANDLE_RE.test(params.handle ?? "")
+    ? normalizeHandle(params.handle as string)
+    : null;
+  const validRef = idParam !== null || handleParam !== null;
 
   const bin = useLiveQuery(
-    async () => (binId !== null ? ((await db.bins.get(binId)) ?? null) : null),
-    [binId],
+    async () => {
+      if (idParam !== null) return (await db.bins.get(idParam)) ?? null;
+      if (handleParam !== null)
+        return (
+          (await db.bins.where("handle").equals(handleParam).first()) ?? null
+        );
+      return null;
+    },
+    [idParam, handleParam],
     undefined,
   );
+  const binId = bin?.id ?? null;
   // Live AND deleted in one query — the deleted ones feed the recovery
   // section below. Contentless rows are remove/restore stubs whose entry.add
   // hasn't synced yet (see shared/reducer.ts); there's nothing to show for
@@ -113,20 +128,21 @@ export default function BinPage() {
   // An unlocked admin edits identity fields directly; everyone else suggests.
   const canEditDirectly = typeof adminPassword === "string";
   const pendingSuggestions = usePendingSuggestions(binId ?? 0);
+  void binId;
   const [lightbox, setLightbox] = useState<EntryState | null>(null);
 
   useDocumentTitle(
-    binId === null
+    !bin
       ? "bins"
-      : numbersInternal && bin?.name
-        ? `${bin.name} · bins`
-        : `#${binId}${bin?.name ? ` ${bin.name}` : ""} · bins`,
+      : numbersInternal
+        ? `${boxTitle(bin, true)} · bins`
+        : `#${bin.id}${bin.name ? ` ${bin.name}` : ""} · bins`,
   );
 
-  if (binId === null) {
+  if (!validRef) {
     return (
       <Center h="100dvh">
-        <Text>Not a bin number.</Text>
+        <Text>Not a box link.</Text>
       </Center>
     );
   }
@@ -137,7 +153,7 @@ export default function BinPage() {
     return (
       <Center h="100dvh" p="md">
         <Stack align="center">
-          <Title order={3}>Bin #{binId} isn't here</Title>
+          <Title order={3}>This box isn't here</Title>
           <Text c="dimmed" ta="center" size="sm">
             It may not be synced yet, or it belongs to another group. Pull the
             latest and try again.
@@ -182,15 +198,14 @@ export default function BinPage() {
           >
             <IconArrowLeft />
           </ActionIcon>
-          {/* Where the number is just a URL handle (containers get relabeled
-              and reused), leading with "#193" implies a durable property the
-              box doesn't have. The NAME leads there, with the number demoted
-              to a quiet subtitle — and still headlining unnamed boxes, since
-              a freshly created one has nothing else to go by. */}
+          {/* Where numbers are internal the NAME leads and the number never
+              appears — an unnamed box says so in words rather than falling
+              back to "#193", which is exactly the thing not to show. Public-
+              number deployments keep the number as the headline. */}
           <div>
             <Group gap={8}>
               <Title order={3}>
-                {numbersInternal && bin.name ? bin.name : `#${bin.id}`}
+                {numbersInternal ? boxTitle(bin, true) : `#${bin.id}`}
               </Title>
               {bin.sizeClass && <Badge variant="light">{bin.sizeClass}</Badge>}
               {bin.weightGrams != null && (
@@ -200,13 +215,7 @@ export default function BinPage() {
               )}
               {bin.status === "retired" && <Badge color="gray">retired</Badge>}
             </Group>
-            {numbersInternal
-              ? bin.name && (
-                  <Text size="xs" c="dimmed">
-                    #{bin.id}
-                  </Text>
-                )
-              : bin.name && <Text size="sm">{bin.name}</Text>}
+            {!numbersInternal && bin.name && <Text size="sm">{bin.name}</Text>}
           </div>
           {/* Naming and sizing a box used to be reachable only from the
               all-boxes list, behind the admin password — so nobody found it.
@@ -358,7 +367,7 @@ export default function BinPage() {
             >
               <PhotoImg
                 hash={bin.primaryPhotoHash}
-                alt={`Contents of bin ${bin.id}`}
+                alt="Contents of this box"
                 preferFull
                 style={{
                   width: "100%",

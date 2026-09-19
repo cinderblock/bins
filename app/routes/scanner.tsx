@@ -40,6 +40,12 @@ import wasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url";
 import { BinPeek } from "~/components/BinPeek";
 import { addPhoto } from "~/lib/actions";
 import {
+  boxPath,
+  findBox,
+  useBoxNumbersInternal,
+  useBoxTitle,
+} from "~/lib/boxRef";
+import {
   getCameraStream,
   setTorch,
   stopCamera,
@@ -213,6 +219,8 @@ export default function Scanner() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [torchOn, setTorchOn] = useState(false);
   const [currentBinId, setCurrentBinId] = useState<number | null>(null);
+  const numbersInternal = useBoxNumbersInternal();
+  const currentTitle = useBoxTitle(currentBinId);
   const [peekOpen, setPeekOpen] = useState(false);
   const [flash, setFlash] = useState(false);
   const [capturing, setCapturing] = useState(false);
@@ -243,15 +251,18 @@ export default function Scanner() {
   }
 
   async function onScan(target: ScanTarget) {
+    const bin = await findBox(target);
     // Same box again: don't re-pop a peek the user collapsed.
-    if (target.binId === currentBinId) return;
-    const bin = await db.bins.get(target.binId);
+    if (bin ? bin.id === currentBinId : target.binId === currentBinId) return;
     if (bin && bin.status !== "unclaimed") {
-      makeCurrent(target.binId);
+      makeCurrent(bin.id);
+    } else if (bin) {
+      // Unclaimed: the claim flow needs the full page.
+      navigate(boxPath(bin, numbersInternal));
     } else {
-      // Unclaimed (claim flow) or not in the replica (sync dead-end): those
-      // conversations need the full page.
-      navigate(`/${target.binId}`);
+      // Not in the replica (sync dead-end): the page explains itself. Keep
+      // the scanned form so the address bar matches the sticker.
+      navigate(target.handle ? `/b/${target.handle}` : `/${target.binId}`);
     }
   }
 
@@ -275,7 +286,7 @@ export default function Scanner() {
       photoSavedWithUndo(
         currentBinId,
         entryOpId,
-        `Contents photo saved to #${currentBinId}`,
+        `Contents photo saved to ${currentTitle}`,
       );
     } catch (err) {
       notifications.show({ message: captureErrorMessage(err), color: "red" });
@@ -472,7 +483,7 @@ export default function Scanner() {
                 loading={capturing}
                 disabled={cameraError}
               >
-                Capture contents of #{currentBinId}
+                Capture contents of {currentTitle}
               </Button>
               {!peekOpen && (
                 <Button

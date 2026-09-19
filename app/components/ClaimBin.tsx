@@ -17,6 +17,7 @@ import { useState } from "react";
 import { LabelChips } from "~/components/LabelChips";
 import { WeightInput } from "~/components/WeightInput";
 import { claimBin, setBinLabel } from "~/lib/actions";
+import { useBoxNumbersInternal } from "~/lib/boxRef";
 
 const SIZE_CLASSES = ["S", "M", "L", "XL"];
 
@@ -27,6 +28,7 @@ export function ClaimBin({ binId }: { binId: number }) {
   const [weightGrams, setWeightGrams] = useState<number | null>(null);
   const [labels, setLabels] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const numbersInternal = useBoxNumbersInternal();
 
   function toggleLabel(labelId: string, present: boolean) {
     setLabels((prev) => {
@@ -47,14 +49,19 @@ export function ClaimBin({ binId }: { binId: number }) {
     });
     // Membership is its own op stream — enqueue one per chosen category.
     for (const labelId of labels) await setBinLabel(binId, labelId, true);
-    notifications.show({ message: `Bin #${binId} claimed`, color: "green" });
+    notifications.show({
+      message: numbersInternal ? "Box set up" : `Bin #${binId} claimed`,
+      color: "green",
+    });
     setBusy(false);
   }
 
   return (
     <Paper p="lg" radius="lg" withBorder m="md">
       <Stack>
-        <Title order={3}>New box #{binId}</Title>
+        <Title order={3}>
+          {numbersInternal ? "New box" : `New box #${binId}`}
+        </Title>
         <Text c="dimmed" size="sm">
           Fresh sticker — set up this bin.
         </Text>

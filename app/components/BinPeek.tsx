@@ -29,6 +29,7 @@ import { Link } from "react-router";
 import { DeleteEntryButton } from "~/components/DeleteEntryButton";
 import { PhotoImg } from "~/components/PhotoImg";
 import { PhotoLightbox } from "~/components/PhotoLightbox";
+import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import { db } from "~/lib/db";
 import { relativeTime } from "~/lib/format";
 
@@ -55,6 +56,7 @@ export function BinPeek({
   );
 
   const [lightbox, setLightbox] = useState<EntryState | null>(null);
+  const numbersInternal = useBoxNumbersInternal();
 
   if (!bin) return null;
   const photos = entries.filter((e) => e.photoHash);
@@ -64,18 +66,26 @@ export function BinPeek({
     <Paper radius="lg" p="sm" style={{ maxHeight: "42dvh", overflowY: "auto" }}>
       <Group justify="space-between" wrap="nowrap">
         <Link
-          to={`/${bin.id}`}
+          to={boxPath(bin, numbersInternal)}
           style={{ textDecoration: "none", color: "inherit", minWidth: 0 }}
-          aria-label={`Open bin ${bin.id}`}
+          aria-label={`Open ${boxTitle(bin, numbersInternal)}`}
         >
           <Group gap={8} wrap="nowrap">
-            <Text fw={700} size="lg">
-              #{bin.id}
-            </Text>
-            {bin.name && (
-              <Text size="lg" truncate>
-                {bin.name}
+            {numbersInternal ? (
+              <Text fw={700} size="lg" truncate>
+                {boxTitle(bin, true)}
               </Text>
+            ) : (
+              <>
+                <Text fw={700} size="lg">
+                  #{bin.id}
+                </Text>
+                {bin.name && (
+                  <Text size="lg" truncate>
+                    {bin.name}
+                  </Text>
+                )}
+              </>
             )}
             {bin.status === "retired" && <Badge color="gray">retired</Badge>}
             <IconChevronRight

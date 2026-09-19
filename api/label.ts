@@ -15,7 +15,12 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "../db/client.server";
-import { labelPrintToken, labelPrintUrl, labelSizeRaw } from "./config";
+import {
+  boxNumbers,
+  labelPrintToken,
+  labelPrintUrl,
+  labelSizeRaw,
+} from "./config";
 import { type Ctx, error, json } from "./context";
 import {
   ArtBudgetError,
@@ -69,16 +74,23 @@ async function buildLabel(
   if (!bin) return error(404, "no such bin");
 
   const template = input.template ?? "qr";
-  // A box with no name yet still needs something readable on the label.
-  const title = bin.name?.trim() || `Box ${bin.id}`;
+  const internal = boxNumbers() === "internal";
+  // A box with no name yet still needs something readable on the label — but
+  // where numbers are internal, the number is the one thing NOT to print.
+  const title =
+    bin.name?.trim() || (internal ? "Untitled box" : `Box ${bin.id}`);
 
   const lines: string[] = [];
   if (input.includeDetails && bin.locationName) lines.push(bin.locationName);
 
-  // The secret code rides the URL FRAGMENT when there is one, exactly as the
-  // in-app sticker export does — fragments never reach a server, so codes stay
-  // out of access logs. Codeless deployments print a bare `/{id}`.
-  const path = bin.secretCode ? `/${bin.id}#${bin.secretCode}` : `/${bin.id}`;
+  // The QR carries the box's handle where numbers are internal (a box
+  // allocated before handles existed keeps its number — the only honest URL
+  // it has), else the number. The secret code rides the URL FRAGMENT when
+  // there is one, exactly as the in-app sticker export does — fragments never
+  // reach a server, so codes stay out of access logs. Codeless deployments
+  // print a bare path.
+  const ref = internal && bin.handle ? `/b/${bin.handle}` : `/${bin.id}`;
+  const path = bin.secretCode ? `${ref}#${bin.secretCode}` : ref;
 
   const content: LabelContent = {
     template,

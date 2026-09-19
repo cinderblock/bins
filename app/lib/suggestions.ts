@@ -58,9 +58,11 @@ export type SuggestionReview = {
   /** The box's values right now — the "before" half of the diff. */
   current: {
     id: number;
+    handle: string | null;
     name: string | null;
     sizeClass: string | null;
     externalLabel: string | null;
+    description: string | null;
   } | null;
 };
 

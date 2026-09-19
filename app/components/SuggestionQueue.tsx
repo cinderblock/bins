@@ -21,6 +21,7 @@ import { notifications } from "@mantine/notifications";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
+import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import { relativeTime } from "~/lib/format";
 import {
   SUGGEST_FIELDS,
@@ -55,6 +56,14 @@ export function SuggestionQueue({
 }) {
   const [rows, setRows] = useState<SuggestionReview[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const numbersInternal = useBoxNumbersInternal();
+  // The server's "current" snapshot carries what's needed to name and link
+  // the box the same way the rest of the app does.
+  const refOf = (row: SuggestionReview) => ({
+    id: row.binId,
+    handle: row.current?.handle ?? null,
+    name: row.current?.name ?? null,
+  });
 
   const refresh = useCallback(async () => {
     try {
@@ -76,7 +85,9 @@ export function SuggestionQueue({
     try {
       await resolveSuggestion(adminPassword, row.id, accepted);
       notifications.show({
-        message: accepted ? `Applied to #${row.binId}` : "Suggestion dismissed",
+        message: accepted
+          ? `Applied to ${boxTitle(refOf(row), numbersInternal)}`
+          : "Suggestion dismissed",
         color: accepted ? "green" : "gray",
       });
       await refresh();
@@ -129,12 +140,13 @@ export function SuggestionQueue({
               <Group justify="space-between" gap="xs">
                 <Anchor
                   component={Link}
-                  to={`/${row.binId}`}
+                  to={boxPath(refOf(row), numbersInternal)}
                   size="sm"
                   fw={600}
                 >
-                  #{row.binId}
-                  {row.current?.name ? ` ${row.current.name}` : ""}
+                  {numbersInternal
+                    ? boxTitle(refOf(row), true)
+                    : `#${row.binId}${row.current?.name ? ` ${row.current.name}` : ""}`}
                 </Anchor>
                 <Text size="xs" c="dimmed">
                   {(row.deviceId && authors[row.deviceId]) || "someone"} ·{" "}
@@ -203,7 +215,8 @@ export function SuggestionQueue({
                   {row.status}
                 </Badge>
                 <Text size="xs" c="dimmed" truncate>
-                  #{row.binId} · {row.fields.name ?? row.fields.sizeClass ?? ""}{" "}
+                  {boxTitle(refOf(row), numbersInternal)} ·{" "}
+                  {row.fields.name ?? row.fields.sizeClass ?? ""}{" "}
                   {row.resolvedAt ? relativeTime(row.resolvedAt) : ""}
                 </Text>
               </Group>
