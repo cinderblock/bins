@@ -569,6 +569,26 @@ describe("reducer convergence", () => {
     expect(snapshot).toContain('"handle":null');
   });
 
+  test("bin.setHandle backfills a pre-handle box in any order", async () => {
+    const snapshot = await expectConvergence([
+      op({
+        type: "bin.allocate",
+        deviceId: null,
+        effectiveTime: 100,
+        payload: { code: "QK4M" },
+      }),
+      op({
+        type: "bin.setHandle",
+        deviceId: null,
+        effectiveTime: 5000,
+        payload: { handle: "00000000-0000-4000-8000-0000000000bb" },
+      }),
+    ] as CanonicalOp[]);
+    expect(snapshot).toContain(
+      '"handle":"00000000-0000-4000-8000-0000000000bb"',
+    );
+  });
+
   test("box sizes: definition, rename and assignment converge in any order", async () => {
     const sizeId = "00000000-0000-4000-8000-00000000ff01";
     const other = "00000000-0000-4000-8000-00000000ff02";

@@ -153,7 +153,11 @@ export default function BinPage() {
         : `#${bin.id}${bin.name ? ` ${bin.name}` : ""} · bins`,
   );
 
-  if (!validRef) {
+  if (deployment === undefined) return null;
+  // Where numbers are internal, the number is not a way in: /123 is refused
+  // even though the box exists, so the only URL anyone ever sees or shares
+  // is the handle on the sticker.
+  if (!validRef || (numbersInternal && handleParam === null)) {
     return (
       <Center h="100dvh">
         <Text>Not a box link.</Text>

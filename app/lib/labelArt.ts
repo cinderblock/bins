@@ -87,6 +87,9 @@ export async function generateLabelArt(
   adminPassword: string,
   binId: number,
   options: {
+    /** As typed right now — the request never waits on the box row to sync. */
+    title: string;
+    lines: string[];
     model?: string;
     instructions?: string | null;
     references?: ArtReference[];
@@ -98,6 +101,8 @@ export async function generateLabelArt(
     body: JSON.stringify({
       adminPassword,
       binId,
+      title: options.title,
+      lines: options.lines,
       model: options.model,
       instructions: options.instructions ?? undefined,
       references: options.references?.map((r) => ({

@@ -242,5 +242,12 @@ export function isPrivateAddress(address: string | null): boolean {
 export function openJoinAllowed(req: Request): boolean {
   if (!isOpenAccess()) return false;
   if (!requirePrivateClient()) return true;
+  // The reverse proxy's own verdict. It sits at the perimeter and can judge
+  // what this process cannot — that a GLOBAL IPv6 address is on-link, for
+  // one, which is how every phone on a dual-stack LAN arrives — so a header
+  // only it sets carries its decision through. Clients can't forge it: the
+  // proxy overwrites the header on every request it forwards.
+  if (req.headers.get("x-bins-perimeter")?.trim().toLowerCase() === "lan")
+    return true;
   return isPrivateAddress(forwardedClientIp(req));
 }

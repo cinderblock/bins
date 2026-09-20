@@ -7,6 +7,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   ArtBudgetError,
+  ArtInputError,
   ArtUnavailableError,
   artAvailable,
   buildPrompt,
@@ -75,22 +76,26 @@ describe("art availability", () => {
 });
 
 describe("prompt", () => {
-  test("uses what bins knows about the box, not just its name", () => {
+  test("the subject is the title, the subtext and the instructions — nothing else", () => {
     const prompt = buildPrompt({
-      title: "Test Fixtures",
-      labels: ["electronics"],
-      items: ["clamp", "heatsink"],
+      title: "Arduinos - AVR",
+      lines: ["ATmega", "Nano"],
+      instructions: "show one board close up",
     });
-    expect(prompt).toContain("Test Fixtures");
-    expect(prompt).toContain("clamp");
-    expect(prompt).toContain("electronics");
+    // Exactly the label generator's shape. No "Contents:", no "label", no
+    // "box": that framing once got a drawing of a storage bin.
+    expect(prompt).toContain(
+      "Subject: Arduinos - AVR — ATmega, Nano. show one board close up",
+    );
+    expect(prompt).not.toMatch(/contents:/i);
+    expect(prompt).not.toMatch(/storage box/i);
     // The constraints that keep a thermal print legible.
     expect(prompt).toContain("no greys");
     expect(prompt).toContain("NO text");
   });
 
-  test("an unnamed box still yields a usable subject", () => {
-    expect(buildPrompt({ title: "   " })).toContain("a storage box");
+  test("a blank title is refused rather than drawn as a generic box", () => {
+    expect(() => buildPrompt({ title: "   " })).toThrow(ArtInputError);
   });
 
   test("typed instructions and reference pictures shape the prompt", () => {
@@ -101,7 +106,7 @@ describe("prompt", () => {
       instructions: "show a coiled cable",
       references: [{ mime: "image/jpeg", data: "AAAA" }],
     });
-    expect(guided).toContain("Additional details: show a coiled cable");
+    expect(guided).toContain("Subject: Cables. show a coiled cable");
     // Only said when there ARE references — an empty promise confuses models.
     expect(guided).toContain("style references only");
   });
@@ -118,8 +123,8 @@ describe("generation", () => {
 
   test("identical requests reuse the cached image and cost nothing", async () => {
     stubProvider();
-    const first = await generateArt({ title: "Nuts", items: ["M3 bolts"] });
-    const second = await generateArt({ title: "Nuts", items: ["M3 bolts"] });
+    const first = await generateArt({ title: "Nuts", lines: ["M3 bolts"] });
+    const second = await generateArt({ title: "Nuts", lines: ["M3 bolts"] });
     expect(second).toBe(first);
     // Re-previewing or reprinting a box must not bill twice for one picture.
     expect(calls).toBe(1);

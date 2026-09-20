@@ -9,6 +9,7 @@ import { chmodSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import { BUILD_SHA } from "./api/build";
 import { logGroupCredentials } from "./api/credentials";
+import { migrateAllMissingHandles } from "./api/migrate-handles";
 import { migrateAllLegacySizes } from "./api/migrate-sizes";
 import { handleApi } from "./api/router";
 import {
@@ -140,3 +141,4 @@ await logGroupCredentials();
 // One-shot, idempotent: turn any legacy free-text sizes into real definitions
 // so nothing loses its size when the picker switches over. See api/migrate-sizes.
 await migrateAllLegacySizes();
+await migrateAllMissingHandles();

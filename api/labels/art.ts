@@ -67,12 +67,10 @@ export type ArtReference = {
 };
 
 export type ArtRequest = {
-  /** The box's name — the primary subject. */
+  /** The box's title — the subject. Required: nothing to draw without it. */
   title: string;
-  /** Category names, as subject hints. */
-  labels?: string[];
-  /** Itemised contents, the most specific signal available. */
-  items?: string[];
+  /** The label's subtext lines, folded into the subject. */
+  lines?: string[];
   /** Extra guidance typed by the person ("show a coiled cable"). */
   instructions?: string | null;
   /** Up to five style hints, sent alongside the prompt. */
@@ -145,19 +143,31 @@ function artCacheDir(): string {
   );
 }
 
-/** Prompt built from what bins knows about the box, plus what was typed. */
-export function buildPrompt(request: ArtRequest): string {
-  const subject = request.title.trim() || "a storage box";
-  const detail = [...(request.items ?? []), ...(request.labels ?? [])]
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 12);
-  const contents =
-    detail.length > 0 ? `\n\nContents: ${detail.join(", ")}` : "";
+export class ArtInputError extends Error {}
+
+/**
+ * The subject line, exactly as the operator's label generator builds it:
+ * title, an em-dash, the subtext lines joined by commas, then any typed
+ * instructions as a sentence. The model is told ONLY the subject — no
+ * "contents", no "label", no layout — because framing it as a container's
+ * contents got a drawing of a container, and telling it about the label
+ * format gets placeholder text and borders.
+ */
+export function buildSubject(request: ArtRequest): string {
+  const title = request.title.trim();
+  if (!title) throw new ArtInputError("give the box a title first");
+  const lines = (request.lines ?? []).map((l) => l.trim()).filter(Boolean);
   const instructions = request.instructions?.trim();
-  const extra = instructions ? `\n\nAdditional details: ${instructions}` : "";
+  let subject = title;
+  if (lines.length > 0) subject += ` — ${lines.join(", ")}`;
+  if (instructions) subject += `. ${instructions}`;
+  return subject;
+}
+
+/** The full prompt: the style rules, then the subject. */
+export function buildPrompt(request: ArtRequest): string {
   const style = request.references?.length ? `\n${REFERENCES_NOTE}` : "";
-  return `${SYSTEM_PROMPT}${style}\n\nSubject: ${subject}${contents}${extra}`;
+  return `${SYSTEM_PROMPT}${style}\n\nSubject: ${buildSubject(request)}`;
 }
 
 /**

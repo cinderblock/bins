@@ -4,9 +4,9 @@
  * server for anything. The server's render (LabelPrintSheet) is the exact
  * image; this is the one you look at while typing.
  *
- * Mirrors api/labels/render.ts's proportions — landscape design space, title
- * across the top, lines under it, art filling the middle, QR bottom-left —
- * so what you see here is the same shape as what prints.
+ * Mirrors api/labels/render.ts: landscape, tight padding, title across the
+ * top, subtext then the QR down the left, the drawing filling everything to
+ * the right of them.
  */
 import { Text } from "@mantine/core";
 import QRCode from "qrcode";
@@ -15,6 +15,8 @@ import { useEffect, useState } from "react";
 /** 6 × 4 in, drawn at this width. */
 const WIDTH = 360;
 const HEIGHT = 240;
+/** The renderer's tenth-of-an-inch padding, at this scale. */
+const PAD = 6;
 
 export function LabelPreview({
   title,
@@ -24,7 +26,7 @@ export function LabelPreview({
 }: {
   title: string;
   lines: string[];
-  /** What the QR encodes; null hides the QR (the `art` template). */
+  /** What the QR encodes; null draws a placeholder (box not yet allocated). */
   url: string | null;
   artUrl: string | null;
 }) {
@@ -35,7 +37,7 @@ export function LabelPreview({
       return;
     }
     let cancelled = false;
-    void QRCode.toDataURL(url, { errorCorrectionLevel: "M", margin: 1 }).then(
+    void QRCode.toDataURL(url, { errorCorrectionLevel: "M", margin: 4 }).then(
       (data) => {
         if (!cancelled) setQr(data);
       },
@@ -46,10 +48,22 @@ export function LabelPreview({
   }, [url]);
 
   const shown = title.trim() || "Untitled box";
-  // The renderer shrinks the headline to fit; approximate the same here so a
-  // long name previews at roughly the size it will print.
-  const fontSize = Math.max(14, Math.min(40, 460 / Math.max(shown.length, 6)));
-  const qrSize = Math.round(HEIGHT * 0.42);
+  // Half an inch at 203dpi is 101px on a 1218px-wide design; scaled here,
+  // then shrunk for long names the way the renderer does.
+  const base = Math.round(0.5 * (WIDTH / 6));
+  const fontSize = Math.max(
+    10,
+    Math.min(base, 560 / Math.max(shown.length, 8)),
+  );
+  const qrSize = Math.round(HEIGHT * 0.36);
+  const shownLines = lines.slice(0, 4);
+  const leftWidth = Math.min(
+    Math.max(
+      qrSize,
+      Math.ceil(Math.max(0, ...shownLines.map((l) => l.length)) * 5.5),
+    ),
+    Math.round((WIDTH - PAD * 2) * 0.45),
+  );
 
   return (
     <div
@@ -61,7 +75,7 @@ export function LabelPreview({
         background: "#fff",
         color: "#000",
         borderRadius: 6,
-        padding: Math.round(WIDTH * 0.04),
+        padding: PAD,
         display: "flex",
         flexDirection: "column",
         fontFamily: "Inter, system-ui, sans-serif",
@@ -78,55 +92,79 @@ export function LabelPreview({
       >
         {shown}
       </div>
-      {lines.length > 0 && (
-        <div style={{ fontSize: 11, marginTop: 4, lineHeight: 1.3 }}>
-          {lines.slice(0, 4).map((line) => (
-            <div key={line}>{line}</div>
-          ))}
-        </div>
-      )}
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          marginTop: 4,
-        }}
-      >
-        {artUrl ? (
-          <img
-            src={artUrl}
-            alt="Line drawing"
-            style={{
-              maxWidth: "100%",
-              maxHeight: "100%",
-              objectFit: "contain",
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              width: "60%",
-              height: "80%",
-              border: "1px dashed #999",
-              borderRadius: 4,
-              display: "grid",
-              placeItems: "center",
-            }}
-          >
-            <Text size="xs" c="dimmed">
-              drawing
-            </Text>
+      <div style={{ display: "flex", flex: 1, minHeight: 0, marginTop: 2 }}>
+        <div
+          style={{
+            width: leftWidth,
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div style={{ fontSize: 10, lineHeight: 1.25 }}>
+            {shownLines.map((line) => (
+              <div key={line}>{line}</div>
+            ))}
           </div>
-        )}
-      </div>
-      {qr && (
-        <div style={{ display: "flex", alignItems: "flex-end", marginTop: 2 }}>
-          <img src={qr} alt="QR code" width={qrSize} height={qrSize} />
+          <div style={{ marginTop: "auto" }}>
+            {qr ? (
+              <img src={qr} alt="QR code" width={qrSize} height={qrSize} />
+            ) : (
+              <div
+                style={{
+                  width: qrSize,
+                  height: qrSize,
+                  border: "1px dashed #999",
+                  borderRadius: 3,
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <Text size="xs" c="dimmed">
+                  QR
+                </Text>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            marginLeft: PAD / 2,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {artUrl ? (
+            <img
+              src={artUrl}
+              alt="Line drawing"
+              style={{
+                maxWidth: "100%",
+                maxHeight: "100%",
+                objectFit: "contain",
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                border: "1px dashed #999",
+                borderRadius: 4,
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              <Text size="xs" c="dimmed">
+                drawing
+              </Text>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -37,6 +37,19 @@ import { type LabelContent, parseLabelSize } from "./labels/spec";
 
 export const labelSchema = z.object({
   binId: z.number().int().positive(),
+  /**
+   * What the label says, as typed right now — the studio sends these so a
+   * preview or print never depends on the box row having synced first
+   * (sync is asynchronous; a print that raced it came out without its
+   * drawing). Omitted = the row's values.
+   */
+  title: z.string().max(200).optional(),
+  lines: z.array(z.string().max(200)).max(8).optional(),
+  labelArtHash: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .nullable()
+    .optional(),
   /** `qr` identifies the box by scanning; `art` is a decorative sticker. */
   template: z.enum(["qr", "art"]).optional(),
   /**
@@ -86,13 +99,15 @@ async function buildLabel(
   // A box with no name yet still needs something readable on the label — but
   // where numbers are internal, the number is the one thing NOT to print.
   const title =
-    bin.name?.trim() || (internal ? "Untitled box" : `Box ${bin.id}`);
+    (input.title ?? bin.name)?.trim() ||
+    (internal ? "Untitled box" : `Box ${bin.id}`);
 
   // The subtext is what the label SAYS; it always prints. The location only
   // on explicit request: boxes move, and a printed shelf goes stale the first
   // time one does (operator decision 2026-09-19 — the app is the live truth).
-  const lines: string[] = (bin.description ?? "")
-    .split(/\r?\n/)
+  const lines: string[] = (
+    input.lines ?? (bin.description ?? "").split(/\r?\n/)
+  )
     .map((l) => l.trim())
     .filter((l) => l.length > 0)
     .slice(0, 4);
@@ -117,27 +132,21 @@ async function buildLabel(
   // The picture the box already chose comes first — it is what the person
   // approved, and it costs nothing. Only a box with no picture, asked for one
   // explicitly, generates on the way to the printer.
-  const wantArt = input.art ?? bin.labelArtHash !== null;
-  if (wantArt && bin.labelArtHash) {
-    const png = await readBlob(ctx.groupId, bin.labelArtHash);
+  const artHash =
+    input.labelArtHash !== undefined ? input.labelArtHash : bin.labelArtHash;
+  const wantArt = input.art ?? artHash !== null;
+  if (wantArt && artHash) {
+    // Group-scoped read: a hash from another tenant's store is simply absent.
+    const png = await readBlob(ctx.groupId, artHash);
     if (png)
       content.artDataUrl = `data:image/png;base64,${png.toString("base64")}`;
   }
   if (wantArt && !content.artDataUrl) {
     if (!artAvailable()) return error(501, "no image provider configured");
     try {
-      const chosen = new Set(bin.labelIds ?? []);
-      const labelNames = await db.query.label.findMany({
-        where: eq(schema.label.groupId, ctx.groupId),
-        columns: { id: true, name: true },
-      });
       content.artDataUrl = await generateArt({
         title,
-        labels: labelNames
-          .filter((l) => chosen.has(l.id))
-          .map((l) => l.name)
-          .slice(0, 6),
-        items: lines,
+        lines,
         instructions: bin.artPrompt,
       });
     } catch (err) {

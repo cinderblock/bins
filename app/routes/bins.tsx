@@ -106,7 +106,6 @@ export default function Bins() {
   // the "/" home surface. Test the path, not the deployment setting: /bins
   // reached from the scanner still wants a working back arrow.
   const atHome = location.pathname === "/";
-  const [creating, setCreating] = useState(false);
   const numbersInternal = useDeployment()?.boxNumbers === "internal";
   const labelById = useLabelMap();
   const sizes = useBoxSizes();
@@ -260,32 +259,13 @@ export default function Bins() {
   }
 
   /**
-   * Mint one box and go straight to it. Deliberately NOT the sticker-sheet
-   * flow: that pre-allocates ids for stickers you will apply later, which is
-   * right when containers carry permanent serials and wrong when you fill a
-   * box first and label it after.
-   *
-   * Syncs before navigating — the bin page reads the replica, and without the
-   * pull it would land on a box that doesn't exist locally yet.
+   * Start a new box. Nothing is allocated yet: /new opens the label studio
+   * and the box comes into existence at the first save, drawing or print,
+   * so an abandoned "New box" tap burns no id. Admin-gated, matching
+   * /api/admin/bins/allocate.
    */
-  async function createBox() {
-    setCreating(true);
-    try {
-      const response = await apiJson<{
-        bins: { id: number; handle: string | null }[];
-      }>("/api/admin/bins/allocate", {
-        method: "POST",
-        body: JSON.stringify({ adminPassword, count: 1 }),
-      });
-      const created = response.bins[0];
-      if (!created) throw new Error("server allocated nothing");
-      await syncNow();
-      navigate(boxPath(created, numbersInternal));
-    } catch (err) {
-      fail(err);
-    } finally {
-      setCreating(false);
-    }
+  function createBox() {
+    navigate("/new");
   }
 
   // The rendered order, for the key handler below. A ref because that handler
@@ -379,9 +359,8 @@ export default function Bins() {
               size="sm"
               radius="xl"
               variant="light"
-              loading={creating}
               leftSection={<IconPlus size={18} />}
-              onClick={() => void createBox()}
+              onClick={createBox}
             >
               New box
             </Button>

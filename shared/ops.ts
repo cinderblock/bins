@@ -365,6 +365,17 @@ export const serverOpSchema = z.discriminatedUnion("type", [
       handle: z.string().uuid().nullish(),
     }),
   }),
+  /**
+   * Give a box allocated before handles existed one now. Server-authored at
+   * boot (api/migrate-handles.ts), once per handle-less box. Same sole-writer
+   * rule as allocate: nothing else ever writes a handle.
+   */
+  z.object({
+    ...opBase,
+    type: z.literal("bin.setHandle"),
+    binId,
+    payload: z.object({ handle: z.string().uuid() }),
+  }),
   // Retiring/restoring a bin flips its status. Server-authored (never pushed):
   // it's an admin action, gated by the group's admin password on the
   // /api/admin/bins/{retire,restore} endpoints — see api/admin.ts.

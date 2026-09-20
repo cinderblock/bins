@@ -27,7 +27,7 @@ export function LabelPrintSheet({
   binId,
   adminPassword,
   artAvailable,
-  hasArt = false,
+  content,
   opened,
   onClose,
 }: {
@@ -35,11 +35,15 @@ export function LabelPrintSheet({
   adminPassword: string;
   /** An image provider is configured, so a drawing could be generated. */
   artAvailable: boolean;
-  /** The box already has a chosen drawing (free to print). */
-  hasArt?: boolean;
+  /**
+   * What the label says, as the studio has it right now. Sent with every
+   * request so the print never depends on the box row having synced.
+   */
+  content: { title: string; lines: string[]; labelArtHash: string | null };
   opened: boolean;
   onClose: () => void;
 }) {
+  const hasArt = content.labelArtHash !== null;
   // A box with a chosen drawing prints it by default; one without asks.
   const [art, setArt] = useState(hasArt);
   useEffect(() => {
@@ -62,7 +66,14 @@ export function LabelPrintSheet({
     apiFetch("/api/admin/bins/label/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ adminPassword, binId, art }),
+      body: JSON.stringify({
+        adminPassword,
+        binId,
+        art,
+        title: content.title,
+        lines: content.lines,
+        labelArtHash: content.labelArtHash,
+      }),
     })
       .then((res) => res.blob())
       .then((blob) => {
@@ -85,7 +96,15 @@ export function LabelPrintSheet({
       // the page.
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [opened, binId, adminPassword, art]);
+  }, [
+    opened,
+    binId,
+    adminPassword,
+    art,
+    content.title,
+    content.lines,
+    content.labelArtHash,
+  ]);
 
   async function print() {
     setPrinting(true);
@@ -98,6 +117,9 @@ export function LabelPrintSheet({
             adminPassword,
             binId,
             art,
+            title: content.title,
+            lines: content.lines,
+            labelArtHash: content.labelArtHash,
             copies: Math.max(1, Math.min(Number(copies) || 1, 20)),
           }),
         },

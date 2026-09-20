@@ -7,8 +7,25 @@
  * box, in CI, and on any host — no native module to build, and none of the
  * "missing system font renders tofu" failures that plague server-side canvas.
  *
- * Everything is laid out LANDSCAPE (long axis horizontal, which is how the
- * design reads) and rotated 90° at the end for the printer's portrait feed.
+ * Layout follows the operator's label generator, which is the look people
+ * already know from their other stickers: everything LANDSCAPE (long axis
+ * horizontal, which is how the design reads) and rotated 90° at the end for
+ * the printer's portrait feed.
+ *
+ *   ┌──────────────────────────────────────────┐
+ *   │ TITLE, big, across the top               │
+ *   │ subtext line     ┌───────────────────────┐│
+ *   │ subtext line     │                       ││
+ *   │                  │   drawing, filling    ││
+ *   │ ┌──────┐         │   everything right of ││
+ *   │ │  QR  │         │   the left column     ││
+ *   │ └──────┘         └───────────────────────┘│
+ *   └──────────────────────────────────────────┘
+ *
+ * Tight padding (a tenth of an inch), the subtext under the title on the
+ * left, the QR in the bottom-left corner, and the drawing given the whole of
+ * the rest — to the right of the left column, from the title down to the
+ * bottom edge. The drawing is the point of the label; it gets the room.
  */
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -60,35 +77,53 @@ async function qrPngDataUrl(text: string, sizePx: number): Promise<string> {
 }
 
 /**
- * Fit the headline to the width available.
- *
- * satori wraps text on its own, but it will not SHRINK to fit, so a long box
- * name would either overflow or wrap to more lines than there is room for.
- * This estimates from Inter's average advance width; being approximate is
- * fine because satori still does the real wrapping — this only picks a size
- * that leaves it enough room.
+ * Inter Bold mixed-case mean advance / em. Erring HIGH is the safe direction:
+ * it predicts more lines than reality, so sizes chosen from it are
+ * conservative and blocks fit.
  */
-function titleSize(
+const AVG_ADVANCE = 0.58;
+/** A line occupies more than its font-size — ascender, descender, line gap. */
+const LINE_BOX = 1.15;
+
+/**
+ * Fit the headline: start at the generator's size (half an inch) and shrink
+ * only when the title would need more than `maxLines`. satori still does the
+ * real wrapping — this only picks a size that leaves it enough room. Returns
+ * the size and the number of lines it predicts, which the layout below needs
+ * to know how tall the title block is.
+ */
+function titleFit(
   title: string,
   widthPx: number,
-  maxHeightPx: number,
-): number {
-  // Inter Bold mixed-case mean advance / em. Erring HIGH is the safe
-  // direction: it predicts more lines than reality, so the chosen size is
-  // conservative and the block fits.
-  const AVG_ADVANCE = 0.58;
-  // A line occupies more than its font-size — ascender plus descender plus
-  // the font's own line gap. Sizing against fontSize alone is what clipped
-  // the last line of a long title.
-  const LINE_BOX = 1.25;
-  const start = Math.round(maxHeightPx * 0.42);
-  const min = Math.round(maxHeightPx * 0.14);
-  for (let size = start; size > min; size -= 4) {
+  startPx: number,
+  maxLines: number,
+): { fontSize: number; lines: number } {
+  const min = Math.round(startPx * 0.35);
+  for (let size = startPx; size > min; size -= 4) {
     const perLine = Math.max(1, Math.floor(widthPx / (size * AVG_ADVANCE)));
     const lines = Math.ceil(title.length / perLine);
-    if (lines * size * LINE_BOX <= maxHeightPx) return size;
+    if (lines <= maxLines) return { fontSize: size, lines };
   }
-  return min;
+  const perLine = Math.max(1, Math.floor(widthPx / (min * AVG_ADVANCE)));
+  return { fontSize: min, lines: Math.ceil(title.length / perLine) };
+}
+
+/** Pixel size of an artwork as supplied, for fitting it into its box. */
+async function imageSize(
+  dataUrl: string,
+): Promise<{ width: number; height: number } | null> {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) return null;
+  try {
+    const meta = await sharp(
+      Buffer.from(dataUrl.slice(comma + 1), "base64"),
+    ).metadata();
+    return meta.width && meta.height
+      ? { width: meta.width, height: meta.height }
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Render to a PNG in the printer's portrait geometry. */
@@ -100,104 +135,115 @@ export async function renderLabel(
   // Design space is landscape; the printer feeds portrait.
   const width = geometry.heightPx;
   const height = geometry.widthPx;
-  const pad = Math.round(width * 0.04);
+  const { dpi } = geometry;
+  // A tenth of an inch. The generator uses 20px at 203dpi; same thing.
+  const pad = Math.round(dpi * 0.1);
+  const inner = width - pad * 2;
 
   const title = content.title.trim() || "Untitled";
   const isArt = content.template === "art";
+  const lines = (content.lines ?? []).slice(0, 4);
 
-  // The art template gives the picture the room and keeps type modest; the qr
-  // template leads with the headline because that's what identifies the box.
-  const titleBoxHeight = isArt
-    ? Math.round(height * 0.22)
-    : Math.round(height * 0.42);
-  const fontSize = titleSize(title, width - pad * 2, titleBoxHeight);
+  // Headline: half an inch, at most two lines, shrinking only if it must.
+  const fit = titleFit(title, inner, Math.round(dpi * 0.5), 2);
+  const titleHeight = Math.round(fit.lines * fit.fontSize * LINE_BOX);
 
-  const qrSize = Math.round(height * 0.42);
+  // Left column: subtext, then the QR at the bottom. Its width is whichever
+  // is wider, the code or the longest line — capped so the drawing always
+  // keeps most of the label.
+  const lineSize = Math.round(dpi * 0.25);
+  const qrSize = isArt ? 0 : Math.round(height * 0.36);
+  const longestLine = lines.reduce((m, l) => Math.max(m, l.length), 0);
+  const textWidth = Math.ceil(longestLine * lineSize * 0.55);
+  const hasLeft = qrSize > 0 || lines.length > 0;
+  const leftWidth = hasLeft
+    ? Math.min(Math.max(qrSize, textWidth), Math.round(inner * 0.45))
+    : 0;
+  const gap = hasLeft ? Math.round(pad / 2) : 0;
+
+  // The drawing's box: everything right of the left column, from just under
+  // the title to the bottom edge. Sized explicitly because satori will not
+  // shrink an image to fit a flex box on its own.
+  const artBoxW = inner - leftWidth - gap;
+  const artBoxH = height - pad * 2 - titleHeight - Math.round(pad / 4);
+  let art: { src: string; width: number; height: number } | null = null;
+  if (content.artDataUrl) {
+    const size = await imageSize(content.artDataUrl);
+    if (size) {
+      const scale = Math.min(artBoxW / size.width, artBoxH / size.height, 4);
+      art = {
+        src: content.artDataUrl,
+        width: Math.max(1, Math.floor(size.width * scale)),
+        height: Math.max(1, Math.floor(size.height * scale)),
+      };
+    }
+  }
+
   const qrSrc =
     !isArt && content.url ? await qrPngDataUrl(content.url, qrSize) : null;
 
-  const children: unknown[] = [
-    {
-      type: "div",
-      props: {
-        style: {
-          display: "flex",
-          fontSize,
-          fontWeight: 700,
-          lineHeight: 1.15,
-          color: "#000",
-          // Deliberately NO maxHeight/overflow:hidden. Clipping would silently
-          // cut a box name in half; a conservative size estimate is the right
-          // way to make it fit, and if it ever doesn't, it should be obvious.
-          flexShrink: 0,
-        },
-        children: title,
-      },
-    },
-  ];
-
-  if (content.lines?.length) {
-    children.push({
-      type: "div",
-      props: {
-        style: {
-          display: "flex",
-          flexDirection: "column",
-          marginTop: Math.round(height * 0.03),
-          fontSize: Math.round(height * 0.055),
-          color: "#000",
-        },
-        children: content.lines.slice(0, 4).map((line) => ({
-          type: "div",
-          props: { style: { display: "flex" }, children: line },
-        })),
-      },
-    });
-  }
-
-  // Art fills the space between the text and the bottom row.
-  if (content.artDataUrl) {
-    children.push({
-      type: "div",
-      props: {
-        style: {
-          display: "flex",
-          flexGrow: 1,
-          alignItems: "center",
-          justifyContent: "center",
-          marginTop: Math.round(height * 0.02),
-        },
-        children: {
-          type: "img",
-          props: {
-            src: content.artDataUrl,
-            style: {
-              maxWidth: "100%",
-              maxHeight: "100%",
-              objectFit: "contain",
-            },
+  const leftColumn = hasLeft
+    ? {
+        type: "div",
+        props: {
+          style: {
+            display: "flex",
+            flexDirection: "column",
+            width: leftWidth,
+            flexShrink: 0,
+            height: "100%",
           },
+          children: [
+            ...lines.map((line) => ({
+              type: "div",
+              props: {
+                style: {
+                  display: "flex",
+                  fontSize: lineSize,
+                  lineHeight: 1.25,
+                  color: "#000",
+                },
+                children: line,
+              },
+            })),
+            ...(qrSrc
+              ? [
+                  {
+                    type: "div",
+                    props: {
+                      style: { display: "flex", marginTop: "auto" },
+                      children: {
+                        type: "img",
+                        props: { src: qrSrc, width: qrSize, height: qrSize },
+                      },
+                    },
+                  },
+                ]
+              : []),
+          ],
         },
-      },
-    });
-  }
+      }
+    : null;
 
-  if (qrSrc) {
-    children.push({
-      type: "div",
-      props: {
-        style: {
-          display: "flex",
-          marginTop: "auto",
-          alignItems: "flex-end",
-        },
-        children: {
-          type: "img",
-          props: { src: qrSrc, width: qrSize, height: qrSize },
-        },
+  const artColumn = {
+    type: "div",
+    props: {
+      style: {
+        display: "flex",
+        flexGrow: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        marginLeft: gap,
+        height: "100%",
       },
-    });
-  }
+      children: art
+        ? {
+            type: "img",
+            props: { src: art.src, width: art.width, height: art.height },
+          }
+        : null,
+    },
+  };
 
   // satori's element type is ReactNode, but building the tree as plain objects
   // keeps this file free of JSX/React just to draw a label.
@@ -213,7 +259,39 @@ export async function renderLabel(
         background: "#fff",
         fontFamily: "Inter",
       },
-      children,
+      children: [
+        {
+          type: "div",
+          props: {
+            style: {
+              display: "flex",
+              fontSize: fit.fontSize,
+              fontWeight: 700,
+              lineHeight: LINE_BOX,
+              color: "#000",
+              // Deliberately NO maxHeight/overflow:hidden. Clipping would
+              // silently cut a box name in half; a conservative size estimate
+              // is the right way to make it fit, and if it ever doesn't, it
+              // should be obvious.
+              flexShrink: 0,
+            },
+            children: title,
+          },
+        },
+        {
+          type: "div",
+          props: {
+            style: {
+              display: "flex",
+              flexDirection: "row",
+              flexGrow: 1,
+              marginTop: Math.round(pad / 4),
+              minHeight: 0,
+            },
+            children: [leftColumn, artColumn].filter(Boolean),
+          },
+        },
+      ],
     },
   } as unknown as Parameters<typeof satori>[0];
 

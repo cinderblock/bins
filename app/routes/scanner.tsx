@@ -251,6 +251,9 @@ export default function Scanner() {
   }
 
   async function onScan(target: ScanTarget) {
+    // A bare number is not a sticker here: only handles are printed, so a
+    // numeric code is someone else's QR, not one of ours.
+    if (numbersInternal && target.handle === null) return;
     const bin = await findBox(target);
     // Same box again: don't re-pop a peek the user collapsed.
     if (bin ? bin.id === currentBinId : target.binId === currentBinId) return;

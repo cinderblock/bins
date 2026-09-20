@@ -12,6 +12,9 @@ export default [
     // The scanner's own stable URL, so browse-home deployments can link to it
     // and so "open the camera" is always a real destination.
     route("scan", "routes/scanner.tsx"),
+    // "/new" — the label studio for a box that isn't allocated until it must
+    // be (first save, drawing or print). Admin only.
+    route("new", "routes/new.tsx"),
     // "/123" — one URL per physical box; also the claim flow for fresh stickers.
     route(":binId", "routes/bin.tsx"),
     // "/b/<uuid>" — the same page by opaque handle, the form deployments that

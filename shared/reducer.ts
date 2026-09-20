@@ -286,10 +286,22 @@ export async function applyOp(
     case "bin.allocate": {
       const bin = await touchBin(store, op);
       bin.secretCode = op.payload.code;
-      // Sole writer, like the code: the one allocate per bin sets it, so no
-      // clock. `?? null` keeps replicas byte-identical whether the op carried
-      // the field or predates it.
-      bin.handle = op.payload.handle ?? null;
+      // Sole writer, like the code — except for boxes older than handles,
+      // whose allocate carries none and whose handle arrives by a later
+      // bin.setHandle instead. An allocate without one must therefore never
+      // CLEAR a handle a setHandle already put there, or the result would
+      // depend on which op a replica saw first. `?? null` keeps replicas
+      // byte-identical whether the op carried the field or predates it.
+      bin.handle = op.payload.handle ?? bin.handle ?? null;
+      await store.putBin(bin);
+      return;
+    }
+
+    case "bin.setHandle": {
+      // Backfill for boxes older than handles; the one writer besides
+      // allocate, and only ever for a box that has none.
+      const bin = await touchBin(store, op);
+      bin.handle = op.payload.handle;
       await store.putBin(bin);
       return;
     }

@@ -15,6 +15,7 @@ import { storeBlob } from "./blobs";
 import { type Ctx, error, json } from "./context";
 import {
   ArtBudgetError,
+  ArtInputError,
   ArtUnavailableError,
   artStatus,
   generateArtPng,
@@ -29,6 +30,13 @@ const referenceSchema = z.object({
 
 export const artRequestSchema = z.object({
   binId: z.number().int().positive(),
+  /**
+   * What the label says, as typed right now. The studio sends these rather
+   * than trusting the box row to have synced: sync is asynchronous, and a
+   * request that raced it drew "a storage box". Omitted = the row's values.
+   */
+  title: z.string().max(200).optional(),
+  lines: z.array(z.string().max(200)).max(8).optional(),
   /** One of artStatus().models; omitted = the deployment default. */
   model: z.string().max(100).optional(),
   /** Overrides the box's saved artPrompt for this generation only. */
@@ -61,28 +69,18 @@ export async function handleArt(
   // read the description of, another tenant's box.
   if (!bin) return error(404, "no such bin");
 
-  const labelNames = await db.query.label.findMany({
-    where: eq(schema.label.groupId, ctx.groupId),
-    columns: { id: true, name: true },
-  });
-  const chosen = new Set(bin.labelIds ?? []);
-  // The box's OWN categories, not the whole group's vocabulary: "kitchen"
-  // on a box of cables draws the wrong picture.
-  const labels = labelNames
-    .filter((l) => chosen.has(l.id))
-    .map((l) => l.name)
-    .slice(0, 6);
-  const items = (bin.description ?? "")
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .slice(0, 8);
+  const lines =
+    input.lines ??
+    (bin.description ?? "")
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .slice(0, 4);
 
   try {
     const result = await generateArtPng({
-      title: bin.name?.trim() || "",
-      labels,
-      items,
+      title: input.title ?? bin.name ?? "",
+      lines,
       instructions: input.instructions ?? bin.artPrompt ?? undefined,
       references: input.references,
       model: input.model,
@@ -102,6 +100,7 @@ export async function handleArt(
       budgetUsd: status.budgetUsd,
     });
   } catch (err) {
+    if (err instanceof ArtInputError) return error(400, err.message);
     if (err instanceof ArtBudgetError) return error(402, err.message);
     if (err instanceof ArtUnavailableError) return error(501, err.message);
     const reason = err instanceof Error ? err.message : String(err);

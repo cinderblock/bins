@@ -33,9 +33,10 @@ function call(
     xff?: string;
     /** The build the calling device reports RUNNING (see api/context.ts). */
     build?: string;
+    headers?: Record<string, string>;
   } = {},
 ): Promise<Response> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...(opts.headers ?? {}) };
   if (opts.token) headers.Authorization = `Bearer ${opts.token}`;
   if (opts.origin) headers.Origin = opts.origin;
   if (opts.xff) headers["X-Forwarded-For"] = opts.xff;
@@ -828,6 +829,34 @@ describe("api", () => {
     expect(me.status).toBe(200);
   });
 
+  test("boxes from before handles get one at boot, through the reducer", async () => {
+    const { migrateMissingHandles } = await import("./migrate-handles");
+    const { and, eq } = await import("drizzle-orm");
+    const first = allocated[0] as { id: number; handle: string };
+    // Simulate a pre-handle box: the row as an older allocate left it.
+    await db
+      .update(schema.bin)
+      .set({ handle: null })
+      .where(eq(schema.bin.id, first.id));
+    expect(await migrateMissingHandles()).toBe(1);
+    const row = await db.query.bin.findFirst({
+      where: eq(schema.bin.id, first.id),
+    });
+    expect(row?.handle).toMatch(/^[0-9a-f-]{36}$/);
+    // It went through the op log, so every replica learns it by pull.
+    const op = await db.query.op.findFirst({
+      where: and(
+        eq(schema.op.binId, first.id),
+        eq(schema.op.type, "bin.setHandle"),
+      ),
+    });
+    expect(op).toBeTruthy();
+    // Nothing left to do on the next boot.
+    expect(await migrateMissingHandles()).toBe(0);
+    // Later tests look the box up by its (new) handle.
+    first.handle = row?.handle as string;
+  });
+
   test("join-by-bin: sticker pair joins (even unclaimed); bare id never does", async () => {
     // Happy path on an UNCLAIMED bin, with the code typed in the wrong case.
     const fresh = allocated[2] as {
@@ -1301,6 +1330,33 @@ describe("open access", () => {
     });
     // 404, not 403: a closed deployment doesn't advertise the route at all.
     expect(res.status).toBe(404);
+  });
+
+  test("the proxy can vouch for a client the backstop can't place", async () => {
+    // A phone on a dual-stack LAN arrives from a GLOBAL IPv6 address, which
+    // the private-address backstop cannot recognise as on-link — the reverse
+    // proxy can, and says so with a header only it sets.
+    await withOpenAccess({}, async () => {
+      const refused = await call("POST", "/api/auth/join-open", {
+        body: { displayName: "Phone", deviceId: crypto.randomUUID() },
+        xff: "2600:1700:459:8a1f::365",
+      });
+      expect(refused.status).toBe(403);
+      const vouched = await call("POST", "/api/auth/join-open", {
+        body: { displayName: "Phone", deviceId: crypto.randomUUID() },
+        xff: "2600:1700:459:8a1f::365",
+        headers: { "X-Bins-Perimeter": "lan" },
+      });
+      expect(vouched.status).toBe(200);
+      // The header is the proxy's word, not a password: any other value
+      // means nothing.
+      const wrong = await call("POST", "/api/auth/join-open", {
+        body: { displayName: "Phone", deviceId: crypto.randomUUID() },
+        xff: "203.0.113.9",
+        headers: { "X-Bins-Perimeter": "yes" },
+      });
+      expect(wrong.status).toBe(403);
+    });
   });
 
   test("landing advertises the mode so the SPA can pick its gate", async () => {

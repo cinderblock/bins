@@ -172,12 +172,29 @@ async function uploadBlobs(): Promise<void> {
 }
 
 /** Run one full sync cycle; coalesces concurrent calls. */
+let inFlight: Promise<void> | null = null;
+
+/**
+ * Run a sync pass, and RESOLVE ONLY WHEN IT IS DONE — including a pass that
+ * was already running when this was called. Callers that just enqueued an op
+ * and are about to ask the server about it (drawing a label for a box named
+ * a second ago, printing it) need the push to have actually happened, and
+ * "another pass is running, come back later" left them racing it.
+ */
 export async function syncNow(): Promise<void> {
   if (!(await getIdentity())) return;
-  if (syncing) {
+  if (inFlight) {
     queuedAgain = true;
-    return;
+    return inFlight;
   }
+  inFlight = runSync().finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
+async function runSync(): Promise<void> {
+  if (syncing) return;
   syncing = true;
   try {
     do {

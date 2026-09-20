@@ -12,8 +12,15 @@
  * and the one you tap is the one the box keeps. The chosen picture lives on
  * the box (labelArtHash), so a reprint months from now is free and identical.
  *
- * Two modes, one component: `new` sets up a freshly allocated box (its first
- * save is the claim); `edit` revisits an existing one from the Label button.
+ * A NEW box does not exist until it has to: `/new` opens the studio with no
+ * box at all, and the first thing that needs one — a drawing, a print, a
+ * save — allocates it. Walking away from an untouched studio costs nothing.
+ * `edit` revisits an existing box from its Label button.
+ *
+ * Every request to the server (drawing, preview, print) carries what THIS
+ * FORM says — title, subtext, chosen drawing — rather than relying on the
+ * box row having synced first. The sync engine is asynchronous by design and
+ * a request that raced it once drew a picture of "a storage box".
  */
 import {
   ActionIcon,
@@ -52,7 +59,8 @@ import { LabelPrintSheet } from "~/components/LabelSheet.print";
 import { SizePicker } from "~/components/SizePicker";
 import { WeightInput } from "~/components/WeightInput";
 import { claimBin, setBinFields, setBinLabel } from "~/lib/actions";
-import { boxPath, useBoxNumbersInternal } from "~/lib/boxRef";
+import { apiJson } from "~/lib/api";
+import { type BoxRef, boxPath, useBoxNumbersInternal } from "~/lib/boxRef";
 import { useBoxSizes } from "~/lib/boxSizes";
 import { useDeployment } from "~/lib/deployment";
 import {
@@ -74,7 +82,19 @@ type Candidate = {
   model: string;
 };
 
+/** The little a studio needs to know about its box once it has one. */
+type BoxIdentity = BoxRef & { secretCode: string | null };
+
 const MAX_REFERENCES = 5;
+
+/** The subtext as printed: trimmed lines, blanks dropped, at most four. */
+export function subtextLines(description: string): string[] {
+  return description
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 4);
+}
 
 export function LabelStudio({
   bin,
@@ -82,49 +102,65 @@ export function LabelStudio({
   adminPassword,
   onDone,
 }: {
-  bin: BinState;
+  /** The box, or null for a box that will be allocated on first need. */
+  bin: BinState | null;
   mode: "new" | "edit";
   adminPassword: string;
-  onDone: () => void;
+  /** Called with the box (allocated by then, unless nothing was ever saved). */
+  onDone: (box: BoxRef | null) => void;
 }) {
   const sizes = useBoxSizes();
   const deployment = useDeployment();
   const numbersInternal = useBoxNumbersInternal();
 
   // --- what the box says ---------------------------------------------------
-  const [name, setName] = useState(bin.name ?? "");
-  const [description, setDescription] = useState(bin.description ?? "");
-  const [sizeId, setSizeId] = useState<string | null>(bin.sizeId);
-  const [labels, setLabels] = useState<Set<string>>(new Set(bin.labelIds));
-  const [fillLevel, setFillLevel] = useState<number | null>(bin.fillLevel);
+  const [name, setName] = useState(bin?.name ?? "");
+  const [description, setDescription] = useState(bin?.description ?? "");
+  const [sizeId, setSizeId] = useState<string | null>(bin?.sizeId ?? null);
+  const [labels, setLabels] = useState<Set<string>>(
+    new Set(bin?.labelIds ?? []),
+  );
+  const [fillLevel, setFillLevel] = useState<number | null>(
+    bin?.fillLevel ?? null,
+  );
   const [weightGrams, setWeightGrams] = useState<number | null>(
-    bin.weightGrams,
+    bin?.weightGrams ?? null,
   );
 
   // --- what it shows -------------------------------------------------------
-  const [artPrompt, setArtPrompt] = useState(bin.artPrompt ?? "");
+  const [artPrompt, setArtPrompt] = useState(bin?.artPrompt ?? "");
   const [references, setReferences] = useState<ArtReference[]>([]);
   const [art, setArt] = useState<ArtStatus | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [chosenHash, setChosenHash] = useState<string | null>(bin.labelArtHash);
+  const [chosenHash, setChosenHash] = useState<string | null>(
+    bin?.labelArtHash ?? null,
+  );
   const [chosenUrl, setChosenUrl] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
+
+  // The box this studio is editing. Null until allocated (the `/new` case);
+  // a ref as well as state because flush() runs inside async handlers that
+  // must see the identity the moment it exists, not on the next render.
+  const [box, setBox] = useState<BoxIdentity | null>(
+    bin ? { id: bin.id, handle: bin.handle, secretCode: bin.secretCode } : null,
+  );
+  const boxRef = useRef<BoxIdentity | null>(box);
   // In `new` mode the first save is the claim; after that, ordinary edits.
-  const claimedRef = useRef(mode === "edit" || bin.status !== "unclaimed");
+  const claimedRef = useRef(mode === "edit" || bin?.status === "active");
   // What was last written, so a flush only sends what changed since.
   const writtenRef = useRef<BinFields>({
-    name: bin.name,
-    description: bin.description,
-    sizeId: bin.sizeId,
-    fillLevel: bin.fillLevel,
-    weightGrams: bin.weightGrams,
-    artPrompt: bin.artPrompt,
-    labelArtHash: bin.labelArtHash,
+    name: bin?.name ?? null,
+    description: bin?.description ?? null,
+    sizeId: bin?.sizeId ?? null,
+    fillLevel: bin?.fillLevel ?? null,
+    weightGrams: bin?.weightGrams ?? null,
+    artPrompt: bin?.artPrompt ?? null,
+    labelArtHash: bin?.labelArtHash ?? null,
   });
-  const writtenLabelsRef = useRef<Set<string>>(new Set(bin.labelIds));
+  const writtenLabelsRef = useRef<Set<string>>(new Set(bin?.labelIds ?? []));
 
   useEffect(() => {
     let cancelled = false;
@@ -181,38 +217,63 @@ export function LabelStudio({
     };
   }
 
+  /** The box, allocating one if this studio has none yet. */
+  async function ensureBox(): Promise<BoxIdentity> {
+    if (boxRef.current) return boxRef.current;
+    const response = await apiJson<{
+      bins: { id: number; handle: string | null; code: string | null }[];
+    }>("/api/admin/bins/allocate", {
+      method: "POST",
+      body: JSON.stringify({ adminPassword, count: 1 }),
+    });
+    const created = response.bins[0];
+    if (!created) throw new Error("server allocated nothing");
+    const identity: BoxIdentity = {
+      id: created.id,
+      handle: created.handle,
+      secretCode: created.code,
+    };
+    boxRef.current = identity;
+    setBox(identity);
+    return identity;
+  }
+
   /**
-   * Write everything that changed. The first write of a new box is its
-   * claim; every later write is a setFields carrying only changed keys, so
-   * a field left alone can never clobber another device's newer value.
+   * Write everything that changed, allocating the box first if it doesn't
+   * exist. The first write of a new box is its claim; every later write is a
+   * setFields carrying only changed keys, so a field left alone can never
+   * clobber another device's newer value. Returns once the server has it.
    */
-  async function flush(): Promise<void> {
+  async function flush(): Promise<BoxIdentity> {
+    const target = await ensureBox();
     const next = currentFields();
     if (!claimedRef.current) {
-      await claimBin(bin.id, next);
+      await claimBin(target.id, next);
       claimedRef.current = true;
       writtenRef.current = next;
-      for (const id of labels) await setBinLabel(bin.id, id, true);
+      for (const id of labels) await setBinLabel(target.id, id, true);
       writtenLabelsRef.current = new Set(labels);
-      return;
-    }
-    const changed: BinFields = {};
-    for (const key of Object.keys(next) as (keyof BinFields)[]) {
-      if (next[key] !== writtenRef.current[key]) {
-        // biome-ignore lint/suspicious/noExplicitAny: same key both sides
-        (changed as any)[key] = next[key];
+    } else {
+      const changed: BinFields = {};
+      for (const key of Object.keys(next) as (keyof BinFields)[]) {
+        if (next[key] !== writtenRef.current[key]) {
+          // biome-ignore lint/suspicious/noExplicitAny: same key both sides
+          (changed as any)[key] = next[key];
+        }
       }
+      if (Object.keys(changed).length > 0) {
+        await setBinFields(target.id, changed);
+        writtenRef.current = { ...writtenRef.current, ...changed };
+      }
+      for (const id of labels)
+        if (!writtenLabelsRef.current.has(id))
+          await setBinLabel(target.id, id, true);
+      for (const id of writtenLabelsRef.current)
+        if (!labels.has(id)) await setBinLabel(target.id, id, false);
+      writtenLabelsRef.current = new Set(labels);
     }
-    if (Object.keys(changed).length > 0) {
-      await setBinFields(bin.id, changed);
-      writtenRef.current = { ...writtenRef.current, ...changed };
-    }
-    for (const id of labels)
-      if (!writtenLabelsRef.current.has(id))
-        await setBinLabel(bin.id, id, true);
-    for (const id of writtenLabelsRef.current)
-      if (!labels.has(id)) await setBinLabel(bin.id, id, false);
-    writtenLabelsRef.current = new Set(labels);
+    await syncNow();
+    return target;
   }
 
   function toggleLabel(labelId: string, present: boolean) {
@@ -244,8 +305,8 @@ export function LabelStudio({
   /**
    * Another candidate. Never disabled while one is in flight: each tap is a
    * separate job with its own nonce, so the results are different pictures
-   * and the person picks. The box's fields are flushed and synced first,
-   * because the server draws from what the BOX says, not from this form.
+   * and the person picks. The request carries the title, subtext and
+   * instructions as typed right now.
    */
   async function generate() {
     if (!name.trim()) {
@@ -266,9 +327,10 @@ export function LabelStudio({
       },
     ]);
     try {
-      await flush();
-      await syncNow();
-      const result = await generateLabelArt(adminPassword, bin.id, {
+      const target = await flush();
+      const result = await generateLabelArt(adminPassword, target.id, {
+        title: name.trim(),
+        lines: subtextLines(description),
         model: chosenModel,
         instructions: artPrompt.trim() || null,
         references,
@@ -312,16 +374,15 @@ export function LabelStudio({
   async function save(then: "done" | "print") {
     setSaving(true);
     try {
-      await flush();
+      const target = await flush();
       if (then === "print") {
-        await syncNow();
         setPrintOpen(true);
       } else {
         notifications.show({
           message: mode === "new" ? "Box set up" : "Saved",
           color: "green",
         });
-        onDone();
+        onDone(target);
       }
     } catch (err) {
       notifications.show({
@@ -334,16 +395,13 @@ export function LabelStudio({
   }
 
   const origin = typeof window === "undefined" ? "" : window.location.origin;
-  const previewPath = boxPath(bin, numbersInternal);
-  const previewUrl = (
-    bin.secretCode
-      ? `${origin}${previewPath}#${bin.secretCode}`
-      : `${origin}${previewPath}`
-  ).toUpperCase();
-  const lines = description
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
+  const previewUrl = box
+    ? (box.secretCode
+        ? `${origin}${boxPath(box, numbersInternal)}#${box.secretCode}`
+        : `${origin}${boxPath(box, numbersInternal)}`
+      ).toUpperCase()
+    : null;
+  const lines = subtextLines(description);
   const canPrint = deployment?.labelPrinting === true;
   const modelInfo = art?.models.find((m) => m.id === model);
   const pending = candidates.filter((c) => c.status === "pending").length;
@@ -603,17 +661,19 @@ export function LabelStudio({
         )}
       </Group>
 
-      <LabelPrintSheet
-        binId={bin.id}
-        adminPassword={adminPassword}
-        artAvailable={art?.available === true}
-        hasArt={chosenHash !== null}
-        opened={printOpen}
-        onClose={() => {
-          setPrintOpen(false);
-          onDone();
-        }}
-      />
+      {box && (
+        <LabelPrintSheet
+          binId={box.id}
+          adminPassword={adminPassword}
+          artAvailable={art?.available === true}
+          content={{ title: name.trim(), lines, labelArtHash: chosenHash }}
+          opened={printOpen}
+          onClose={() => {
+            setPrintOpen(false);
+            onDone(box);
+          }}
+        />
+      )}
     </Stack>
   );
 }
