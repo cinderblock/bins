@@ -291,6 +291,14 @@ The new-box flow becomes one screen modelled on the label generator:
       staged alongside the pin bump). Dev-server check: `/new` renders with a
       QR placeholder, Save allocates exactly one box, claims it, lands on it.
 
+- [x] Second pass deployed 2026-09-20 (ops `d82aa49`, pin `e9f7ea4`).
+      Verified live: `/_version` = `e9f7ea4`; boot log "assigned handles to
+      2 box(es)"; an open-join POST over global IPv6 now answers 400
+      (body validation) instead of 403 (perimeter), so the proxy header works.
+- [x] `d03fb31`: one "Save & print label" action with a quiet "Save without
+      printing" beneath (operator: they shouldn't be separate). Pin bump
+      staged in ops.
+
 ## Things not to do
 
 - Don't change the bin primary key type; don't touch the reducer's id type.
