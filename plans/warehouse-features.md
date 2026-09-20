@@ -178,19 +178,17 @@ The new-box flow becomes one screen modelled on the label generator:
   `instructions`; prompt text aligned with the label generator's (explicit
   line-width guidance, the "references are style only" line).
 
-## Plan / steps (ordered; current step marked)
+## Plan / steps (all built 2026-09-19; see progress log)
 
 1. Decisions from the operator: done.
-2. **← current** Quick wins: external label removal; ClaimBin uses defined sizes; size
-   icons; fill level; hide numbers everywhere under `internal`.
-3. Box handles (if chosen): allocation, schema, routes, scan parser, labels,
-   join, v1.
-4. Shelves: bay builder, slot placement, resolved display, wall view.
-5. Label-first new box: fields, live preview, references, model choice,
-   candidates, saved art entry, print.
-6. Per-instance env on the warehouse deployment (ops, per-change
-   authorization): `LABEL_ART_API_KEY`, `LABEL_ART_BUDGET_USD`,
-   `LABEL_PRINT_URL` once the print server accepts `POST image/png`.
+2. Quick wins: done (`b9774ba`, `26f57d8`).
+3. Box handles: done (`5325db0` model, `d761192` UI/API).
+4. Shelves: done (`45378b2`).
+5. Label-first new box: done (studio commit).
+6. **← current** Per-instance env on the warehouse deployment (ops,
+   per-change authorization): `LABEL_ART_API_KEY`, `LABEL_ART_BUDGET_USD`,
+   optionally `LABEL_ART_MODEL`; `LABEL_PRINT_URL` once the print server
+   accepts `POST image/png`. Then bump the ops pin to the built image.
 
 ## Findings / gotchas
 
@@ -228,13 +226,36 @@ The new-box flow becomes one screen modelled on the label generator:
 
 - [x] Surveyed ids, sizes/icons/external label, locations, both label
       pipelines (2026-09-19).
-- [x] Plan written.
-- [x] Decisions received (2026-09-19): UUID handles; all at once; no shelf on stickers.
-- [ ] Step 2 quick wins.
-- [ ] Step 3 handles.
-- [ ] Step 4 shelves.
-- [ ] Step 5 label-first new box.
-- [ ] Step 6 deployment env.
+- [x] Plan written; decisions received (UUID handles; all at once; no shelf
+      on stickers).
+- [x] Model (`5325db0`): handle, fillLevel, description, artPrompt,
+      labelArtHash on bins; span on places; icon on sizes; Dexie v10;
+      migration 0015. Also fixed the server never persisting
+      locationId/slot.
+- [x] Handles + number hiding (`d761192`): `/b/<handle>` route, scan parser,
+      join-by-sticker, v1, labels, sticker export; every `#id` leak routed
+      through `app/lib/boxRef.ts`.
+- [x] Fill level + subtext, external-label inputs removed (`b9774ba`).
+- [x] Size icons + claim panel uses defined sizes + S/M/L starter (`26f57d8`).
+- [x] Shelves (`45378b2`): bay builder, slot picker in the location sheet,
+      resolved display everywhere, search over breadcrumbs, `/shelves` wall.
+- [x] Label-first studio: `LabelStudio` (new + edit modes) with free live
+      preview, art instructions, ≤5 reference pictures (512 px JPEG hints),
+      Lite/Flash/Pro with cost + monthly spend, never-blocking candidates,
+      chosen art saved on the box and stored as a group blob;
+      `POST /api/admin/bins/art`, `/api/admin/art/status`; the label
+      renderer prints the saved art and the subtext; location never printed.
+- [x] Checks: typecheck, lint, 166 tests green at each commit.
+- [x] **Browser-verified 2026-09-19 on the dev server** (public-number
+      deployment, no art key): New box → studio → title/subtext/size/fill →
+      Save box → box page shows all of it; admin bay builder D0–D5 with
+      3×1 / 3×2 / 3×4 grids (verified in SQLite); location sheet drill
+      D → D1 slot 2 → box page reads "D › D1 · slot 2"; `/shelves` draws
+      D5…D0 top-down with the box in its slot and the unplaced list.
+      NOT driven in a browser: art generation (needs a provider key; covered
+      by the API test with a stubbed provider) and printing (no printer).
+- [ ] Step 6: deployment env (ops, waits for the operator) and the print
+      server's `POST image/png` endpoint (that repo's agent).
 
 ## Things not to do
 
