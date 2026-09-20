@@ -3,7 +3,15 @@
  * table (the replica IS the auth boundary on this device) and is cached in
  * module state after the first read.
  */
-import { getIdentity } from "./db";
+import { REMOTE_LOCKED_KEY, getIdentity, setMeta } from "./db";
+
+/**
+ * The server's one refusal for a device off the deployment's network without
+ * a passkey session (api/router.ts PASSKEY_REQUIRED). Matched by text: the
+ * status is 403 like any other refusal, on purpose (a 401 would send the
+ * sync engine off to re-join, which is exactly what can't happen remotely).
+ */
+export const PASSKEY_REQUIRED = "passkey required";
 
 /**
  * The commit this bundle was built from, stamped in by Vite at build time
@@ -52,6 +60,11 @@ export async function apiFetch(
       const body = (await res.clone().json()) as { error?: string };
       if (body.error) message = body.error;
     } catch {}
+    // Remember the refusal where the shell can see it: it swaps the app for
+    // the passkey sign-in until a sign-in (or a sync back on the network)
+    // clears it.
+    if (res.status === 403 && message === PASSKEY_REQUIRED)
+      void setMeta(REMOTE_LOCKED_KEY, true);
     throw new ApiError(res.status, message);
   }
   return res;

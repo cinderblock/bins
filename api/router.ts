@@ -13,6 +13,7 @@ import { handleBlob } from "./blobs";
  * framework would be more code than this. Mounted at /api by both api/dev.ts
  * (dev, TCP) and server.ts (production, unix socket).
  */
+import { isRemote } from "./config";
 import { type Ctx, authenticate, canWrite, error } from "./context";
 import { handlePreflight, isCorsPath, withCors } from "./cors";
 import { handleErrorReport } from "./errors";
@@ -29,6 +30,12 @@ import { handleSetup } from "./setup";
 import { handlePull, handlePush } from "./sync";
 import { handleV1 } from "./v1";
 
+/**
+ * The one refusal a remote visitor gets. The client matches this string
+ * (app/lib/api.ts) to show the passkey sign-in, so it is a contract.
+ */
+export const PASSKEY_REQUIRED = "passkey required";
+
 export async function handleApi(req: Request, url: URL): Promise<Response> {
   const path = url.pathname;
   const method = req.method;
@@ -37,6 +44,14 @@ export async function handleApi(req: Request, url: URL): Promise<Response> {
     // CORS preflight carries no Authorization header — answer it before auth.
     if (method === "OPTIONS" && isCorsPath(path))
       return await handlePreflight(req);
+
+    // Off the perimeter on a REMOTE_ACCESS=passkey deployment, the only way
+    // in is a passkey: every flavour of join, and first-boot setup, are
+    // LAN-only. Same message the gate below uses, so the client has one
+    // string to recognise.
+    const remote = isRemote(req);
+    if (remote && (path.startsWith("/api/auth/join") || path === "/api/setup"))
+      return error(403, PASSKEY_REQUIRED);
 
     // Unauthenticated surface: joining, landing branding, first-boot setup.
     if (path === "/api/auth/join" && method === "POST")
@@ -51,7 +66,7 @@ export async function handleApi(req: Request, url: URL): Promise<Response> {
     if (path === "/api/auth/join-open" && method === "POST")
       return await handleJoinOpen(req);
     if (path === "/api/landing" && method === "GET")
-      return await handleLanding();
+      return await handleLanding(req);
     // Under /api/ on purpose: that prefix is the service worker's navigation
     // denylist, so this reaches the server even from a device a stale worker
     // has stranded. See api/recover.ts.
@@ -67,7 +82,36 @@ export async function handleApi(req: Request, url: URL): Promise<Response> {
       return await handleSetup(req);
 
     const ctx = await authenticate(req);
+
+    // The passkey login ceremony works with OR without a device: a joined
+    // device becomes admin, a fresh browser (an admin reaching in from the
+    // internet) gets a device minted for it. That is why these two sit
+    // before the 401 and before the remote gate — they are the way through
+    // both. Members only when there is a token: an integration credential
+    // never turns into an admin.
+    if (path === "/api/passkey/login/options" && method === "POST") {
+      if (ctx && ctx.kind !== "member") return error(403, "members only");
+      return await handlePasskeyLoginOptions(req, ctx);
+    }
+    if (path === "/api/passkey/login/verify" && method === "POST") {
+      if (ctx && ctx.kind !== "member") return error(403, "members only");
+      return await handlePasskeyLoginVerify(
+        req,
+        ctx,
+        await req.json().catch(() => null),
+      );
+    }
+
     if (!ctx) return error(401, "unauthorized");
+
+    // The remote gate: off the perimeter, only a device with a live passkey
+    // session is served — anything else (a member who joined on the LAN and
+    // took the phone home, an integration token, an admin whose session ran
+    // out) gets a 403 the client turns into the passkey sign-in card. 403
+    // and not 401 on purpose: 401 means "your token is dead, re-join", and
+    // re-joining is exactly what can't happen from here.
+    if (remote && !(ctx.adminUntil !== null && ctx.adminUntil > Date.now()))
+      return error(403, PASSKEY_REQUIRED);
 
     // Integration browser calls get CORS headers on their real response.
     return withCors(await dispatch(req, url, ctx, path, method), req, ctx);
@@ -112,19 +156,11 @@ async function dispatch(
     return await handlePushStatus(ctx);
   if (path === "/api/push/unsubscribe" && method === "POST")
     return await handleUnsubscribe(ctx);
-  // Passkey ceremonies for admin: a member device proves it holds one of the
-  // group's passkeys and becomes admin for a while (see api/passkeys.ts).
+  // Passkey status and lock for a joined device (the login ceremony itself is
+  // routed before authentication — see handleApi).
   if (path.startsWith("/api/passkey/") && method === "POST") {
     if (ctx.kind !== "member") return error(403, "members only");
     if (path === "/api/passkey/status") return await handlePasskeyStatus(ctx);
-    if (path === "/api/passkey/login/options")
-      return await handlePasskeyLoginOptions(req, ctx);
-    if (path === "/api/passkey/login/verify")
-      return await handlePasskeyLoginVerify(
-        req,
-        ctx,
-        await req.json().catch(() => null),
-      );
     if (path === "/api/passkey/logout") return await handlePasskeyLogout(ctx);
     return error(404, "no such endpoint");
   }

@@ -48,6 +48,12 @@ where.
   device unlocks admin with the passkey; the password is never typed on it.
   Passkeys belong to the group, are listed and revocable in admin, and a
   passkey unlock lasts ninety days or until Lock.
+- **Admins from anywhere, everyone else on the LAN**: a perimeter-protected
+  deployment can set `REMOTE_ACCESS=passkey` and widen its proxy to forward
+  outsiders (without the perimeter header). From outside, the only way in is
+  a passkey sign-in — no access code, no sticker, no password — and it works
+  in a fresh browser, minting the device on the spot. A member who takes a
+  phone off-site sees a sign-in card until they are back on the network.
 - **Scans are recorded**: every printed sticker carries a short code in its
   QR fragment, so opening one records a sighting (when, and which sticker).
   Boxes show "scanned 3d ago", and a scan of an older print than the box's

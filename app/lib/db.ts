@@ -319,6 +319,13 @@ export const IDENTITY_KEY = "identity";
 export const LAST_SEQ_KEY = "lastSeq";
 /** True when the server 401'd this device's token — see lib/auth.ts. */
 export const AUTH_DEAD_KEY = "authDead";
+/**
+ * True when the server refused this device with "passkey required": it is
+ * off the deployment's network and holds no passkey session. Cleared by a
+ * passkey sign-in or by a sync that succeeds (back on the network). See
+ * components/RemoteSignIn.tsx.
+ */
+export const REMOTE_LOCKED_KEY = "remoteLocked";
 /** One-time "add to home screen" nudge already shown. */
 export const INSTALL_HINT_KEY = "installHintShown";
 /** Verified group admin password, remembered on this device (see lib/admin.ts). */

@@ -49,18 +49,30 @@ export function normalizeAccessCode(code: string): string {
   return code.trim().toLowerCase();
 }
 
-/** Mint the device row + bearer token — the shared tail of every join path. */
-export async function mintDevice(
+/** What a joined device stores: its bearer and who it is. */
+export type MintedIdentity = {
+  token: string;
+  deviceId: string;
+  groupId: string;
+  groupName: string;
+  displayName: string;
+};
+
+/**
+ * Create the device row + bearer token. Null when the id is already taken:
+ * a stale/duplicated deviceId must not let anyone adopt another device's
+ * identity — the client just regenerates a uuid and retries.
+ */
+export async function createDevice(
   group: { id: string; name: string },
   displayName: string,
   deviceId: string,
-): Promise<Response> {
+  extra: { adminUntil?: Date } = {},
+): Promise<MintedIdentity | null> {
   const existing = await db.query.device.findFirst({
     where: eq(schema.device.id, deviceId),
   });
-  // A stale/duplicated deviceId must not let anyone adopt another device's
-  // identity — the client just regenerates a uuid and retries.
-  if (existing) return error(409, "device id already registered");
+  if (existing) return null;
 
   const token = crypto.randomUUID() + crypto.randomUUID();
   await db.insert(schema.device).values({
@@ -68,15 +80,27 @@ export async function mintDevice(
     groupId: group.id,
     displayName,
     tokenHash: sha256Hex(token),
+    ...(extra.adminUntil ? { adminUntil: extra.adminUntil } : {}),
   });
 
-  return json({
+  return {
     token,
     deviceId,
     groupId: group.id,
     groupName: group.name,
     displayName,
-  });
+  };
+}
+
+/** Mint the device row + bearer token — the shared tail of every join path. */
+export async function mintDevice(
+  group: { id: string; name: string },
+  displayName: string,
+  deviceId: string,
+): Promise<Response> {
+  const identity = await createDevice(group, displayName, deviceId);
+  if (!identity) return error(409, "device id already registered");
+  return json(identity);
 }
 
 export async function handleJoin(req: Request): Promise<Response> {

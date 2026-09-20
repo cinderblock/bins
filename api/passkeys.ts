@@ -30,6 +30,7 @@ import type {
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "../db/client.server";
+import { createDevice } from "./auth";
 import { publicOrigin } from "./config";
 import { type Ctx, error, json } from "./context";
 
@@ -112,7 +113,10 @@ export async function handlePasskeyRegisterOptions(
         | undefined,
     })),
     authenticatorSelection: {
-      residentKey: "preferred",
+      // Discoverable, so a browser with no device yet (an admin reaching in
+      // from the internet) can sign in without being handed a credential
+      // list — the authenticator finds the passkey by rpID on its own.
+      residentKey: "required",
       userVerification: "preferred",
     },
   });
@@ -201,44 +205,75 @@ export async function handlePasskeyStatus(ctx: Ctx): Promise<Response> {
   });
 }
 
+const ANONYMOUS_DEVICE_NAME = "Admin";
+
+/**
+ * Start a login. With a device (`ctx`) the options list that group's
+ * passkeys; without one — a fresh browser, typically off-site — they list
+ * nothing and rely on discoverable passkeys, so the endpoint never
+ * enumerates credentials to a stranger. Either way the challenge is filed
+ * under a random session id the client hands back at verify time.
+ */
 export async function handlePasskeyLoginOptions(
   req: Request,
-  ctx: Ctx,
+  ctx: Ctx | null,
 ): Promise<Response> {
-  const rows = await groupPasskeys(ctx.groupId);
+  const rows = ctx
+    ? await groupPasskeys(ctx.groupId)
+    : await db.query.passkey.findMany({ columns: { id: true } });
   if (rows.length === 0) return error(404, "no passkeys registered");
   const { rpID } = relyingParty(req);
   const options = await generateAuthenticationOptions({
     rpID,
-    allowCredentials: rows.map((p) => ({
-      id: p.id,
-      transports: (p.transports ?? undefined) as
-        | AuthenticatorTransport[]
-        | undefined,
-    })),
+    ...(ctx
+      ? {
+          allowCredentials: (await groupPasskeys(ctx.groupId)).map((p) => ({
+            id: p.id,
+            transports: (p.transports ?? undefined) as
+              | AuthenticatorTransport[]
+              | undefined,
+          })),
+        }
+      : {}),
     userVerification: "preferred",
   });
-  rememberChallenge(`auth:${ctx.deviceId}`, options.challenge);
-  return json({ options });
+  const session = crypto.randomUUID();
+  rememberChallenge(`auth:${session}`, options.challenge);
+  return json({ session, options });
 }
 
+const loginVerifySchema = z.object({
+  session: z.string().uuid(),
+  response: z.unknown(),
+  /** Anonymous logins only: what to call the device being minted. */
+  displayName: z.string().trim().min(1).max(100).optional(),
+  deviceId: z.string().uuid().optional(),
+});
+
+/**
+ * Finish a login. A joined device becomes admin for ADMIN_SESSION_MS. A
+ * browser with no device gets one minted for the passkey's group, already
+ * admin, and receives the identity to adopt — the same shape every join
+ * returns — so from then on it is an ordinary member device that happens
+ * to hold a passkey session.
+ */
 export async function handlePasskeyLoginVerify(
   req: Request,
-  ctx: Ctx,
+  ctx: Ctx | null,
   body: unknown,
 ): Promise<Response> {
-  const parsed = z.object({ response: z.unknown() }).safeParse(body);
+  const parsed = loginVerifySchema.safeParse(body);
   if (!parsed.success) return error(400, "invalid login");
   const response = parsed.data.response as AuthenticationResponseJSON;
-  const expectedChallenge = takeChallenge(`auth:${ctx.deviceId}`);
+  const expectedChallenge = takeChallenge(`auth:${parsed.data.session}`);
   if (!expectedChallenge) return error(400, "login timed out — try again");
   const row = await db.query.passkey.findFirst({
-    where: and(
-      eq(schema.passkey.groupId, ctx.groupId),
-      eq(schema.passkey.id, response?.id ?? ""),
-    ),
+    where: eq(schema.passkey.id, response?.id ?? ""),
   });
-  if (!row) return error(403, "unknown passkey");
+  // A joined device may only use its own group's passkeys — a passkey from
+  // another tenant must not make it admin here.
+  if (!row || (ctx && row.groupId !== ctx.groupId))
+    return error(403, "unknown passkey");
   const { origin, rpID } = relyingParty(req);
   let verification: Awaited<ReturnType<typeof verifyAuthenticationResponse>>;
   try {
@@ -271,11 +306,28 @@ export async function handlePasskeyLoginVerify(
     })
     .where(eq(schema.passkey.id, row.id));
   const adminUntil = new Date(now.getTime() + ADMIN_SESSION_MS);
-  await db
-    .update(schema.device)
-    .set({ adminUntil })
-    .where(eq(schema.device.id, ctx.deviceId));
-  return json({ ok: true, adminUntil: adminUntil.getTime() });
+
+  if (ctx) {
+    await db
+      .update(schema.device)
+      .set({ adminUntil })
+      .where(eq(schema.device.id, ctx.deviceId));
+    return json({ ok: true, adminUntil: adminUntil.getTime() });
+  }
+
+  const group = await db.query.group.findFirst({
+    where: eq(schema.group.id, row.groupId),
+    columns: { id: true, name: true },
+  });
+  if (!group) return error(403, "unknown passkey");
+  const identity = await createDevice(
+    group,
+    parsed.data.displayName ?? ANONYMOUS_DEVICE_NAME,
+    parsed.data.deviceId ?? crypto.randomUUID(),
+    { adminUntil },
+  );
+  if (!identity) return error(409, "device id already registered");
+  return json({ ok: true, adminUntil: adminUntil.getTime(), identity });
 }
 
 /** Lock: this device is no longer admin, whatever unlocked it. */

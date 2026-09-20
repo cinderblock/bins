@@ -17,6 +17,7 @@ import { ApiError, apiFetch, apiJson } from "./api";
 import {
   AUTH_DEAD_KEY,
   LAST_SEQ_KEY,
+  REMOTE_LOCKED_KEY,
   db,
   getIdentity,
   getMeta,
@@ -214,6 +215,11 @@ async function runSync(): Promise<void> {
       authDead = false;
       await setMeta(AUTH_DEAD_KEY, false);
     }
+    // A full pass went through, so this device is not being refused for
+    // want of a passkey session — either it has one, or it is back on the
+    // network. Either way the sign-in card can go.
+    if ((await db.meta.get(REMOTE_LOCKED_KEY))?.value === true)
+      await setMeta(REMOTE_LOCKED_KEY, false);
   } catch (err) {
     if (err instanceof ApiError && err.status === 401 && !authDead) {
       // The server no longer honors this device's token. Retrying is

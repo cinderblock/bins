@@ -8,6 +8,8 @@ import {
   startRegistration,
 } from "@simplewebauthn/browser";
 import { apiJson } from "./api";
+import { adoptIdentity } from "./auth";
+import type { Identity } from "./db";
 
 export type PasskeyRow = {
   id: string;
@@ -58,18 +60,33 @@ export async function registerPasskey(
 }
 
 /**
- * Unlock admin on this device with a passkey. On success the server marks
- * this device admin; the caller records the unlock locally.
+ * Sign in with a passkey. On a joined device the server marks it admin and
+ * the caller records the unlock locally. On a device with no identity (a
+ * browser reaching in from outside the network) the server mints one, with
+ * the given name, and it is adopted here exactly like a join.
  */
-export async function loginWithPasskey(): Promise<{ adminUntil: number }> {
-  const { options } = await apiJson<{
+export async function loginWithPasskey(anonymous?: {
+  displayName: string;
+}): Promise<{ adminUntil: number }> {
+  const { session, options } = await apiJson<{
+    session: string;
     options: Parameters<typeof startAuthentication>[0]["optionsJSON"];
   }>("/api/passkey/login/options", { method: "POST" });
   const response = await startAuthentication({ optionsJSON: options });
-  return apiJson<{ ok: true; adminUntil: number }>(
-    "/api/passkey/login/verify",
-    { method: "POST", body: JSON.stringify({ response }) },
-  );
+  const result = await apiJson<{
+    ok: true;
+    adminUntil: number;
+    identity?: Identity;
+  }>("/api/passkey/login/verify", {
+    method: "POST",
+    body: JSON.stringify({
+      session,
+      response,
+      ...(anonymous ? { displayName: anonymous.displayName } : {}),
+    }),
+  });
+  if (result.identity) await adoptIdentity(result.identity, false);
+  return result;
 }
 
 export async function listPasskeys(

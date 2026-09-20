@@ -26,6 +26,15 @@ export type Deployment = {
   needsSetup: boolean;
   /** Perimeter-protected: joining needs only a name, stickers carry no code. */
   openAccess: boolean;
+  /**
+   * This device is reaching the server from OUTSIDE its network, on a
+   * deployment that admits passkey holders from there and nobody else. Per
+   * request, so it flips as a phone moves between wifi and cellular; it is
+   * refreshed on every boot.
+   */
+  remote: boolean;
+  /** The group has at least one passkey, so a passkey sign-in can succeed. */
+  passkeys: boolean;
   homeView: HomeView;
   boxNumbers: BoxNumbers;
   /** A label printer is configured, so the app may offer "Print label". */
@@ -46,6 +55,8 @@ export type Deployment = {
 export const DEFAULT_DEPLOYMENT: Deployment = {
   needsSetup: false,
   openAccess: false,
+  remote: false,
+  passkeys: false,
   homeView: "scanner",
   boxNumbers: "public",
   labelPrinting: false,
@@ -56,6 +67,8 @@ export const DEFAULT_DEPLOYMENT: Deployment = {
 export type LandingResponse = {
   needsSetup?: boolean;
   openAccess?: boolean;
+  remote?: boolean;
+  passkeys?: boolean;
   homeView?: string;
   boxNumbers?: string;
   labelPrinting?: boolean;
@@ -79,6 +92,8 @@ export async function refreshDeployment(): Promise<LandingResponse | null> {
     await setMeta(DEPLOYMENT_KEY, {
       needsSetup: body.needsSetup === true,
       openAccess: body.openAccess === true,
+      remote: body.remote === true,
+      passkeys: body.passkeys === true,
       homeView: body.homeView === "browse" ? "browse" : "scanner",
       boxNumbers: body.boxNumbers === "internal" ? "internal" : "public",
       labelPrinting: body.labelPrinting === true,

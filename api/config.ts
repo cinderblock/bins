@@ -241,13 +241,59 @@ export function isPrivateAddress(address: string | null): boolean {
  */
 export function openJoinAllowed(req: Request): boolean {
   if (!isOpenAccess()) return false;
+  // Off the perimeter, joining by name is never on — whatever the backstop
+  // setting says. Remote is for passkey holders only (see isRemote).
+  if (isRemote(req)) return false;
   if (!requirePrivateClient()) return true;
-  // The reverse proxy's own verdict. It sits at the perimeter and can judge
-  // what this process cannot — that a GLOBAL IPv6 address is on-link, for
-  // one, which is how every phone on a dual-stack LAN arrives — so a header
-  // only it sets carries its decision through. Clients can't forge it: the
-  // proxy overwrites the header on every request it forwards.
+  return onPerimeter(req);
+}
+
+/**
+ * Did this request come from inside the perimeter?
+ *
+ * The reverse proxy's own verdict comes first. It sits at the perimeter and
+ * can judge what this process cannot — that a GLOBAL IPv6 address is on-link,
+ * for one, which is how every phone on a dual-stack LAN arrives — so a header
+ * only it sets carries its decision through. Clients can't forge it as long
+ * as the proxy overwrites (LAN) or strips (everywhere else) the header on
+ * every request it forwards; the reference site block does both. The
+ * private-address test is the backstop for a proxy that says nothing.
+ */
+export function onPerimeter(req: Request): boolean {
   if (req.headers.get("x-bins-perimeter")?.trim().toLowerCase() === "lan")
     return true;
   return isPrivateAddress(forwardedClientIp(req));
+}
+
+export type RemoteAccess = "off" | "passkey";
+
+/**
+ * Whether this deployment admits requests from OUTSIDE its perimeter, and on
+ * what terms.
+ *
+ * - `off` (default) — the app makes no distinction; whoever reaches it is
+ *   judged by the deployment's ordinary credentials (access code, sticker
+ *   secret, admin password). Right for a deployment that is internet-facing
+ *   by design, and for one whose proxy refuses outsiders outright.
+ * - `passkey` — a request that is not on the perimeter is only served for a
+ *   device holding a live passkey session (`device.admin_until`): admins
+ *   working from home. Nothing else works from there: no join of any kind,
+ *   no first-boot setup, no integration token. The one unauthenticated thing
+ *   a remote visitor can do is the passkey ceremony itself, which mints them
+ *   a device if they don't have one.
+ *
+ * Meant for a perimeter-protected (`OPEN_ACCESS`) deployment whose proxy is
+ * widened to forward outsiders too — WITHOUT the perimeter header. That
+ * header is how the app tells the two apart, so the proxy stripping it on the
+ * external path is load-bearing.
+ */
+export function remoteAccess(): RemoteAccess {
+  return process.env.REMOTE_ACCESS?.trim().toLowerCase() === "passkey"
+    ? "passkey"
+    : "off";
+}
+
+/** Outside the perimeter, on a deployment that lets passkey holders in. */
+export function isRemote(req: Request): boolean {
+  return remoteAccess() === "passkey" && !onPerimeter(req);
 }

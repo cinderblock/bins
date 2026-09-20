@@ -10,8 +10,9 @@ import { Navigate, Outlet, useLocation } from "react-router";
 import { FirstRun } from "~/components/FirstRun";
 import { InstallHint } from "~/components/InstallHint";
 import { Landing } from "~/components/Landing";
+import { RemoteSignIn } from "~/components/RemoteSignIn";
 import { SyncBanner } from "~/components/SyncBanner";
-import { IDENTITY_KEY, type Identity, db } from "~/lib/db";
+import { IDENTITY_KEY, type Identity, REMOTE_LOCKED_KEY, db } from "~/lib/db";
 import { refreshDeployment, useDeployment } from "~/lib/deployment";
 import { installErrorReporting } from "~/lib/errors";
 import { binIdFromScan } from "~/lib/format";
@@ -31,6 +32,13 @@ export default function Shell() {
     undefined,
   );
   const deployment = useDeployment();
+  // The server has refused this device for want of a passkey session (it is
+  // off the network) — see lib/api.ts and components/RemoteSignIn.
+  const remoteLocked = useLiveQuery(
+    async () => (await db.meta.get(REMOTE_LOCKED_KEY))?.value === true,
+    [],
+    false,
+  );
 
   useEffect(() => {
     if (identity) {
@@ -69,6 +77,11 @@ export default function Shell() {
 
   if (identity === undefined || deployment === undefined) return null;
   if (identity === null) {
+    // Off the network, on a deployment that lets passkey holders in from
+    // there: the passkey sign-in is the whole gate. Before the sticker
+    // branch, because a sticker join is refused from here too — and a
+    // sign-in leaves the URL alone, so the box still opens afterwards.
+    if (deployment.remote) return <RemoteSignIn />;
     // Landing unauthenticated on a sticker URL (`/{id}#{CODE}`) is the primary
     // (and only advertised) way in: the (id, code) pair joins with just a
     // name. Reuse the QR parser on the current location (any origin works —
@@ -107,6 +120,10 @@ export default function Shell() {
     // dropping them on generic branding with no idea what went wrong.
     return <Landing binId={target?.binId ?? undefined} />;
   }
+  // A joined device the server is refusing: the app would just show a stale
+  // replica and a banner that never clears. Say what is going on instead.
+  if (remoteLocked)
+    return <RemoteSignIn locked groupName={identity.groupName} />;
   return (
     <>
       <SyncBanner />

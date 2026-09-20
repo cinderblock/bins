@@ -2020,6 +2020,247 @@ function withVapid<T>(fn: () => Promise<T>): Promise<T> {
   });
 }
 
+/**
+ * Admins from outside the perimeter, and nobody else. REMOTE_ACCESS=passkey
+ * splits every request into on-perimeter (judged as always) and remote (a
+ * live passkey session or nothing). See api/config.ts.
+ */
+describe("remote access", () => {
+  const OUTSIDE = "203.0.113.55";
+
+  function withRemoteAccess<T>(fn: () => Promise<T>): Promise<T> {
+    process.env.REMOTE_ACCESS = "passkey";
+    return fn().finally(() => {
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.REMOTE_ACCESS;
+    });
+  }
+
+  /**
+   * What a passkey login does to a device row. Straight to the database on
+   * purpose: asking the API which device this token is would itself be
+   * subject to the gate under test.
+   */
+  async function setAdminUntil(token: string, until: Date | null) {
+    const { eq } = await import("drizzle-orm");
+    await db
+      .update(schema.device)
+      .set({ adminUntil: until })
+      .where(eq(schema.device.tokenHash, sha256Hex(token)));
+  }
+
+  test("unset, the app makes no distinction at all", async () => {
+    // The historical behavior: whoever reaches the app is judged by its
+    // ordinary credentials, wherever they came from.
+    const res = await call("GET", "/api/sync/pull?since=0", {
+      token: tokenA,
+      xff: OUTSIDE,
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test("on, a device off the perimeter is refused until a passkey session", async () => {
+    await withRemoteAccess(async () => {
+      const refused = await call("GET", "/api/sync/pull?since=0", {
+        token: tokenA,
+        xff: OUTSIDE,
+      });
+      expect(refused.status).toBe(403);
+      // 403 with THIS text, not 401: the client turns it into a sign-in
+      // card, where a 401 would send the sync engine off to re-join.
+      expect(((await refused.json()) as { error: string }).error).toBe(
+        "passkey required",
+      );
+
+      // The same device on the LAN is untouched — by address...
+      const byAddress = await call("GET", "/api/sync/pull?since=0", {
+        token: tokenA,
+        xff: "10.255.15.240",
+      });
+      expect(byAddress.status).toBe(200);
+      // ...or by the proxy's word, which is how a phone on a dual-stack LAN
+      // arrives (a global IPv6 the address test cannot place).
+      const vouched = await call("GET", "/api/sync/pull?since=0", {
+        token: tokenA,
+        xff: "2600:1700:459:8a1f::365",
+        headers: { "X-Bins-Perimeter": "lan" },
+      });
+      expect(vouched.status).toBe(200);
+
+      // With a live passkey session, remote is ordinary. Restored in a
+      // finally: a device left admin would quietly unlock the admin-password
+      // tests that run after this one.
+      await setAdminUntil(tokenA, new Date(Date.now() + 60_000));
+      try {
+        const allowed = await call("GET", "/api/sync/pull?since=0", {
+          token: tokenA,
+          xff: OUTSIDE,
+        });
+        expect(allowed.status).toBe(200);
+        // Writes too — a remote admin is a member, not a reader.
+        const write = await call("POST", "/api/sync/push", {
+          token: tokenA,
+          xff: OUTSIDE,
+          body: {
+            ops: [
+              {
+                opId: uuid(),
+                type: "bin.sighted",
+                binId,
+                payload: { via: "sticker", code: null },
+                clientTime: Date.now(),
+              },
+            ],
+          },
+        });
+        expect(write.status).toBe(200);
+
+        // An EXPIRED session is no session.
+        await setAdminUntil(tokenA, new Date(Date.now() - 1));
+        const stale = await call("GET", "/api/sync/pull?since=0", {
+          token: tokenA,
+          xff: OUTSIDE,
+        });
+        expect(stale.status).toBe(403);
+      } finally {
+        await setAdminUntil(tokenA, null);
+      }
+    });
+  });
+
+  test("no way in from outside but a passkey: not a join, not setup", async () => {
+    await withRemoteAccess(async () => {
+      for (const path of [
+        "/api/auth/join",
+        "/api/auth/join-by-bin",
+        "/api/auth/join-by-admin",
+        "/api/auth/join-open",
+        "/api/setup",
+      ]) {
+        const res = await call("POST", path, {
+          xff: OUTSIDE,
+          body: { displayName: "Stranger", deviceId: uuid() },
+        });
+        expect(res.status).toBe(403);
+        expect(((await res.json()) as { error: string }).error).toBe(
+          "passkey required",
+        );
+      }
+
+      // Being ON the perimeter still joins normally — this is the same
+      // sticker join the warehouse floor uses every day.
+      const onLan = await call("POST", "/api/auth/join-by-bin", {
+        xff: "10.0.0.9",
+        body: {
+          binId: allocated[0]?.id,
+          code: allocated[0]?.code,
+          displayName: "Floor phone",
+          deviceId: uuid(),
+        },
+      });
+      expect(onLan.status).toBe(200);
+    });
+  });
+
+  test("the landing tells the SPA which gate to draw", async () => {
+    await withRemoteAccess(async () => {
+      const remote = (await (
+        await call("GET", "/api/landing", { xff: OUTSIDE })
+      ).json()) as { remote: boolean; openAccess: boolean };
+      expect(remote.remote).toBe(true);
+      // Reported false from out here even under OPEN_ACCESS: the name-only
+      // join card must never render where that join is refused anyway.
+      expect(remote.openAccess).toBe(false);
+
+      const lan = (await (
+        await call("GET", "/api/landing", { xff: "192.168.1.30" })
+      ).json()) as { remote: boolean };
+      expect(lan.remote).toBe(false);
+    });
+  });
+
+  test("the passkey ceremony is the one door, and it opens with no token", async () => {
+    const { eq } = await import("drizzle-orm");
+    await withRemoteAccess(async () => {
+      // Nothing registered — say so rather than prompting for a passkey
+      // that cannot exist.
+      const none = await call("POST", "/api/passkey/login/options", {
+        xff: OUTSIDE,
+      });
+      expect(none.status).toBe(404);
+
+      const group = await db.query.group.findFirst();
+      await db.insert(schema.passkey).values({
+        id: "test-credential-id",
+        groupId: group?.id ?? "",
+        publicKey: "AAAA",
+        counter: 0,
+        label: "Test key",
+      });
+      try {
+        const res = await call("POST", "/api/passkey/login/options", {
+          xff: OUTSIDE,
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          session: string;
+          options: { challenge: string; allowCredentials?: unknown[] };
+        };
+        expect(body.session.length).toBeGreaterThan(10);
+        expect(body.options.challenge.length).toBeGreaterThan(10);
+        // No credential list for an anonymous caller: the endpoint must not
+        // enumerate a group's passkeys to a stranger. The authenticator
+        // finds a discoverable passkey by hostname instead.
+        expect(body.options.allowCredentials).toBeUndefined();
+
+        // A forged authenticator response mints nothing.
+        const forged = await call("POST", "/api/passkey/login/verify", {
+          xff: OUTSIDE,
+          body: {
+            session: body.session,
+            response: { id: "test-credential-id" },
+            displayName: "Attacker",
+          },
+        });
+        expect(forged.status).toBe(403);
+        expect(
+          await db.query.device.findMany({
+            where: eq(schema.device.displayName, "Attacker"),
+          }),
+        ).toHaveLength(0);
+
+        // A challenge is single-use, so a replay finds nothing to check.
+        const replay = await call("POST", "/api/passkey/login/verify", {
+          xff: OUTSIDE,
+          body: {
+            session: body.session,
+            response: { id: "test-credential-id" },
+          },
+        });
+        expect(replay.status).toBe(400);
+
+        // A joined device's options DO list its group's passkeys (nothing is
+        // being hidden from a device that is already a member).
+        const known = await call("POST", "/api/passkey/login/options", {
+          token: tokenA,
+          xff: OUTSIDE,
+        });
+        expect(known.status).toBe(200);
+        const knownBody = (await known.json()) as {
+          options: { allowCredentials?: { id: string }[] };
+        };
+        expect(knownBody.options.allowCredentials?.[0]?.id).toBe(
+          "test-credential-id",
+        );
+      } finally {
+        await db
+          .delete(schema.passkey)
+          .where(eq(schema.passkey.id, "test-credential-id"));
+      }
+    });
+  });
+});
+
 describe("push notifications", () => {
   test("with no keys configured, push is simply absent", async () => {
     const status = (await (
