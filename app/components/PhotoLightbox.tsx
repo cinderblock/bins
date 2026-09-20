@@ -30,7 +30,7 @@ import {
   Text,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
-import type { EntryState } from "@shared/reducer";
+import { type EntryState, describedItems } from "@shared/reducer";
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -186,6 +186,15 @@ export function PhotoLightbox({
             {multi && index >= 0 && (
               <Text size="sm" c="dimmed" fw={600}>
                 {index + 1}/{photos.length}
+              </Text>
+            )}
+            {/* What the search may have matched on. Shown wherever the photo
+                is, and only while it still describes THIS picture, so a guess
+                that sent someone here is visible and arguable rather than
+                invisible machinery. */}
+            {describedItems(current).length > 0 && (
+              <Text size="xs" c="dimmed" style={{ flexBasis: "100%" }}>
+                Read from this photo: {describedItems(current).join(", ")}
               </Text>
             )}
           </Group>

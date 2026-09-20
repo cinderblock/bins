@@ -39,6 +39,7 @@ import { AdminUnlock } from "~/components/AdminUnlock";
 import { BoxSizeManager } from "~/components/BoxSizeManager";
 import { ErrorLog } from "~/components/ErrorLog";
 import { PasskeyManager } from "~/components/PasskeyManager";
+import { PhotoDescriptions } from "~/components/PhotoDescriptions";
 import { PushToggle } from "~/components/PushToggle";
 import { ShelfBuilder } from "~/components/ShelfBuilder";
 import { SuggestionQueue } from "~/components/SuggestionQueue";
@@ -454,6 +455,8 @@ export default function Admin() {
           </Paper>
 
           <BoxSizeManager adminPassword={password} />
+
+          <PhotoDescriptions adminPassword={password} />
 
           <ErrorLog adminPassword={password} />
 

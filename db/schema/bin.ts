@@ -105,6 +105,16 @@ export const binEntry = sqliteTable(
     deletedAt: integer("deleted_at"),
     /** LWW clock of the last entry.remove/entry.restore (see shared/reducer.ts). */
     deletedClock: text("deleted_clock"),
+    /** What a model saw in this photo (entry.setAiItems). Null = never looked;
+        [] = looked and saw nothing nameable. The difference decides whether
+        it is worth spending on again. */
+    aiItems: text("ai_items", { mode: "json" }).$type<string[]>(),
+    aiModel: text("ai_model"),
+    /** The photo those items were read from — mismatch with photoHash means
+        they describe a picture that is no longer here. */
+    aiPhotoHash: text("ai_photo_hash"),
+    /** LWW clock shared by the three columns above (see shared/reducer.ts). */
+    aiItemsClock: text("ai_items_clock"),
   },
   (t) => [
     index("bin_entry_bin").on(t.binId),

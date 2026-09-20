@@ -92,7 +92,26 @@ export const anthropicProvider: AiProvider = {
           text: layer.text,
           ...(i === lastStable ? { cache_control: { type: "ephemeral" } } : {}),
         })),
-        messages: [{ role: "user", content: req.question }],
+        messages: [
+          {
+            role: "user",
+            // Image first: Anthropic's guidance is that a picture read before
+            // the instruction about it gives better answers.
+            content: req.image
+              ? [
+                  {
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: req.image.mime,
+                      data: req.image.base64,
+                    },
+                  },
+                  { type: "text", text: req.question },
+                ]
+              : req.question,
+          },
+        ],
         output_config: {
           format: { type: "json_schema", schema: toStrictSchema(req.schema) },
         },

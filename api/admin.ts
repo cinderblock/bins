@@ -12,6 +12,8 @@ import { db, schema } from "../db/client.server";
 import { DrizzleStateStore } from "../db/store.server";
 import { type CanonicalOp, secretCodeSchema } from "../shared/ops";
 import { applyOp } from "../shared/reducer";
+import { captionPending, captionStatus } from "./ai/caption";
+import { aiErrorResponse } from "./ai/handler";
 import { allocateBins, allocateSchema } from "./allocate";
 import { artRequestSchema, handleArt, handleArtStatus } from "./art";
 import { normalizeAccessCode } from "./auth";
@@ -401,6 +403,20 @@ export async function handleAdmin(
     return handleArt(ctx, parsed.data);
   }
   if (path === "/api/admin/art/status") return handleArtStatus();
+
+  // Describing photos spends money per photo, so the admin surface shows the
+  // backlog and the estimated bill before anything is spent, and the run is
+  // batched so "how much" stays answerable between batches.
+  if (path === "/api/admin/ai/captions") {
+    return json(await captionStatus(ctx.groupId));
+  }
+  if (path === "/api/admin/ai/captions/run") {
+    try {
+      return json(await captionPending(ctx.groupId));
+    } catch (err) {
+      return aiErrorResponse(err);
+    }
+  }
 
   if (path === "/api/admin/bins/allocate") {
     const parsed = allocateSchema.safeParse(body);

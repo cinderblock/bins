@@ -59,6 +59,7 @@ function data(): CatalogData {
       bin(12, { status: "retired", name: "Old junk" }),
     ],
     notesByBin: new Map([[10, ["the long ones live here"]]]),
+    describedByBin: new Map([[11, ["cordless drill", "drill bits"]]]),
     labels: [
       { id: "l-kitchen", name: "kitchen", archived: false },
       { id: "l-cables", name: "cables", archived: false },
@@ -132,12 +133,29 @@ describe("catalog layering", () => {
     expect(snapshot.text).not.toContain("Old junk");
   });
 
-  test("a box recorded only as a photo says its contents are unknown", async () => {
+  test("what a model read off a photo is attributed, not passed off as notes", async () => {
     forgetSnapshot(GROUP);
     const { layers } = await buildCatalogLayers(GROUP, sourceWith());
-    // Otherwise it reads as an empty box, and the model would happily
-    // recommend putting something into a box that is already full.
+    // Box 11 has no text of its own — this description is the only reason it
+    // is findable at all, which is the whole point of captioning.
     expect(layer(layers, 1).text).toContain("#11");
+    expect(layer(layers, 1).text).toContain("seen in photo: cordless drill");
+    // ...and it no longer needs the "we cannot see inside" fallback.
+    expect(layer(layers, 1).text).not.toContain("only as a photo");
+  });
+
+  test("an undescribed photo still says its contents are unknown", async () => {
+    forgetSnapshot(GROUP);
+    const bare = sourceWith();
+    const withoutDescriptions: typeof bare = {
+      ...bare,
+      async load() {
+        return { ...(await bare.load(GROUP)), describedByBin: new Map() };
+      },
+    };
+    // Otherwise it reads as an empty box, and the assistant would happily
+    // recommend putting something into a box that is already full.
+    const { layers } = await buildCatalogLayers(GROUP, withoutDescriptions);
     expect(layer(layers, 1).text).toContain("only as a photo");
   });
 

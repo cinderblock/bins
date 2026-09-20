@@ -119,15 +119,43 @@ few sessions a week. Implicit only.
 5. [x] Router + config wiring, tests, `group.sorting_notes` (migration 0018)
        and its admin field.
 6. [x] Client UI on `/bins`.
-7. [ ] **Next** — vision captioning (`plans/bins.md` Phase 5) on the same
-       backend. Open design question carried over: where the item list lands.
-       Server-authored `bin.aiItems` op (as the plan originally had it) vs.
-       riding the existing `bin.suggest` + `SuggestionQueue` review flow. The
-       suggestion queue is real and built, which argues for it; against it,
-       captions are derived-from-a-photo rather than proposed-by-a-person,
-       and flooding an admin's review queue with them would wreck that queue.
-       Leaning: its own op type, with the caption keyed by photo sha256 so
-       re-captioning the same image is free.
+7. [x] Vision captioning, on the same backend (2026-09-20).
+
+## Captioning, as built
+
+**Decision (2026-09-20): its own op type, not the suggestion queue.** A
+description is derived from a photo, not proposed by a person; hundreds of
+them would have turned an admin review queue into a firehose and destroyed
+its usefulness for the thing it exists for. Nothing about a caption needs
+approving — it needs to be *visible and correctable*, which the photo viewer
+does instead.
+
+- **`entry.setAiItems`** (server-authored, `shared/ops.ts`) carries
+  `{entryOpId, photoHash, items, model}`. LWW on its own `aiItemsClock`, so a
+  re-run with a better model replaces the words wholesale.
+- **It attaches to the ENTRY, not the bin.** A box has many photos; per-photo
+  keeps provenance, and deleting a photo takes its description with it for
+  free.
+- **`photoHash` rides the op** so a description can be checked against the
+  picture it describes. `describedItems()` in `shared/reducer.ts` is the one
+  place that rule lives, and all three consumers (offline search, assistant
+  catalog, photo viewer) go through it.
+- **It does NOT call `refreshDerived`.** Every other op folds its time into
+  the bin's createdAt/updatedAt; a machine reading an old photo is not the box
+  being touched, and a backfill would otherwise float every captioned box to
+  the top of "recently changed". Consistently skipping is as order-independent
+  as consistently contributing — what breaks convergence is doing it only for
+  the ops that win.
+- **`ai_caption(hash, model)`** (migration 0020) is a derived cache, not group
+  state and not group-scoped: keyed by content hash like the blob store, so
+  the same image is never paid for twice. Dropping it costs money, never
+  correctness.
+- **Automatic captioning is opt-in** (`AI_CAPTION_PHOTOS`, default off). It is
+  the only action that spends in proportion to how much stuff a group has,
+  with nobody pressing anything. The admin panel shows the backlog and the
+  estimate first, and runs in batches of 25 so "how much" stays answerable.
+- A run commits each photo as it finishes, so hitting the budget ceiling
+  halfway keeps what was already paid for.
 
 ## Architecture as built
 
@@ -202,6 +230,16 @@ api/ai/
       `responseSchema` rejecting something in the answer schema, and
       OpenAI/Anthropic model IDs drifting (all three are overridable with
       `AI_MODEL`, which is the escape hatch).
+- [x] Captioning built (2026-09-20): op type, reducer case + 7 convergence
+      tests, `ai_caption` cache, batch job, push trigger, admin panel with a
+      cost estimate, photo-viewer disclosure, and both search surfaces
+      (offline MiniSearch and the assistant catalog) reading the results.
+      221 tests pass.
+- [ ] Captioning has also never run against a live provider, and the vision
+      request shapes are the least-exercised code here. Watch the first run.
+- [ ] Caption QUALITY is the other unknown: the prompt is tuned for retrieval
+      ("USB-C cables", not "3 grey cables in a box") but has never been read
+      back against real shelf photos. Expect to iterate on `CAPTION_PROMPT`.
 - [ ] Placement quality unmeasured. The failure mode to watch is the
       judgment-heavy half — "should we start a new box" — on a Flash-tier
       model. If it disappoints, that is the moment to try `AI_PROVIDER` with

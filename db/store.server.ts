@@ -119,6 +119,10 @@ export class DrizzleStateStore implements StateStore {
       deletedByDeviceId: row.deletedByDeviceId,
       deletedAt: row.deletedAt,
       deletedClock: row.deletedClock,
+      aiItems: row.aiItems,
+      aiModel: row.aiModel,
+      aiPhotoHash: row.aiPhotoHash,
+      aiItemsClock: row.aiItemsClock,
     };
   }
 
@@ -159,6 +163,10 @@ export class DrizzleStateStore implements StateStore {
       deletedByDeviceId: row.deletedByDeviceId,
       deletedAt: row.deletedAt,
       deletedClock: row.deletedClock,
+      aiItems: row.aiItems,
+      aiModel: row.aiModel,
+      aiPhotoHash: row.aiPhotoHash,
+      aiItemsClock: row.aiItemsClock,
     };
   }
 

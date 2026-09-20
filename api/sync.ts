@@ -14,6 +14,7 @@ import {
   pushRequestSchema,
 } from "../shared/ops";
 import { applyOp } from "../shared/reducer";
+import { scheduleCaptioning } from "./ai/caption";
 import { boxNumbers } from "./config";
 import { type Ctx, error, json, serializedTransaction } from "./context";
 import { notifyGroupAdmins } from "./push";
@@ -153,6 +154,12 @@ export async function handlePush(req: Request, ctx: Ctx): Promise<Response> {
       });
     })();
   }
+
+  // New photos may now be describable. Off unless the operator opted in, and
+  // fire-and-forget either way: a push must never wait on — or fail because
+  // of — a provider (see api/ai/caption.ts).
+  if (ops.some((op) => op.type === "entry.addPhoto"))
+    scheduleCaptioning(ctx.groupId);
 
   const { suggested: _suggested, ...response } = result;
   return json(response);

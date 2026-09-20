@@ -44,11 +44,20 @@ export type JsonSchema = {
  */
 export type AiLayer = { stable: boolean; text: string };
 
+/** A picture the question is about. Base64, no data-URL prefix. */
+export type AiImage = { mime: string; base64: string };
+
 export type AiAsk = {
   /** Ordered, stable layers first. Unstable layers must come after. */
   layers: AiLayer[];
   /** The volatile part — never cached, always last. */
   question: string;
+  /**
+   * Optional image, sent alongside the question rather than in the layers:
+   * it is the most volatile part of the request and must never land inside
+   * the cached prefix, or one photo would evict the catalog for the next.
+   */
+  image?: AiImage;
   schema: JsonSchema;
   maxOutputTokens: number;
 };

@@ -95,7 +95,24 @@ export const geminiProvider: AiProvider = {
           systemInstruction: {
             parts: req.layers.map((layer) => ({ text: layer.text })),
           },
-          contents: [{ role: "user", parts: [{ text: req.question }] }],
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: req.question },
+                ...(req.image
+                  ? [
+                      {
+                        inlineData: {
+                          mimeType: req.image.mime,
+                          data: req.image.base64,
+                        },
+                      },
+                    ]
+                  : []),
+              ],
+            },
+          ],
           generationConfig: {
             responseMimeType: "application/json",
             responseSchema: toGeminiSchema(req.schema),

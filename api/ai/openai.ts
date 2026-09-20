@@ -65,7 +65,20 @@ export const openaiProvider: AiProvider = {
             role: "system",
             content: layer.text,
           })),
-          { role: "user", content: req.question },
+          {
+            role: "user",
+            content: req.image
+              ? [
+                  { type: "text", text: req.question },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: `data:${req.image.mime};base64,${req.image.base64}`,
+                    },
+                  },
+                ]
+              : req.question,
+          },
         ],
         response_format: {
           type: "json_schema",

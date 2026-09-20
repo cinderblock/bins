@@ -184,6 +184,23 @@ db.version(9).upgrade((tx) =>
     }),
 );
 
+// v13: entries gain the AI photo description (`entry.setAiItems`). No index
+// changes — the words are searched through the MiniSearch index rebuilt in
+// lib/search.ts, not by Dexie. Backfill explicit nulls so replica rows match
+// freshly-reduced ones; null means "no model has looked at this photo", which
+// is deliberately distinct from an empty array meaning "looked, saw nothing".
+db.version(13).upgrade((tx) =>
+  tx
+    .table("entries")
+    .toCollection()
+    .modify((row: Record<string, unknown>) => {
+      if (row.aiItems === undefined) row.aiItems = null;
+      if (row.aiModel === undefined) row.aiModel = null;
+      if (row.aiPhotoHash === undefined) row.aiPhotoHash = null;
+      if (row.aiItemsClock === undefined) row.aiItemsClock = null;
+    }),
+);
+
 // v12: a shelf can carry the string printed on its own sticker, so scanning
 // one files a box onto it. Indexed because put-away looks a place up by code
 // on every shelf scan. `code` is stored as typed (case preserved) and matched

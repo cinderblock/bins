@@ -33,6 +33,15 @@ where.
   proposes: every answer is a link to a real box, and nothing is written
   without a tap. Works with Gemini, OpenAI or Anthropic; budget-capped, and
   the offline search above is untouched. See `.env.example`.
+- **Photo descriptions** (optional, same key): reads each box's contents
+  photo and files the words beside it, so a box that was only ever
+  photographed is findable by typing what's in it. This is the gap it
+  closes — snapping a photo is the fast path, and nothing else indexes a
+  picture. The words arrive as ordinary ops, so they sync to every device
+  and the **offline** search uses them too. Each image is read once (cached
+  by content hash), the admin page shows the backlog and the estimated cost
+  before you spend it, and the photo viewer shows what was read so a wrong
+  guess is visible rather than buried.
 - **No accounts**: scanning any sticker once IS the login — pick a display
   name and you're in. Signed-out visitors on any other URL get a branded
   landing page (title/subtitle set per group) that names the box they were

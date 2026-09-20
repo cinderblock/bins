@@ -474,6 +474,37 @@ export const serverOpSchema = z.discriminatedUnion("type", [
       accepted: z.boolean(),
     }),
   }),
+  /**
+   * What a model saw in a contents photo, attached to that photo's entry.
+   *
+   * Server-authored because only the server holds the provider key, and an op
+   * rather than a side table because the whole point is that it reaches every
+   * replica through normal pull — a box whose only record is a photo is
+   * invisible to the offline search until these words land next to it.
+   *
+   * `photoHash` is carried rather than inferred so the items can never be
+   * shown against a different picture than the one they describe: a replica
+   * that has the entry but a newer photo can compare and stay quiet. It is
+   * also the cache key on the server, so the same image is never paid for
+   * twice (api/ai/caption.ts).
+   *
+   * Never mixed into a member's notes. These are a machine's guess, they are
+   * replaced wholesale by a better model later, and a note is something a
+   * person chose to write.
+   */
+  z.object({
+    ...opBase,
+    type: z.literal("entry.setAiItems"),
+    binId,
+    payload: z.object({
+      entryOpId: z.string().uuid(),
+      photoHash: z.string().regex(/^[0-9a-f]{64}$/),
+      /** What is in the picture, one short phrase each. Empty = nothing seen. */
+      items: z.array(z.string().min(1).max(120)).max(40),
+      /** Which model said so, so a re-run with a better one is explicable. */
+      model: z.string().max(100),
+    }),
+  }),
 ]);
 export type ServerOp = z.infer<typeof serverOpSchema>;
 

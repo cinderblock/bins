@@ -5,6 +5,7 @@
  * milliseconds, so no incremental bookkeeping.
  */
 import { locationLabel } from "@shared/locations";
+import { describedItems } from "@shared/reducer";
 import MiniSearch from "minisearch";
 import { db } from "./db";
 
@@ -18,6 +19,12 @@ export interface SearchDoc {
   locationName: string;
   labels: string;
   notes: string;
+  /**
+   * What a model read off this box's photos (entry.setAiItems). For many
+   * boxes this is the ONLY text there is — snapping a photo is the fast path
+   * in the capture flow, and nothing else here indexes a picture.
+   */
+  described: string;
 }
 
 export async function buildSearchIndex(): Promise<MiniSearch<SearchDoc>> {
@@ -29,11 +36,21 @@ export async function buildSearchIndex(): Promise<MiniSearch<SearchDoc>> {
   ]);
   const placeById = new Map(places.map((p) => [p.id, p]));
   const notesByBin = new Map<number, string[]>();
+  const describedByBin = new Map<number, string[]>();
   for (const entry of entries) {
-    if (entry.kind !== "note" || entry.deletedByOpId || !entry.text) continue;
-    const list = notesByBin.get(entry.binId) ?? [];
-    list.push(entry.text);
-    notesByBin.set(entry.binId, list);
+    if (entry.deletedByOpId) continue;
+    if (entry.kind === "note" && entry.text) {
+      const list = notesByBin.get(entry.binId) ?? [];
+      list.push(entry.text);
+      notesByBin.set(entry.binId, list);
+      continue;
+    }
+    const described = describedItems(entry);
+    if (described.length) {
+      const list = describedByBin.get(entry.binId) ?? [];
+      list.push(...described);
+      describedByBin.set(entry.binId, list);
+    }
   }
   const labelName = new Map(labels.map((l) => [l.id, l.name]));
 
@@ -45,11 +62,15 @@ export async function buildSearchIndex(): Promise<MiniSearch<SearchDoc>> {
       "locationName",
       "labels",
       "notes",
+      "described",
     ],
     storeFields: ["name", "locationName"],
     searchOptions: {
       prefix: true,
       fuzzy: 0.2,
+      // `described` is deliberately unboosted: it is a machine's guess, so it
+      // should surface a box nothing else would have found without
+      // outranking what a person actually wrote.
       boost: { name: 2, description: 2, externalLabel: 2, labels: 2 },
     },
   });
@@ -68,6 +89,7 @@ export async function buildSearchIndex(): Promise<MiniSearch<SearchDoc>> {
           : (bin.locationName ?? ""),
         labels: bin.labelIds.map((id) => labelName.get(id) ?? "").join(" "),
         notes: (notesByBin.get(bin.id) ?? []).join("\n"),
+        described: (describedByBin.get(bin.id) ?? []).join(", "),
       })),
   );
   return index;

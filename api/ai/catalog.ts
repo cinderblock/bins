@@ -29,6 +29,7 @@ import {
   locationGeometry,
   locationLabel,
 } from "@shared/locations";
+import { describedItems } from "@shared/reducer";
 import { and, asc, desc, eq, gt } from "drizzle-orm";
 import { db, schema } from "../../db/client.server";
 import type { AiLayer } from "./types";
@@ -70,6 +71,8 @@ export type CatalogData = {
   bins: CatalogBin[];
   /** Live note text per box, already filtered of deletions. */
   notesByBin: Map<number, string[]>;
+  /** What a model read off each box's live photos (api/ai/caption.ts). */
+  describedByBin: Map<number, string[]>;
   labels: CatalogNamed[];
   sizes: CatalogNamed[];
   places: CatalogPlace[];
@@ -113,6 +116,7 @@ export function describeBin(
   sizeNames: ReadonlyMap<string, string>,
   places: ReadonlyMap<string, LocationNode>,
   notes: readonly string[],
+  described: readonly string[] = [],
 ): string {
   const parts: string[] = [];
   if (bin.name) parts.push(bin.name);
@@ -132,9 +136,12 @@ export function describeBin(
   const weight = grams(bin.weightGrams);
   if (weight) parts.push(`weight: ${weight}`);
   if (notes.length) parts.push(`notes: ${notes.join(" / ")}`);
-  // Worth saying out loud: a box whose only record is a photo looks empty
-  // here, and the model should read that as unknown contents rather than an
-  // empty box. Captioning (plans/bins.md Phase 5) is what closes this gap.
+  // Marked as seen-in-a-photo rather than folded in with what a person wrote,
+  // so the assistant can weigh it accordingly and say where it got this.
+  if (described.length) parts.push(`seen in photo: ${described.join(", ")}`);
+  // A box whose only record is an undescribed photo looks empty here, and
+  // must not read as an empty box. Captioning closes this gap — until it has
+  // run, saying so is the honest fallback.
   if (parts.length <= 1 && bin.primaryPhotoHash)
     parts.push("contents recorded only as a photo — text unknown");
   return `#${bin.id} ${parts.join(" | ") || "(nothing recorded)"}`;
@@ -211,6 +218,7 @@ export function renderSnapshot(
         sizeNames,
         placesById,
         data.notesByBin.get(bin.id) ?? [],
+        data.describedByBin.get(bin.id) ?? [],
       ),
     ),
   ].join("\n");
@@ -244,6 +252,12 @@ export function describeOp(op: CatalogOp): string {
       return `${at} fields changed: ${show(payload.fields ?? payload)}`;
     case "bin.setLabel":
       return `${at} category changed: ${show(payload)}`;
+    case "entry.setAiItems": {
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      return items.length
+        ? `${at} photo contents read: ${items.map(show).join(", ")}`
+        : `${at} a photo was looked at; nothing identifiable in it`;
+    }
     default:
       return `${at} ${op.type}`;
   }
@@ -330,13 +344,23 @@ export const dbCatalogSource: CatalogSource = {
     ]);
 
     const notesByBin = new Map<number, string[]>();
+    const describedByBin = new Map<number, string[]>();
     for (const entry of entries) {
-      if (entry.kind !== "note" || entry.deletedByOpId || !entry.text) continue;
-      const list = notesByBin.get(entry.binId) ?? [];
-      list.push(entry.text);
-      notesByBin.set(entry.binId, list);
+      if (entry.deletedByOpId) continue;
+      if (entry.kind === "note" && entry.text) {
+        const list = notesByBin.get(entry.binId) ?? [];
+        list.push(entry.text);
+        notesByBin.set(entry.binId, list);
+        continue;
+      }
+      const described = describedItems(entry);
+      if (described.length) {
+        const list = describedByBin.get(entry.binId) ?? [];
+        list.push(...described);
+        describedByBin.set(entry.binId, list);
+      }
     }
-    return { bins, notesByBin, labels, sizes, places };
+    return { bins, notesByBin, describedByBin, labels, sizes, places };
   },
 
   async opsAfter(groupId, seq, limit) {

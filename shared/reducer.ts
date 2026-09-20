@@ -130,6 +130,26 @@ export interface EntryState {
    * case any later verdict wins — see plans/bins.md).
    */
   deletedClock: string | null;
+  /**
+   * What a model saw in this photo (entry.setAiItems). Null = never looked at;
+   * an empty array = looked, saw nothing nameable. The two are different
+   * answers and must stay distinguishable, because only the first is worth
+   * spending money on again.
+   */
+  aiItems: string[] | null;
+  /** Which model produced `aiItems`. Null whenever aiItems is null. */
+  aiModel: string | null;
+  /**
+   * The photo `aiItems` was read from. If this stops matching `photoHash` the
+   * words describe a picture that is no longer here, and consumers must
+   * ignore them rather than show a stale description.
+   */
+  aiPhotoHash: string | null;
+  /**
+   * LWW clock for the three fields above — they are written as one unit, so
+   * they share one clock rather than joining the fieldClocks map.
+   */
+  aiItemsClock: string | null;
 }
 
 export interface LocationState {
@@ -524,8 +544,63 @@ export async function applyOp(
         deletedByDeviceId: existing?.deletedByDeviceId ?? null,
         deletedAt: existing?.deletedAt ?? null,
         deletedClock: existing?.deletedClock ?? null,
+        // Carried across for the same reason the tombstone fields are: a
+        // caption can reach a replica before the photo it describes, and
+        // dropping it here would make the result depend on arrival order.
+        aiItems: existing?.aiItems ?? null,
+        aiModel: existing?.aiModel ?? null,
+        aiPhotoHash: existing?.aiPhotoHash ?? null,
+        aiItemsClock: existing?.aiItemsClock ?? null,
       });
       await refreshDerived(store, op.binId, op.effectiveTime);
+      return;
+    }
+
+    case "entry.setAiItems": {
+      // LWW on its own clock, like deletion — a re-run with a better model
+      // replaces the words wholesale, and a re-applied op is a no-op.
+      const clock = clockOf(op);
+      const entry = await store.getEntry(op.payload.entryOpId);
+      const described = {
+        aiItems: op.payload.items,
+        aiModel: op.payload.model,
+        aiPhotoHash: op.payload.photoHash,
+        aiItemsClock: clock,
+      };
+      if (!entry) {
+        // The photo hasn't been seen here yet. Same contentless stub the
+        // remove/restore path builds, so the description survives until the
+        // entry.addPhoto arrives and fills the rest in.
+        await store.putEntry({
+          id: op.payload.entryOpId,
+          binId: op.binId,
+          kind: "note",
+          text: null,
+          photoHash: null,
+          thumbHash: null,
+          originalHash: null,
+          mime: null,
+          deviceId: null,
+          effectiveTime: op.effectiveTime,
+          geoLat: null,
+          geoLng: null,
+          geoAcc: null,
+          deletedByOpId: null,
+          deletedByDeviceId: null,
+          deletedAt: null,
+          deletedClock: null,
+          ...described,
+        });
+      } else if (wins(clock, entry.aiItemsClock ?? undefined)) {
+        await store.putEntry({ ...entry, ...described });
+      }
+      // Deliberately NOT refreshDerived. Every other op folds its time into
+      // the bin's createdAt/updatedAt, but a machine describing an old photo
+      // is not the box being touched — bumping updatedAt would float every
+      // captioned box to the top of "recently changed" and drown the real
+      // activity. Consistently skipping is as order-independent as
+      // consistently contributing; what breaks convergence is doing it only
+      // for the ops that win.
       return;
     }
 
@@ -559,6 +634,10 @@ export async function applyOp(
           deletedByDeviceId: deleted ? op.deviceId : null,
           deletedAt: deleted ? op.effectiveTime : null,
           deletedClock: clock,
+          aiItems: null,
+          aiModel: null,
+          aiPhotoHash: null,
+          aiItemsClock: null,
         });
       } else if (wins(clock, entry.deletedClock ?? undefined)) {
         await store.putEntry({
@@ -764,6 +843,33 @@ async function refreshDerived(store: StateStore, binId: number, time: number) {
  */
 export function hasContent(entry: EntryState): boolean {
   return Boolean(entry.photoHash || entry.text);
+}
+
+/**
+ * What a model read off this entry's photo, or nothing.
+ *
+ * The check that matters is `aiPhotoHash === photoHash`. A description is
+ * written against one specific image, and an entry's photo can be replaced
+ * after the fact — showing words that describe a picture which is no longer
+ * there would send someone to a box for something that has already gone.
+ * The reducer deliberately keeps a stale description rather than deleting it
+ * (it cannot know which is newer without becoming order-dependent), so the
+ * comparison has to happen here, at every point of use.
+ *
+ * Every consumer goes through this: the offline search index, the
+ * assistant's catalog, and the photo viewer.
+ */
+export function describedItems(
+  // Only the three fields the rule needs, so a raw database row satisfies it
+  // as readily as a reduced EntryState.
+  entry: Pick<EntryState, "aiItems" | "aiPhotoHash" | "photoHash">,
+): string[] {
+  if (!entry.aiItems?.length) return [];
+  // An entry with no photo has nothing to describe. Without this, two nulls
+  // compare equal below and a note would happily carry a photo description.
+  if (!entry.photoHash) return [];
+  if (entry.aiPhotoHash !== entry.photoHash) return [];
+  return entry.aiItems;
 }
 
 /** Comparator implementing the (effectiveTime, id) order for entries. */

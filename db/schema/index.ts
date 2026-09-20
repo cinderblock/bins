@@ -10,3 +10,4 @@ export * from "./suggestion";
 export * from "./push";
 export * from "./photo";
 export * from "./passkey";
+export * from "./ai-caption";

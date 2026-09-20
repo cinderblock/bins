@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import { MemoryStore } from "./memory-store";
 import type { CanonicalOp } from "./ops";
-import { applyOp } from "./reducer";
+import { applyOp, describedItems } from "./reducer";
 
 let uuidCounter = 0;
 /** Deterministic, sortable fake uuids (tests only). */
@@ -963,5 +963,161 @@ describe("structured locations", () => {
         },
       }),
     ]);
+  });
+});
+
+describe("AI photo descriptions", () => {
+  const PHOTO = "a".repeat(64);
+  const OTHER = "b".repeat(64);
+
+  function addPhoto(hash = PHOTO) {
+    return op({
+      type: "entry.addPhoto",
+      payload: { hash, kind: "contents_photo", mime: "image/jpeg" },
+    });
+  }
+
+  function describePhoto(
+    entryOpId: string,
+    items: string[],
+    at: number,
+    model = "test-model",
+    photoHash = PHOTO,
+  ) {
+    return op({
+      type: "entry.setAiItems",
+      effectiveTime: at,
+      deviceId: null,
+      payload: { entryOpId, photoHash, items, model },
+    });
+  }
+
+  test("describes the photo it was read from", async () => {
+    const photo = addPhoto();
+    const store = new MemoryStore();
+    await applyOp(store, photo);
+    await applyOp(store, describePhoto(photo.opId, ["USB-C cables"], 2000));
+
+    const entry = await store.getEntry(photo.opId);
+    expect(entry?.aiItems).toEqual(["USB-C cables"]);
+    expect(entry?.aiModel).toBe("test-model");
+    expect(entry?.aiPhotoHash).toBe(PHOTO);
+  });
+
+  test("a description arriving before its photo survives", async () => {
+    // The server can describe a photo and a replica can pull that op before
+    // the addPhoto it belongs to — the sync engine makes no ordering promise.
+    const photo = addPhoto();
+    const description = describePhoto(photo.opId, ["a drill"], 2000);
+    await expectConvergence([description, photo]);
+
+    const store = new MemoryStore();
+    await applyOp(store, description);
+    await applyOp(store, photo);
+    const entry = await store.getEntry(photo.opId);
+    expect(entry?.aiItems).toEqual(["a drill"]);
+    expect(entry?.photoHash).toBe(PHOTO);
+  });
+
+  test("a later model replaces an earlier one, in any order", async () => {
+    const photo = addPhoto();
+    const first = describePhoto(photo.opId, ["some cables"], 2000, "old");
+    const second = describePhoto(photo.opId, ["USB-C, HDMI"], 3000, "new");
+    await expectConvergence([photo, first, second]);
+
+    const store = new MemoryStore();
+    for (const o of [second, first, photo]) await applyOp(store, o);
+    const entry = await store.getEntry(photo.opId);
+    expect(entry?.aiModel).toBe("new");
+  });
+
+  test("seeing nothing is recorded, and differs from never looking", async () => {
+    // Null means "worth spending money on"; [] means "already paid for that
+    // answer". Collapsing them re-bills every blurry photo forever.
+    const photo = addPhoto();
+    const store = new MemoryStore();
+    await applyOp(store, photo);
+    expect((await store.getEntry(photo.opId))?.aiItems).toBeNull();
+
+    await applyOp(store, describePhoto(photo.opId, [], 2000));
+    expect((await store.getEntry(photo.opId))?.aiItems).toEqual([]);
+  });
+
+  test("describing does not bump the box's updatedAt", async () => {
+    // A machine reading an old photo is not the box being touched; otherwise
+    // a backfill floats every captioned box to the top of "recently changed".
+    const photo = addPhoto();
+    const store = new MemoryStore();
+    await applyOp(store, op({ type: "bin.claim", payload: { name: "Box" } }));
+    await applyOp(store, photo);
+    const before = (await store.getBin(1))?.updatedAt;
+
+    await applyOp(store, describePhoto(photo.opId, ["a drill"], 9_999_999));
+    expect((await store.getBin(1))?.updatedAt).toBe(before as number);
+  });
+
+  test("a description of a since-replaced photo is detectable", async () => {
+    // Kept rather than dropped: the reducer cannot know which is newer
+    // without becoming order-dependent, so it records what was described and
+    // lets consumers compare.
+    const photo = addPhoto();
+    const store = new MemoryStore();
+    await applyOp(store, photo);
+    await applyOp(
+      store,
+      describePhoto(photo.opId, ["an old drill"], 2000, "test-model", OTHER),
+    );
+    const entry = await store.getEntry(photo.opId);
+    expect(entry?.aiPhotoHash).not.toBe(entry?.photoHash);
+  });
+
+  test("converges with deletion racing a description", async () => {
+    const photo = addPhoto();
+    const description = describePhoto(photo.opId, ["a drill"], 2500);
+    const remove = op({
+      type: "entry.remove",
+      effectiveTime: 2600,
+      payload: { entryOpId: photo.opId },
+    });
+    const restore = op({
+      type: "entry.restore",
+      effectiveTime: 2700,
+      payload: { entryOpId: photo.opId },
+    });
+    await expectConvergence([photo, description, remove, restore]);
+  });
+});
+
+describe("describedItems — the rule every consumer shares", () => {
+  const base = {
+    aiItems: ["cordless drill"],
+    aiPhotoHash: "a".repeat(64),
+    photoHash: "a".repeat(64),
+  };
+
+  test("gives the items when they describe the photo that is there", () => {
+    expect(describedItems(base)).toEqual(["cordless drill"]);
+  });
+
+  test("gives nothing when the photo has been replaced since", () => {
+    // The reducer keeps the stale description on purpose — it cannot know
+    // which is newer without becoming order-dependent — so the comparison
+    // has to happen at every point of use, or search sends someone to a box
+    // for a thing that left with the old picture.
+    expect(describedItems({ ...base, photoHash: "b".repeat(64) })).toEqual([]);
+  });
+
+  test("gives nothing for a photo nobody has looked at", () => {
+    expect(describedItems({ ...base, aiItems: null })).toEqual([]);
+  });
+
+  test("gives nothing when the model looked and saw nothing", () => {
+    expect(describedItems({ ...base, aiItems: [] })).toEqual([]);
+  });
+
+  test("gives nothing for a note, which has no photo to describe", () => {
+    expect(
+      describedItems({ ...base, photoHash: null, aiPhotoHash: null }),
+    ).toEqual([]);
   });
 });

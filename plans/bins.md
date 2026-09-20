@@ -549,12 +549,14 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   does not invalidate the cached prefix; `group.sorting_notes` (migration
   0018) carries the one input a model cannot infer. Never yet run against a
   live provider — see `plans/ai-assist.md`.
-- [ ] Phase 5 — AI embellishment: vision over new contents photos → item list
-  → feeds search for free. Now rides the `api/ai/` backend above rather than
-  needing its own provider plumbing, so what is left is the schema/op-type
-  decision (`plans/ai-assist.md`, step 7) and the batch job. Until it lands,
-  a photo-only box is invisible to search and the catalog says so explicitly
-  ("contents recorded only as a photo").
+- [x] **Phase 5 — photo descriptions** (2026-09-20) — vision over contents
+  photos → `entry.setAiItems` ops → feeds BOTH the offline MiniSearch index
+  and the assistant's catalog. A photo-only box is findable by typing what is
+  in it. Own op type rather than the suggestion queue, attached to the entry
+  (not the bin), keyed by photo hash so an image is never read twice, and
+  deliberately NOT bumping the bin's updatedAt. Opt-in automatic
+  (`AI_CAPTION_PHOTOS`); admin panel shows the backlog and estimated cost.
+  Reasoning in `plans/ai-assist.md`.
 - [ ] On-device testing (iPhone + Android): camera lifecycle in installed PWA,
   scan-to-bin latency, airplane-mode round-trip on two devices.
 
