@@ -43,6 +43,10 @@ where.
   fill level — then prints the sticker straight to an IPP printer (anything
   that does AirPrint) or to any endpoint that accepts a PNG.
   The chosen drawing lives on the box, so a reprint is free and identical.
+- **Scans are recorded**: every printed sticker carries a short code in its
+  QR fragment, so opening one records a sighting (when, and which sticker).
+  Boxes show "scanned 3d ago", and a scan of an older print than the box's
+  current label says so. The in-app scanner records sightings too.
 - **Box numbers are optional**: `BOX_NUMBERS=internal` hides the number
   everywhere and puts an opaque handle (`/b/<uuid>`) on stickers instead;
   ids stay integers underneath and every old `/<number>` link keeps working.

@@ -54,6 +54,15 @@ export interface BinState {
   artPrompt: string | null;
   /** sha256 of the chosen label artwork PNG in the blob store. LWW scalar. */
   labelArtHash: string | null;
+  /** The code in the current sticker's QR fragment (see shared/ops.ts). */
+  stickerCode: string | null;
+  /**
+   * The latest sighting (bin.sighted), by (effectiveTime, opId): when, how,
+   * and the code the sticker carried. Null until ever seen.
+   */
+  lastSeenAt: number | null;
+  lastSeenVia: string | null;
+  lastSeenCode: string | null;
   locationName: string | null;
   /**
    * Structured location: the configured place this box sits in, and an opaque
@@ -249,6 +258,10 @@ function newBin(id: number, time: number): BinState {
     description: null,
     artPrompt: null,
     labelArtHash: null,
+    stickerCode: null,
+    lastSeenAt: null,
+    lastSeenVia: null,
+    lastSeenCode: null,
     locationName: null,
     locationId: null,
     slot: null,
@@ -322,6 +335,7 @@ export async function applyOp(
         "description",
         "artPrompt",
         "labelArtHash",
+        "stickerCode",
       ] as const) {
         const value = op.payload[field];
         if (value === undefined) continue;
@@ -343,6 +357,22 @@ export async function applyOp(
       ) {
         bin.fillLevel = op.payload.fillLevel ?? null;
         bin.fieldClocks.fillLevel = clock;
+      }
+      await store.putBin(bin);
+      return;
+    }
+
+    case "bin.sighted": {
+      // The latest sighting wins, on its own clock — a sighting never
+      // competes with an edit, and two devices seeing the box a second apart
+      // converge on the later one whatever order the ops arrive.
+      const bin = await touchBin(store, op);
+      const clock = clockOf(op);
+      if (wins(clock, bin.fieldClocks.seen)) {
+        bin.lastSeenAt = op.effectiveTime;
+        bin.lastSeenVia = op.payload.via;
+        bin.lastSeenCode = op.payload.code;
+        bin.fieldClocks.seen = clock;
       }
       await store.putBin(bin);
       return;

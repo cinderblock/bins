@@ -102,8 +102,24 @@ export const binFieldsSchema = z.object({
     .string()
     .regex(/^[0-9a-f]{64}$/)
     .nullish(),
+  /**
+   * The code printed in the CURRENT sticker's QR fragment (`/b/<h>#CODE`),
+   * minted server-side each time a label is printed. Not a secret — on a
+   * codeless deployment it only marks "this load came from a sticker", and
+   * WHICH one: a scan carrying an older code means the box wears a stale
+   * label. Deployments with per-box secrets keep using the secret instead.
+   */
+  stickerCode: z.string().max(20).nullish(),
 });
 export type BinFields = z.infer<typeof binFieldsSchema>;
+
+/**
+ * How a box came to be seen. `sticker` = its QR opened in a browser (the
+ * fragment marker says so); `scanner` = the in-app camera; `camera` is
+ * reserved for a continuous recogniser walking the aisle.
+ */
+export const SIGHTING_VIA = ["sticker", "scanner", "camera"] as const;
+export type SightingVia = (typeof SIGHTING_VIA)[number];
 
 /**
  * The subset of bin fields a member SUGGESTS rather than sets: the box's
@@ -185,6 +201,22 @@ export const clientOpSchema = z.discriminatedUnion("type", [
       locationName: z.string().max(200).nullable(),
       locationId: z.string().uuid().nullable().optional(),
       slot: z.string().max(40).nullable().optional(),
+    }),
+  }),
+  /**
+   * "Someone just saw this box." Append-only observation, never an edit: the
+   * box's `lastSeen*` fields are the LATEST sighting by (effectiveTime, opId),
+   * which is order-independent. The code is whatever rode the sticker's
+   * fragment, so a stale sticker is detectable. Cheap, and exactly the shape
+   * a continuous scanner will emit later (plans/multi-instance.md).
+   */
+  z.object({
+    ...opBase,
+    type: z.literal("bin.sighted"),
+    binId,
+    payload: z.object({
+      via: z.enum(SIGHTING_VIA),
+      code: z.string().max(20).nullable(),
     }),
   }),
   z.object({

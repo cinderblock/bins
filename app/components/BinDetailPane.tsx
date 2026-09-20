@@ -168,6 +168,9 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
                 sizeLabel,
                 bin.weightGrams ? formatWeight(bin.weightGrams) : null,
                 bin.fillLevel != null ? describeFillLevel(bin.fillLevel) : null,
+                bin.lastSeenAt != null
+                  ? `scanned ${relativeTime(bin.lastSeenAt)}`
+                  : null,
               ]
                 .filter(Boolean)
                 .join(" · ")}

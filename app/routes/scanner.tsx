@@ -39,6 +39,7 @@ import { Link, useNavigate } from "react-router";
 import wasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url";
 import { BinPeek } from "~/components/BinPeek";
 import { addPhoto } from "~/lib/actions";
+import { recordSighting } from "~/lib/actions";
 import {
   boxPath,
   findBox,
@@ -257,6 +258,8 @@ export default function Scanner() {
     const bin = await findBox(target);
     // Same box again: don't re-pop a peek the user collapsed.
     if (bin ? bin.id === currentBinId : target.binId === currentBinId) return;
+    // Seen, by the in-app camera, with whatever code the sticker carried.
+    if (bin) void recordSighting(bin.id, "scanner", target.code);
     if (bin && bin.status !== "unclaimed") {
       makeCurrent(bin.id);
     } else if (bin) {

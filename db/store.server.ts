@@ -37,6 +37,10 @@ export class DrizzleStateStore implements StateStore {
       description: row.description,
       artPrompt: row.artPrompt,
       labelArtHash: row.labelArtHash,
+      stickerCode: row.stickerCode,
+      lastSeenAt: row.lastSeenAt,
+      lastSeenVia: row.lastSeenVia,
+      lastSeenCode: row.lastSeenCode,
       locationName: row.locationName,
       locationId: row.locationId,
       slot: row.slot,
@@ -65,6 +69,10 @@ export class DrizzleStateStore implements StateStore {
       description: bin.description,
       artPrompt: bin.artPrompt,
       labelArtHash: bin.labelArtHash,
+      stickerCode: bin.stickerCode,
+      lastSeenAt: bin.lastSeenAt,
+      lastSeenVia: bin.lastSeenVia,
+      lastSeenCode: bin.lastSeenCode,
       locationName: bin.locationName,
       // These two were missing here until 2026-09-19: the reducer set them
       // and the server silently dropped them, so a structured placement never

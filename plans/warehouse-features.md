@@ -299,6 +299,19 @@ The new-box flow becomes one screen modelled on the label generator:
       printing" beneath (operator: they shouldn't be separate). Pin bump
       staged in ops.
 
+- [x] **Sightings (2026-09-20).** Every print mints a 4-char sticker code
+      (same alphabet as the secrets, not a secret) recorded on the box via a
+      server-authored `bin.setFields` and printed in the QR fragment; closed
+      deployments keep the secret there instead. Loading a box URL with a
+      fragment records `bin.sighted { via: "sticker", code }` once per page
+      load and strips the fragment; the in-app scanner records `via:
+      "scanner"`. The reducer keeps the latest sighting (own LWW clock) as
+      `lastSeenAt/Via/Code`; Dexie v11 indexes `lastSeenAt`; migration 0016.
+      UI: "scanned 3d ago" on the box page, list and pane; a yellow note when
+      the scanned code is older than the box's current sticker code. `via:
+      "camera"` is reserved for the continuous scanner. Studio's main action
+      is now "Save & print label" with a quiet "Save without printing".
+
 ## Things not to do
 
 - Don't change the bin primary key type; don't touch the reducer's id type.

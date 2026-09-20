@@ -45,6 +45,12 @@ export const bin = sqliteTable(
     artPrompt: text("art_prompt"),
     /** sha256 of the chosen label artwork PNG in the blob store. */
     labelArtHash: text("label_art_hash"),
+    /** Code in the current sticker's QR fragment (see shared/ops.ts). */
+    stickerCode: text("sticker_code"),
+    /** Latest sighting: when, how (sticker/scanner/camera), which code. */
+    lastSeenAt: integer("last_seen_at"),
+    lastSeenVia: text("last_seen_via"),
+    lastSeenCode: text("last_seen_code"),
     locationName: text("location_name"),
     /** Structured location — see shared/reducer.ts; shares one clock with
         locationName so a box is only ever in one place. */

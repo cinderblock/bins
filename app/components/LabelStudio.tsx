@@ -83,7 +83,10 @@ type Candidate = {
 };
 
 /** The little a studio needs to know about its box once it has one. */
-type BoxIdentity = BoxRef & { secretCode: string | null };
+type BoxIdentity = BoxRef & {
+  secretCode: string | null;
+  stickerCode: string | null;
+};
 
 const MAX_REFERENCES = 5;
 
@@ -145,7 +148,14 @@ export function LabelStudio({
   // a ref as well as state because flush() runs inside async handlers that
   // must see the identity the moment it exists, not on the next render.
   const [box, setBox] = useState<BoxIdentity | null>(
-    bin ? { id: bin.id, handle: bin.handle, secretCode: bin.secretCode } : null,
+    bin
+      ? {
+          id: bin.id,
+          handle: bin.handle,
+          secretCode: bin.secretCode,
+          stickerCode: bin.stickerCode,
+        }
+      : null,
   );
   const boxRef = useRef<BoxIdentity | null>(box);
   // In `new` mode the first save is the claim; after that, ordinary edits.
@@ -232,6 +242,7 @@ export function LabelStudio({
       id: created.id,
       handle: created.handle,
       secretCode: created.code,
+      stickerCode: null,
     };
     boxRef.current = identity;
     setBox(identity);
@@ -395,9 +406,13 @@ export function LabelStudio({
   }
 
   const origin = typeof window === "undefined" ? "" : window.location.origin;
+  // The fragment: the secret on closed deployments, else the current
+  // sticker code (a print mints a new one, so the printed QR differs from
+  // this sketch by exactly that — the exact render is the print sheet's).
+  const fragment = box?.secretCode ?? box?.stickerCode ?? null;
   const previewUrl = box
-    ? (box.secretCode
-        ? `${origin}${boxPath(box, numbersInternal)}#${box.secretCode}`
+    ? (fragment
+        ? `${origin}${boxPath(box, numbersInternal)}#${fragment}`
         : `${origin}${boxPath(box, numbersInternal)}`
       ).toUpperCase()
     : null;

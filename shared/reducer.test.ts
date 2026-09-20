@@ -557,6 +557,35 @@ describe("reducer convergence", () => {
     );
   });
 
+  test("sightings: the latest wins in any order, and never touches edits", async () => {
+    const ops = [
+      op({
+        type: "bin.claim",
+        deviceId: "device-a",
+        effectiveTime: 100,
+        payload: { name: "Cables", stickerCode: "K7QX" },
+      }),
+      op({
+        type: "bin.sighted",
+        deviceId: "device-b",
+        effectiveTime: 300,
+        payload: { via: "sticker", code: "K7QX" },
+      }),
+      op({
+        type: "bin.sighted",
+        deviceId: "device-a",
+        effectiveTime: 200,
+        payload: { via: "scanner", code: null },
+      }),
+    ] as CanonicalOp[];
+    const snapshot = await expectConvergence(ops);
+    expect(snapshot).toContain('"lastSeenAt":300');
+    expect(snapshot).toContain('"lastSeenVia":"sticker"');
+    expect(snapshot).toContain('"lastSeenCode":"K7QX"');
+    expect(snapshot).toContain('"stickerCode":"K7QX"');
+    expect(snapshot).toContain('"name":"Cables"');
+  });
+
   test("an allocate without a handle (pre-handle op) leaves it null", async () => {
     const snapshot = await expectConvergence([
       op({

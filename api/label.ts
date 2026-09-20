@@ -17,6 +17,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "../db/client.server";
+import { SECRET_CODE_ALPHABET, SECRET_CODE_LENGTH } from "../shared/ops";
 import { readBlob } from "./blobs";
 import {
   boxNumbers,
@@ -34,6 +35,20 @@ import {
 import { isIppUrl, printViaIpp } from "./labels/ipp";
 import { renderLabel } from "./labels/render";
 import { type LabelContent, parseLabelSize } from "./labels/spec";
+import { authorServerOp } from "./server-ops";
+
+/**
+ * A fresh sticker code: four characters from the same unambiguous alphabet
+ * as the secret codes, minted per print so a scan can tell which sticker it
+ * came from. Not a secret — a marker.
+ */
+function mintStickerCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(SECRET_CODE_LENGTH));
+  let code = "";
+  for (const byte of bytes)
+    code += SECRET_CODE_ALPHABET[byte % SECRET_CODE_ALPHABET.length];
+  return code;
+}
 
 export const labelSchema = z.object({
   binId: z.number().int().positive(),
@@ -78,6 +93,8 @@ async function buildLabel(
   ctx: Ctx,
   input: LabelInput,
   origin: string,
+  /** Print mints a NEW sticker code; a preview shows the current one. */
+  forPrint = false,
 ): Promise<{ png: Buffer; title: string } | Response> {
   const geometry = parseLabelSize(labelSizeRaw());
   if (!geometry) {
@@ -115,12 +132,26 @@ async function buildLabel(
 
   // The QR carries the box's handle where numbers are internal (a box
   // allocated before handles existed keeps its number — the only honest URL
-  // it has), else the number. The secret code rides the URL FRAGMENT when
-  // there is one, exactly as the in-app sticker export does — fragments never
-  // reach a server, so codes stay out of access logs. Codeless deployments
-  // print a bare path.
+  // it has), else the number. The FRAGMENT carries a code: the box's secret
+  // on deployments that have them, otherwise a sticker code — minted fresh
+  // for every print and recorded on the box, so a scan says "this came from
+  // a sticker" and which one (an older code = a stale label). Fragments
+  // never reach a server, so neither kind lands in access logs.
   const ref = internal && bin.handle ? `/b/${bin.handle}` : `/${bin.id}`;
-  const path = bin.secretCode ? `${ref}#${bin.secretCode}` : ref;
+  let fragment = bin.secretCode;
+  if (!fragment) {
+    if (forPrint) {
+      fragment = mintStickerCode();
+      await authorServerOp(ctx.groupId, {
+        type: "bin.setFields",
+        binId: bin.id,
+        payload: { stickerCode: fragment },
+      });
+    } else {
+      fragment = bin.stickerCode;
+    }
+  }
+  const path = fragment ? `${ref}#${fragment}` : ref;
 
   const content: LabelContent = {
     template,
@@ -185,7 +216,7 @@ export async function handleLabelPrint(
   const url = labelPrintUrl();
   if (!url) return error(501, "no label printer configured");
 
-  const built = await buildLabel(ctx, input, origin);
+  const built = await buildLabel(ctx, input, origin, true);
   if (built instanceof Response) return built;
 
   const headers: Record<string, string> = { "Content-Type": "image/png" };

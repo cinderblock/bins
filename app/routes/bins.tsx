@@ -63,6 +63,7 @@ import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import { useBoxSizes } from "~/lib/boxSizes";
 import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
+import { relativeTime } from "~/lib/format";
 import { formatWeight, labelColor } from "~/lib/labels";
 import { describeBinLocation, usePlaceMap } from "~/lib/places";
 import { type SearchDoc, buildSearchIndex } from "~/lib/search";
@@ -622,6 +623,11 @@ export default function Bins() {
                             </Badge>
                           );
                         })}
+                        {bin.lastSeenAt != null && (
+                          <Text size="xs" c="dimmed">
+                            scanned {relativeTime(bin.lastSeenAt)}
+                          </Text>
+                        )}
                         {/* Legacy field: no longer editable, still shown
                             where a box carries one so nothing typed on an
                             older deployment silently vanishes. */}

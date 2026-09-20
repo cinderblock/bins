@@ -184,6 +184,37 @@ db.version(9).upgrade((tx) =>
     }),
 );
 
+// v11: sticker codes and sightings. `lastSeenAt` is indexed so "not scanned
+// since" is a range query rather than a scan. Backfill nulls as ever.
+db.version(11)
+  .stores({
+    bins: "id, updatedAt, status, *labelIds, handle, lastSeenAt",
+    entries: "id, binId, effectiveTime",
+    locations: "id, sortOrder",
+    labels: "id, sortOrder",
+    boxSizes: "id, sortOrder",
+    suggestions: "id, binId, status, [binId+status], createdAt",
+    pendingOps: "opId",
+    blobs: "hash, status, role, lastAccessAt",
+    errorQueue: "++id, at",
+    meta: "key",
+  })
+  .upgrade((tx) =>
+    tx
+      .table("bins")
+      .toCollection()
+      .modify((row: Record<string, unknown>) => {
+        for (const key of [
+          "stickerCode",
+          "lastSeenAt",
+          "lastSeenVia",
+          "lastSeenCode",
+        ]) {
+          if (row[key] === undefined) row[key] = null;
+        }
+      }),
+  );
+
 // v10: box handles + the warehouse batch (fill level, description, art
 // fields; a place's span; a size's icon). `handle` is indexed because the
 // /b/<handle> route resolves it on every load. Backfill explicit nulls so

@@ -36,7 +36,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { CaptureOverlay } from "~/components/CaptureOverlay";
 import { ClaimBin } from "~/components/ClaimBin";
@@ -50,13 +50,14 @@ import { NoteSheet } from "~/components/NoteSheet";
 import { PhotoImg } from "~/components/PhotoImg";
 import { PhotoLightbox } from "~/components/PhotoLightbox";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
+import { recordSighting } from "~/lib/actions";
 import { useAdminPassword } from "~/lib/admin";
 import { useAuthors } from "~/lib/authors";
 import { HANDLE_RE, boxTitle, normalizeHandle } from "~/lib/boxRef";
 import { useBoxSizes } from "~/lib/boxSizes";
 import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
-import { relativeTime } from "~/lib/format";
+import { binIdFromScan, relativeTime } from "~/lib/format";
 import { formatWeight, labelColor } from "~/lib/labels";
 import { describeBinLocationLong, usePlaceMap } from "~/lib/places";
 import { SizeIcon } from "~/lib/sizeIcons";
@@ -134,6 +135,26 @@ export default function BinPage() {
   useEffect(() => {
     if (bin?.status === "unclaimed" && canEditLabel) setNewFlow(true);
   }, [bin?.status, canEditLabel]);
+
+  // A fragment on the URL means this load came from a sticker's QR (the
+  // in-app links never carry one): record the sighting, with the code the
+  // sticker had, then drop the fragment so a reload or a share doesn't count
+  // as another scan. Once per box per page load.
+  const sightedRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!bin || sightedRef.current === bin.id) return;
+    const target = binIdFromScan(
+      `https://local${window.location.pathname}${window.location.search}${window.location.hash}`,
+    );
+    if (!target?.code) return;
+    sightedRef.current = bin.id;
+    void recordSighting(bin.id, "sticker", target.code);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${window.location.search}`,
+    );
+  }, [bin]);
 
   const [noteOpen, setNoteOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
@@ -376,6 +397,22 @@ export default function BinPage() {
             </Alert>
           )}
 
+          {/* A scan carrying an older code than the box's current sticker
+              means the physical label is stale — the box was relabelled after
+              this one was printed. Worth a line, since the next person to
+              scan it will hit the same thing. */}
+          {bin.stickerCode &&
+            bin.lastSeenCode &&
+            bin.lastSeenVia === "sticker" &&
+            bin.lastSeenCode !== bin.stickerCode && (
+              <Alert variant="light" color="yellow" p="xs">
+                <Text size="sm">
+                  The sticker last scanned on this box is an older print. Its
+                  current label is newer — print it again and swap the sticker.
+                </Text>
+              </Alert>
+            )}
+
           {/* Location + labels line */}
           <Group gap="xs">
             <IconMapPin size={16} style={{ opacity: 0.6 }} />
@@ -387,6 +424,11 @@ export default function BinPage() {
                 </Text>
               );
             })()}
+            {bin.lastSeenAt != null && (
+              <Text size="xs" c="dimmed">
+                · scanned {relativeTime(bin.lastSeenAt)}
+              </Text>
+            )}
             {bin.externalLabel && (
               <Badge
                 variant="outline"

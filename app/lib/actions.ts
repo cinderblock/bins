@@ -1,4 +1,9 @@
-import type { BinFields, ClientOp, SuggestFields } from "@shared/ops";
+import type {
+  BinFields,
+  ClientOp,
+  SightingVia,
+  SuggestFields,
+} from "@shared/ops";
 /**
  * Op constructors — the only place client ops are built. Each stamps uuidv7 +
  * clientTime + the cached geofix and hands off to the sync engine (optimistic
@@ -72,6 +77,24 @@ export async function setBinLocation(
     type: "bin.setLocation",
     binId,
     payload,
+  });
+}
+
+/**
+ * "I just saw this box." Recorded when its sticker is scanned (by the phone's
+ * camera into the browser, or by the in-app scanner) with whatever code the
+ * sticker carried. Append-only; the reducer keeps the latest.
+ */
+export async function recordSighting(
+  binId: number,
+  via: SightingVia,
+  code: string | null,
+) {
+  await enqueueOp({
+    ...stamp(),
+    type: "bin.sighted",
+    binId,
+    payload: { via, code },
   });
 }
 

@@ -1494,6 +1494,78 @@ describe("open access", () => {
     }
   });
 
+  test("printing mints a sticker code, and a sighting with it round-trips", async () => {
+    const { eq } = await import("drizzle-orm");
+    let jobs = 0;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      jobs++;
+      return new Response("", { status: 200 });
+    }) as unknown as typeof fetch;
+    process.env.LABEL_PRINT_URL = "http://labelpi.test/print";
+    process.env.OPEN_ACCESS = "1";
+    try {
+      // A box allocated under open access has no secret, so the fragment is
+      // a sticker code minted per print and recorded through the op log.
+      // (A box WITH a secret keeps using it — that is its sticker identity.)
+      const alloc = await call("POST", "/api/admin/bins/allocate", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw", count: 1 },
+      });
+      const fresh = ((await alloc.json()) as { bins: { id: number }[] })
+        .bins[0] as { id: number };
+      const res = await call("POST", "/api/admin/bins/label", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw", binId: fresh.id },
+      });
+      expect(res.status).toBe(200);
+      expect(jobs).toBe(1);
+      const after = await db.query.bin.findFirst({
+        where: eq(schema.bin.id, fresh.id),
+      });
+      expect(after?.stickerCode).toMatch(/^[0-9A-Z]{4}$/);
+      // Printing again = a new sticker = a new code, so the old one reads
+      // as stale when scanned.
+      await call("POST", "/api/admin/bins/label", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw", binId: fresh.id },
+      });
+      const again = await db.query.bin.findFirst({
+        where: eq(schema.bin.id, fresh.id),
+      });
+      expect(again?.stickerCode).not.toBe(after?.stickerCode);
+
+      // A device scanned the (older) sticker.
+      const push = await call("POST", "/api/sync/push", {
+        token: tokenB,
+        body: {
+          ops: [
+            {
+              opId: uuid(),
+              type: "bin.sighted",
+              binId: fresh.id,
+              payload: { via: "sticker", code: after?.stickerCode },
+              clientTime: Date.now(),
+            },
+          ],
+        },
+      });
+      expect(push.status).toBe(200);
+      const seen = await db.query.bin.findFirst({
+        where: eq(schema.bin.id, fresh.id),
+      });
+      expect(seen?.lastSeenVia).toBe("sticker");
+      expect(seen?.lastSeenCode).toBe(after?.stickerCode ?? null);
+      expect(seen?.lastSeenAt).toBeGreaterThan(0);
+    } finally {
+      globalThis.fetch = realFetch;
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.LABEL_PRINT_URL;
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.OPEN_ACCESS;
+    }
+  });
+
   test("an ipp:// printer gets a Print-Job, not a bare POST", async () => {
     const seen: { url: string; type: string | null; body: Uint8Array }[] = [];
     const realFetch = globalThis.fetch;
