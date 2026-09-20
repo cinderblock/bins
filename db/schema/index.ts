@@ -9,3 +9,4 @@ export * from "./client-error";
 export * from "./suggestion";
 export * from "./push";
 export * from "./photo";
+export * from "./passkey";

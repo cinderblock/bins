@@ -23,14 +23,16 @@ import {
 import { notifications } from "@mantine/notifications";
 import type { SuggestFields } from "@shared/ops";
 import type { BinState } from "@shared/reducer";
-import { IconInfoCircle } from "@tabler/icons-react";
+import { IconArchive, IconInfoCircle } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { SizePicker } from "~/components/SizePicker";
 import { setBinFields, suggestBinEdit } from "~/lib/actions";
+import { apiJson } from "~/lib/api";
 import { boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import { useBoxSizes } from "~/lib/boxSizes";
 import { usePendingSuggestions } from "~/lib/suggestions";
+import { syncNow } from "~/lib/sync";
 
 /**
  * The legacy hardcoded list. Kept ONLY as a fallback for a replica that has
@@ -42,15 +44,48 @@ const SIZE_CLASSES = ["S", "M", "L", "XL"];
 export function EditBoxSheet({
   bin,
   canEditDirectly,
+  adminPassword = null,
   opened,
   onClose,
 }: {
   bin: BinState;
   /** Admin unlocked on this device — writes apply instead of queueing. */
   canEditDirectly: boolean;
+  /** The remembered admin value, for the admin-only retire action. */
+  adminPassword?: string | null;
   opened: boolean;
   onClose: () => void;
 }) {
+  const [retireArmed, setRetireArmed] = useState(false);
+  const [retiring, setRetiring] = useState(false);
+
+  // "Delete" is retire: the record stays (the id is never reused, so a
+  // leftover sticker resolves to "emptied", never to someone else's stuff)
+  // and an admin can restore it from the box list. Two taps, on purpose.
+  async function retire() {
+    if (adminPassword === null) return;
+    setRetiring(true);
+    try {
+      await apiJson("/api/admin/bins/retire", {
+        method: "POST",
+        body: JSON.stringify({ adminPassword, binId: bin.id }),
+      });
+      await syncNow();
+      notifications.show({
+        message: "Box retired. Restore it from the box list if needed.",
+        color: "orange",
+      });
+      onClose();
+    } catch (err) {
+      notifications.show({
+        message: err instanceof Error ? err.message : String(err),
+        color: "red",
+      });
+    } finally {
+      setRetiring(false);
+      setRetireArmed(false);
+    }
+  }
   const [name, setName] = useState(bin.name ?? "");
   const [sizeClass, setSizeClass] = useState(bin.sizeClass ?? "");
   const [sizeId, setSizeId] = useState<string | null>(bin.sizeId ?? null);
@@ -203,6 +238,23 @@ export function EditBoxSheet({
             {canEditDirectly ? "Save" : "Send to an admin"}
           </Button>
         </Group>
+        {canEditDirectly &&
+          adminPassword !== null &&
+          bin.status === "active" && (
+            <Button
+              variant={retireArmed ? "filled" : "subtle"}
+              color="red"
+              size="sm"
+              loading={retiring}
+              leftSection={<IconArchive size={16} />}
+              onClick={() =>
+                retireArmed ? void retire() : setRetireArmed(true)
+              }
+              onBlur={() => setRetireArmed(false)}
+            >
+              {retireArmed ? "Really retire this box?" : "Retire this box"}
+            </Button>
+          )}
       </Stack>
     </ResponsiveSheet>
   );

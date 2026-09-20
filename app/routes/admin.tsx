@@ -35,8 +35,10 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
+import { AdminUnlock } from "~/components/AdminUnlock";
 import { BoxSizeManager } from "~/components/BoxSizeManager";
 import { ErrorLog } from "~/components/ErrorLog";
+import { PasskeyManager } from "~/components/PasskeyManager";
 import { PushToggle } from "~/components/PushToggle";
 import { ShelfBuilder } from "~/components/ShelfBuilder";
 import { SuggestionQueue } from "~/components/SuggestionQueue";
@@ -150,18 +152,6 @@ export default function Admin() {
     await refreshDeviceList(pw);
     await refreshIntegrations(pw);
     setUnlocked(true);
-  }
-
-  async function unlock() {
-    setBusy(true);
-    try {
-      await doUnlock(password);
-      await rememberAdmin(password);
-    } catch (err) {
-      fail(err);
-    } finally {
-      setBusy(false);
-    }
   }
 
   function lock() {
@@ -363,26 +353,13 @@ export default function Admin() {
 
       {!unlocked ? (
         <Paper p="md" radius="lg" withBorder>
-          <Stack gap="sm">
-            <Text size="sm" c="dimmed">
-              Group administration needs the admin password (set during
-              first-boot setup).
-            </Text>
-            <PasswordInput
-              label="Admin password"
-              value={password}
-              onChange={(e) => setPassword(e.currentTarget.value)}
-              onKeyDown={(e) => e.key === "Enter" && password && void unlock()}
-              autoFocus
-            />
-            <Button
-              onClick={() => void unlock()}
-              loading={busy}
-              disabled={!password}
-            >
-              Unlock
-            </Button>
-          </Stack>
+          <AdminUnlock
+            description="Group administration needs the admin password (set during first-boot setup) — or a passkey, once one is saved."
+            onUnlocked={async (pw) => {
+              setPassword(pw);
+              await doUnlock(pw);
+            }}
+          />
         </Paper>
       ) : (
         <>
@@ -392,6 +369,10 @@ export default function Admin() {
           {/* Right under the queue it feeds: the reason to want a
               notification is visible immediately above the switch. */}
           <PushToggle adminPassword={password} />
+
+          {/* Passkeys: the way to never type the password on a phone. Also
+              at /admin/passkey, the URL to open on a new device. */}
+          <PasskeyManager adminPassword={password} />
 
           {config && (
             <Paper p="md" radius="lg" withBorder>

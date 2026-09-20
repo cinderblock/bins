@@ -17,6 +17,12 @@ import { type Ctx, authenticate, canWrite, error } from "./context";
 import { handlePreflight, isCorsPath, withCors } from "./cors";
 import { handleErrorReport } from "./errors";
 import { handleLanding } from "./landing";
+import {
+  handlePasskeyLoginOptions,
+  handlePasskeyLoginVerify,
+  handlePasskeyLogout,
+  handlePasskeyStatus,
+} from "./passkeys";
 import { handlePushStatus, handleUnsubscribe } from "./push";
 import { handleRecover } from "./recover";
 import { handleSetup } from "./setup";
@@ -106,6 +112,22 @@ async function dispatch(
     return await handlePushStatus(ctx);
   if (path === "/api/push/unsubscribe" && method === "POST")
     return await handleUnsubscribe(ctx);
+  // Passkey ceremonies for admin: a member device proves it holds one of the
+  // group's passkeys and becomes admin for a while (see api/passkeys.ts).
+  if (path.startsWith("/api/passkey/") && method === "POST") {
+    if (ctx.kind !== "member") return error(403, "members only");
+    if (path === "/api/passkey/status") return await handlePasskeyStatus(ctx);
+    if (path === "/api/passkey/login/options")
+      return await handlePasskeyLoginOptions(req, ctx);
+    if (path === "/api/passkey/login/verify")
+      return await handlePasskeyLoginVerify(
+        req,
+        ctx,
+        await req.json().catch(() => null),
+      );
+    if (path === "/api/passkey/logout") return await handlePasskeyLogout(ctx);
+    return error(404, "no such endpoint");
+  }
   // Admin is member-only: an integration credential never administers a group.
   if (path.startsWith("/api/admin/") && method === "POST") {
     if (ctx.kind !== "member") return error(403, "members only");

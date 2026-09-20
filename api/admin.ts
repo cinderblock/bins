@@ -26,11 +26,24 @@ import {
 } from "./context";
 import { handleErrorClear, handleErrorList } from "./errors";
 import { handleLabelPreview, handleLabelPrint, labelSchema } from "./label";
+import {
+  handlePasskeyList,
+  handlePasskeyRegisterOptions,
+  handlePasskeyRegisterVerify,
+  handlePasskeyRemove,
+} from "./passkeys";
 import { handleSubscribe } from "./push";
 
 type GroupRow = typeof schema.group.$inferSelect;
 
-const withPassword = z.object({ adminPassword: z.string().min(1).max(200) });
+/**
+ * Optional, because a device unlocked by passkey sends none (the client
+ * still fills the field with a sentinel, which is ignored — see
+ * requireAdmin). Present and non-empty, it is checked as it always was.
+ */
+const withPassword = z.object({
+  adminPassword: z.string().max(200).optional(),
+});
 
 const patchSchema = withPassword.extend({
   name: z.string().min(1).max(100).optional(),
@@ -130,12 +143,18 @@ async function requireAdmin(
   ctx: Ctx,
   body: unknown,
 ): Promise<GroupRow | Response> {
-  const parsed = withPassword.safeParse(body);
-  if (!parsed.success) return error(400, "admin password required");
   const group = await db.query.group.findFirst({
     where: eq(schema.group.id, ctx.groupId),
   });
-  if (!group?.adminPasswordHash) {
+  if (!group) return error(403, "no such group");
+  // A device that unlocked with a passkey is admin until that runs out or
+  // it locks — no password on the wire at all. The sentinel the client
+  // sends in that state is never compared to anything.
+  if (ctx.adminUntil !== null && ctx.adminUntil > Date.now()) return group;
+  const parsed = withPassword.safeParse(body);
+  if (!parsed.success || !parsed.data.adminPassword)
+    return error(400, "admin password required");
+  if (!group.adminPasswordHash) {
     return error(403, "admin access is not configured for this group");
   }
   if (sha256Hex(parsed.data.adminPassword) !== group.adminPasswordHash) {
@@ -319,6 +338,17 @@ export async function handleAdmin(
   // Unlock check; returns the RAW config (nulls, not derived defaults) so
   // the admin form can prefill and show defaults as placeholders.
   if (path === "/api/admin/verify") return json({ config: configOf(group) });
+
+  // Passkeys: registering one is minting a new way in, so it sits behind
+  // admin like everything here; using one is a member-side ceremony
+  // (/api/passkey/*, api/router.ts).
+  if (path === "/api/admin/passkeys") return handlePasskeyList(group);
+  if (path === "/api/admin/passkeys/register/options")
+    return handlePasskeyRegisterOptions(req, ctx, group);
+  if (path === "/api/admin/passkeys/register/verify")
+    return handlePasskeyRegisterVerify(req, ctx, group, body);
+  if (path === "/api/admin/passkeys/remove")
+    return handlePasskeyRemove(group, body);
 
   if (path === "/api/admin/group") {
     const parsed = patchSchema.safeParse(body);

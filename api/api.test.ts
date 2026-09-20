@@ -857,6 +857,87 @@ describe("api", () => {
     first.handle = row?.handle as string;
   });
 
+  test("passkeys: ceremonies are offered, garbage is refused, a passkey session needs no password", async () => {
+    const { eq } = await import("drizzle-orm");
+    const status = await call("POST", "/api/passkey/status", { token: tokenA });
+    expect(status.status).toBe(200);
+    expect(((await status.json()) as { registered: number }).registered).toBe(
+      0,
+    );
+
+    // Registering needs admin; the options carry a challenge bound to the
+    // deployment's hostname.
+    const denied = await call("POST", "/api/admin/passkeys/register/options", {
+      token: tokenA,
+      body: { adminPassword: "nope" },
+    });
+    expect(denied.status).toBe(403);
+    const opts = await call("POST", "/api/admin/passkeys/register/options", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw" },
+    });
+    expect(opts.status).toBe(200);
+    const options = (
+      (await opts.json()) as {
+        options: { challenge: string; rp: { id: string } };
+      }
+    ).options;
+    expect(options.challenge.length).toBeGreaterThan(10);
+    expect(options.rp.id).toBe("localhost");
+    // A made-up authenticator response is refused, not stored.
+    const bad = await call("POST", "/api/admin/passkeys/register/verify", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", label: "x", response: { id: "zz" } },
+    });
+    expect(bad.status).toBe(400);
+    // Nothing registered, so there is nothing to log in with.
+    const login = await call("POST", "/api/passkey/login/options", {
+      token: tokenA,
+    });
+    expect(login.status).toBe(404);
+
+    // A device a passkey login marked admin needs no password at all — and
+    // Lock takes that away again.
+    const me = (await (
+      await call("GET", "/api/auth/me", { token: tokenA })
+    ).json()) as { deviceId: string };
+    await db
+      .update(schema.device)
+      .set({ adminUntil: new Date(Date.now() + 60_000) })
+      .where(eq(schema.device.id, me.deviceId));
+    const noPw = await call("POST", "/api/admin/verify", {
+      token: tokenA,
+      body: {},
+    });
+    expect(noPw.status).toBe(200);
+    const sentinel = await call("POST", "/api/admin/verify", {
+      token: tokenA,
+      body: { adminPassword: "\u0000passkey" },
+    });
+    expect(sentinel.status).toBe(200);
+    const logout = await call("POST", "/api/passkey/logout", { token: tokenA });
+    expect(logout.status).toBe(200);
+    const locked = await call("POST", "/api/admin/verify", {
+      token: tokenA,
+      body: {},
+    });
+    expect(locked.status).toBe(400);
+    // An expired session is no session.
+    await db
+      .update(schema.device)
+      .set({ adminUntil: new Date(Date.now() - 1) })
+      .where(eq(schema.device.id, me.deviceId));
+    const expired = await call("POST", "/api/admin/verify", {
+      token: tokenA,
+      body: { adminPassword: "wrong" },
+    });
+    expect(expired.status).toBe(403);
+    await db
+      .update(schema.device)
+      .set({ adminUntil: null })
+      .where(eq(schema.device.id, me.deviceId));
+  });
+
   test("join-by-bin: sticker pair joins (even unclaimed); bare id never does", async () => {
     // Happy path on an UNCLAIMED bin, with the code typed in the wrong case.
     const fresh = allocated[2] as {

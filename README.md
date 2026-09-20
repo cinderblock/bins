@@ -43,6 +43,11 @@ where.
   fill level — then prints the sticker straight to an IPP printer (anything
   that does AirPrint) or to any endpoint that accepts a PNG.
   The chosen drawing lives on the box, so a reprint is free and identical.
+- **Passkeys for admin**: open `/admin/passkey` on a phone, unlock once, and
+  save a passkey (Face ID, fingerprint, device unlock). From then on that
+  device unlocks admin with the passkey; the password is never typed on it.
+  Passkeys belong to the group, are listed and revocable in admin, and a
+  passkey unlock lasts ninety days or until Lock.
 - **Scans are recorded**: every printed sticker carries a short code in its
   QR fragment, so opening one records a sighting (when, and which sticker).
   Boxes show "scanned 3d ago", and a scan of an older print than the box's

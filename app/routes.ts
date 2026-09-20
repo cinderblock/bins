@@ -31,6 +31,8 @@ export default [
     route("print", "routes/print.tsx"),
     // Admin (member + admin password). Linked from Settings.
     route("admin", "routes/admin.tsx"),
+    // The URL to open on a new device: unlock once, save a passkey.
+    route("admin/passkey", "routes/admin-passkey.tsx"),
     // Unauthenticated: the shell gate lets these two through its auth wall.
     // /join is deliberately UNLINKED (bootstrap/fallback access-code entry).
     route("join", "routes/join.tsx"),

@@ -22,6 +22,8 @@ export type Ctx = {
   scope: Scope | null;
   /** Integrations only: CORS origin allowlist (null/[] = no browser origins). */
   allowedOrigins: string[] | null;
+  /** Admin without a password until this time (passkey login), or null. */
+  adminUntil: number | null;
 };
 
 /** Members write freely; integrations need the "write" scope. */
@@ -80,6 +82,7 @@ export async function authenticate(req: Request): Promise<Ctx | null> {
     kind: row.kind === "integration" ? "integration" : "member",
     scope: row.scope === "read" || row.scope === "write" ? row.scope : null,
     allowedOrigins: row.allowedOrigins ?? null,
+    adminUntil: row.adminUntil?.getTime() ?? null,
   };
 }
 

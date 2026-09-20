@@ -43,6 +43,11 @@ export const device = sqliteTable(
      * on old code for a long time, and without this there is no way to see it.
      */
     buildSha: text("build_sha"),
+    /**
+     * Until when this device is admin without a password — set by a passkey
+     * login (api/passkeys.ts), cleared by Lock. Null = password each time.
+     */
+    adminUntil: integer("admin_until", { mode: "timestamp_ms" }),
   },
   (t) => [index("device_group").on(t.groupId)],
 );

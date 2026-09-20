@@ -17,7 +17,6 @@ import {
   Group,
   Modal,
   Paper,
-  PasswordInput,
   Stack,
   Text,
   TextInput,
@@ -45,6 +44,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import type MiniSearch from "minisearch";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
+import { AdminUnlock } from "~/components/AdminUnlock";
 import { BinDetailPane } from "~/components/BinDetailPane";
 import { FillLevelBadge, FillLevelInput } from "~/components/FillLevel";
 import { LabelChips } from "~/components/LabelChips";
@@ -52,12 +52,7 @@ import { PhotoImg } from "~/components/PhotoImg";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { WeightInput } from "~/components/WeightInput";
 import { setBinFields, setBinLabel, setBinLocation } from "~/lib/actions";
-import {
-  forgetAdmin,
-  rememberAdmin,
-  useAdminPassword,
-  verifyAdmin,
-} from "~/lib/admin";
+import { forgetAdmin, useAdminPassword } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import { useBoxSizes } from "~/lib/boxSizes";
@@ -164,8 +159,6 @@ export default function Bins() {
   const unlocked = typeof remembered === "string";
   const adminPassword = remembered ?? "";
   const [unlockOpen, setUnlockOpen] = useState(false);
-  const [unlockPw, setUnlockPw] = useState("");
-  const [busy, setBusy] = useState(false);
 
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -185,20 +178,6 @@ export default function Bins() {
     [unlocked],
     undefined,
   );
-
-  async function unlock() {
-    setBusy(true);
-    try {
-      await verifyAdmin(unlockPw);
-      await rememberAdmin(unlockPw);
-      setUnlockOpen(false);
-      setUnlockPw("");
-    } catch (err) {
-      fail(err);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   function toggle(id: number) {
     setSelected((prev) => {
@@ -682,26 +661,10 @@ export default function Bins() {
         title="Admin controls"
         centered
       >
-        <Stack gap="sm">
-          <Text size="sm" c="dimmed">
-            Unlock per-box editing and retire/restore with the group admin
-            password.
-          </Text>
-          <PasswordInput
-            label="Admin password"
-            value={unlockPw}
-            onChange={(e) => setUnlockPw(e.currentTarget.value)}
-            onKeyDown={(e) => e.key === "Enter" && unlockPw && void unlock()}
-            autoFocus
-          />
-          <Button
-            onClick={() => void unlock()}
-            loading={busy}
-            disabled={!unlockPw}
-          >
-            Unlock
-          </Button>
-        </Stack>
+        <AdminUnlock
+          description="Unlock per-box editing, new boxes and retire/restore — with the group admin password, or a passkey."
+          onUnlocked={() => setUnlockOpen(false)}
+        />
       </Modal>
 
       <MoveSheet

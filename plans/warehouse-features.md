@@ -311,6 +311,33 @@ The new-box flow becomes one screen modelled on the label generator:
       the scanned code is older than the box's current sticker code. `via:
       "camera"` is reserved for the continuous scanner. Studio's main action
       is now "Save & print label" with a quiet "Save without printing".
+- [x] `9561b86`: the installed app checks for a new build every 15 minutes,
+      on tab focus and on coming back online (operator: "periodic update
+      makes sense"), on top of the existing on-load check.
+
+- [x] **Passkeys for admin + retire from the box page (2026-09-20).**
+      Operator: "i can't delete boxes?" — deleting is retiring, and it was
+      only reachable from the box list after unlocking admin. Now (1) the
+      box page's edit sheet has a two-tap "Retire this box" for unlocked
+      admins (`POST /api/admin/bins/retire`, then a sync), and (2) admin can
+      be unlocked with a passkey (`@simplewebauthn` 14): `/admin/passkey`
+      is the URL to open on a new phone — unlock once with the password (or
+      a passkey from another device), save a passkey, and that device never
+      types the password again. Passkeys belong to the group (`passkey`
+      table, migration 0017), are listed/revoked on the admin page, and
+      registering one sits behind admin like any other admin action. A
+      passkey login sets `device.admin_until` (90 days) — the server then
+      accepts that device's admin requests with no password at all, and the
+      client remembers a sentinel (`ADMIN_VIA_PASSKEY`) in the same Dexie
+      slot the password used, so every admin call site is unchanged. Lock
+      clears both. One shared `<AdminUnlock>` replaced the three password
+      boxes (box list, admin page, sticker codes); the passkey button only
+      shows when the group has one and the browser can do WebAuthn. rpID is
+      the deployment's public host, so a passkey made on the LAN name works
+      only for that name. Dev-server check: password unlock via the shared
+      UI, retire → "RETIRED · This box was emptied" → restore from the list;
+      the WebAuthn ceremony itself needs a real authenticator (API test
+      covers options/refusal/session/logout).
 
 ## Things not to do
 

@@ -664,6 +664,7 @@ export default function BinPage() {
       <EditBoxSheet
         bin={bin}
         canEditDirectly={canEditDirectly}
+        adminPassword={adminPassword ?? null}
         opened={editOpen}
         onClose={() => setEditOpen(false)}
       />

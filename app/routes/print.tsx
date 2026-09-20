@@ -13,7 +13,6 @@ import {
   Group,
   NumberInput,
   Paper,
-  PasswordInput,
   Stack,
   Text,
   Title,
@@ -24,7 +23,8 @@ import { IconArrowLeft, IconCheck, IconCopy } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { rememberAdmin, useAdminPassword, verifyAdmin } from "~/lib/admin";
+import { AdminUnlock } from "~/components/AdminUnlock";
+import { useAdminPassword } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { boxPath } from "~/lib/boxRef";
 import { db } from "~/lib/db";
@@ -46,23 +46,6 @@ export default function Print() {
   const remembered = useAdminPassword();
   const unlocked = typeof remembered === "string";
   const adminPassword = remembered ?? "";
-  const [unlockPw, setUnlockPw] = useState("");
-
-  async function unlock() {
-    setBusy(true);
-    try {
-      await verifyAdmin(unlockPw);
-      await rememberAdmin(unlockPw);
-      setUnlockPw("");
-    } catch (err) {
-      notifications.show({
-        message: err instanceof Error ? err.message : String(err),
-        color: "red",
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
 
   const ids = (params.get("ids") ?? "")
     .split(",")
@@ -170,26 +153,10 @@ export default function Print() {
           <Title order={3}>Sticker codes</Title>
         </Group>
         <Paper p="md" radius="lg" withBorder>
-          <Stack gap="sm">
-            <Text size="sm" c="dimmed">
-              Generating sticker codes allocates new bin numbers, so it needs
-              the admin password (set during first-boot setup).
-            </Text>
-            <PasswordInput
-              label="Admin password"
-              value={unlockPw}
-              onChange={(e) => setUnlockPw(e.currentTarget.value)}
-              onKeyDown={(e) => e.key === "Enter" && unlockPw && void unlock()}
-              autoFocus
-            />
-            <Button
-              onClick={() => void unlock()}
-              loading={busy}
-              disabled={!unlockPw}
-            >
-              Unlock
-            </Button>
-          </Stack>
+          <AdminUnlock
+            description="Generating sticker codes allocates new bin numbers, so it needs admin — the password, or a passkey."
+            onUnlocked={() => undefined}
+          />
         </Paper>
       </Stack>
     );

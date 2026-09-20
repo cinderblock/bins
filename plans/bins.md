@@ -58,6 +58,11 @@ dead zones (storage units, remote sites), merging back to the server later.
   (`lib/admin.ts`, `useAdminPassword`) — same device-local trust boundary as
   the member token — so admins unlock once; auto-unlock on load, a "Lock"
   button forgets it, a rotated password re-locks on the next failed verify.
+  **Passkeys (2026-09-20)**: a device can instead unlock with a WebAuthn
+  passkey (`api/passkeys.ts`, `/admin/passkey` to enrol); the server marks
+  the device admin for 90 days (`device.admin_until`) and the client stores
+  the `ADMIN_VIA_PASSKEY` sentinel where the password would go — see
+  `plans/warehouse-features.md`.
   `admin`/`print`/`bins` share the store (the old /print nav-state hand-off is
   gone). Admin page
   (`/admin`, linked from Settings): group name + landing branding,
