@@ -270,6 +270,27 @@ The new-box flow becomes one screen modelled on the label generator:
       the live instance: a real generation and a real print (the operator
       will, from a box's Label button).
 
+- [x] **Second pass from first real use (2026-09-20, `e9f7ea4`).** Findings:
+      (1) `syncNow()` returned immediately when a pass was in flight, so the
+      art and print requests raced the push: the server drew "a storage box"
+      for a box whose name hadn't arrived, and printed without the drawing it
+      hadn't been told about. Fixed twice over: syncNow now resolves only
+      when the push has happened, and every studio request carries title,
+      subtext and chosen drawing as typed. (2) The prompt's "Contents:"
+      framing drew a container; it is now exactly the label generator's
+      subject line. (3) The layout had the generator's parts in the wrong
+      places; rebuilt to its proportions (see `api/labels/render.ts` header
+      sketch), preview mirrors it. (4) "New box" opens `/new` and allocates
+      only at the first save/drawing/print. (5) Where numbers are internal,
+      `/123` is refused and numeric scans ignored; pre-handle boxes get a
+      handle at boot via the server-authored `bin.setHandle` op (an allocate
+      without a handle never clears one — that was an order-dependence the
+      convergence test caught). (6) Phones on the dual-stack LAN join over
+      global IPv6, which the private-address backstop refuses; the reverse
+      proxy can now vouch with `X-Bins-Perimeter: lan` (ops Caddy change
+      staged alongside the pin bump). Dev-server check: `/new` renders with a
+      QR placeholder, Save allocates exactly one box, claims it, lands on it.
+
 ## Things not to do
 
 - Don't change the bin primary key type; don't touch the reducer's id type.
