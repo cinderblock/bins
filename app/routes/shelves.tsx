@@ -21,10 +21,15 @@ import {
 } from "@mantine/core";
 import { useDocumentTitle } from "@mantine/hooks";
 import type { BinState, LocationState } from "@shared/reducer";
-import { IconArrowLeft } from "@tabler/icons-react";
+import {
+  IconArrowLeft,
+  IconBoxMultiple,
+  IconQrcode,
+  IconSettings,
+} from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { PhotoImg } from "~/components/PhotoImg";
 import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import { useBoxSizes } from "~/lib/boxSizes";
@@ -44,6 +49,9 @@ const UNIT = 92;
 export default function Shelves() {
   useDocumentTitle("Shelves · bins");
   const navigate = useNavigate();
+  const location = useLocation();
+  // Whether this IS the home surface, which decides the header — see below.
+  const atHome = location.pathname === "/";
   const byId = usePlaceMap();
   const occupancy = useOccupancy();
   const numbersInternal = useBoxNumbersInternal();
@@ -96,30 +104,65 @@ export default function Shelves() {
     >
       <Group justify="space-between">
         <Group gap="sm">
+          {/* No back arrow when this IS the home surface — "back" from the
+              home screen leaves the app. Same rule as the box list. */}
+          {!atHome && (
+            <ActionIcon
+              variant="default"
+              size="xl"
+              radius="xl"
+              onClick={() =>
+                (window.history.state?.idx ?? 0) > 0
+                  ? navigate(-1)
+                  : navigate("/")
+              }
+              aria-label="Back"
+            >
+              <IconArrowLeft />
+            </ActionIcon>
+          )}
+          <Title order={3}>Shelves</Title>
+        </Group>
+        <Group gap="xs">
+          {roots.length > 1 && (
+            <Select
+              data={roots.map((r) => ({ value: r.id, label: r.name }))}
+              value={root?.id ?? null}
+              onChange={setRootId}
+              allowDeselect={false}
+              w={160}
+            />
+          )}
+          {/* A shelves-home deployment reaches everything from here, so the
+              same three ways on as the box list has. */}
           <ActionIcon
             variant="default"
             size="xl"
             radius="xl"
-            onClick={() =>
-              (window.history.state?.idx ?? 0) > 0
-                ? navigate(-1)
-                : navigate("/")
-            }
-            aria-label="Back"
+            aria-label="All boxes"
+            onClick={() => navigate("/bins")}
           >
-            <IconArrowLeft />
+            <IconBoxMultiple />
           </ActionIcon>
-          <Title order={3}>Shelves</Title>
+          <ActionIcon
+            variant="default"
+            size="xl"
+            radius="xl"
+            aria-label="Scan"
+            onClick={() => navigate("/scan")}
+          >
+            <IconQrcode />
+          </ActionIcon>
+          <ActionIcon
+            variant="default"
+            size="xl"
+            radius="xl"
+            aria-label="Settings"
+            onClick={() => navigate("/settings")}
+          >
+            <IconSettings />
+          </ActionIcon>
         </Group>
-        {roots.length > 1 && (
-          <Select
-            data={roots.map((r) => ({ value: r.id, label: r.name }))}
-            value={root?.id ?? null}
-            onChange={setRootId}
-            allowDeselect={false}
-            w={200}
-          />
-        )}
       </Group>
 
       {!root && (

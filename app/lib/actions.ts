@@ -192,6 +192,8 @@ export async function upsertLocation(
     cols?: number | null;
     rows?: number | null;
     span?: number | null;
+    /** What this shelf's own printed sticker says; null = none. */
+    code?: string | null;
   },
 ) {
   await enqueueOp({
@@ -205,6 +207,7 @@ export async function upsertLocation(
       cols: shape?.cols ?? null,
       rows: shape?.rows ?? null,
       span: shape?.span ?? null,
+      code: shape?.code?.trim() || null,
     },
   });
 }

@@ -29,6 +29,7 @@ import { notifications } from "@mantine/notifications";
 import { locationLabel } from "@shared/locations";
 import type { BinState } from "@shared/reducer";
 import {
+  IconAdjustments,
   IconArchive,
   IconArchiveOff,
   IconArrowLeft,
@@ -39,6 +40,8 @@ import {
   IconPlus,
   IconQrcode,
   IconSearch,
+  IconSettings,
+  IconTrash,
 } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import type MiniSearch from "minisearch";
@@ -165,17 +168,32 @@ export default function Bins() {
   const [moveOpen, setMoveOpen] = useState(false);
   const [editing, setEditing] = useState<BinState | null>(null);
 
-  // Members see active boxes; admins also see retired ones (to restore them).
+  /**
+   * Retired boxes are OUT of the normal list, including an admin's.
+   *
+   * They used to appear for anyone with admin unlocked, which meant the
+   * everyday list of what's in the warehouse was padded with boxes whose
+   * contents are gone. They live behind their own toggle now, which is also
+   * the only place restore and delete are offered — so the destructive
+   * action is somewhere you go on purpose.
+   *
+   * Deleted boxes are never listed anywhere: the id survives so a stale
+   * sticker still resolves to "this is dead", and nothing more.
+   */
+  const [showRetired, setShowRetired] = useState(false);
+  const retiredCount = useLiveQuery(
+    async () => db.bins.where("status").equals("retired").count(),
+    [],
+    0,
+  );
   const bins = useLiveQuery(
     async () => {
       const all = await db.bins.orderBy("id").toArray();
       return all.filter((bin) =>
-        unlocked
-          ? bin.status === "active" || bin.status === "retired"
-          : bin.status === "active",
+        showRetired ? bin.status === "retired" : bin.status === "active",
       );
     },
-    [unlocked],
+    [showRetired],
     undefined,
   );
 
@@ -226,7 +244,10 @@ export default function Bins() {
     cancelSelect();
   }
 
-  async function setStatus(binId: number, action: "retire" | "restore") {
+  async function setStatus(
+    binId: number,
+    action: "retire" | "restore" | "delete",
+  ) {
     try {
       await apiJson(`/api/admin/bins/${action}`, {
         method: "POST",
@@ -237,6 +258,13 @@ export default function Bins() {
       fail(err);
     }
   }
+
+  /**
+   * Two taps, and the second one says what it does. Delete is the only
+   * action here that cannot be undone from the app, so it does not share a
+   * one-tap icon with restore.
+   */
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
 
   /**
    * Start a new box. Nothing is allocated yet: /new opens the label studio
@@ -326,7 +354,7 @@ export default function Bins() {
               <IconArrowLeft />
             </ActionIcon>
           )}
-          <Title order={3}>All boxes</Title>
+          <Title order={3}>{showRetired ? "Retired boxes" : "All boxes"}</Title>
         </Group>
         <Group gap="xs">
           {/* Where boxes are containers drawn from a pile of empties, "start
@@ -356,15 +384,32 @@ export default function Bins() {
               <IconLayoutGrid />
             </ActionIcon>
           )}
-          {!selecting && placeById.size > 0 && (
+          {/* Settings — and behind it admin, which is where box sizes,
+              shelves and devices are configured. It used to hang off the
+              SCANNER header only, so a deployment that opens on this list
+              had no way to reach any of it. */}
+          {!selecting && (
             <ActionIcon
               variant="default"
               size="xl"
               radius="xl"
-              aria-label="Shelves"
-              onClick={() => navigate("/shelves")}
+              aria-label="Settings"
+              onClick={() => navigate("/settings")}
             >
-              <IconLayoutGrid />
+              <IconSettings />
+            </ActionIcon>
+          )}
+          {/* One tap straight to admin once it's unlocked: an admin on this
+              screen is usually on their way there. */}
+          {unlocked && !selecting && (
+            <ActionIcon
+              variant="default"
+              size="xl"
+              radius="xl"
+              aria-label="Admin"
+              onClick={() => navigate("/admin")}
+            >
+              <IconAdjustments />
             </ActionIcon>
           )}
           {/* Browse-home deployments open here, so scanning has to be one
@@ -377,6 +422,20 @@ export default function Bins() {
               onClick={() => navigate("/scan")}
             >
               Scan
+            </Button>
+          )}
+          {/* Retired boxes are a place you go, not clutter in the list.
+              Only offered when there are any, and only to an admin — they
+              are the only one who can do anything about them. */}
+          {unlocked && !selecting && (retiredCount > 0 || showRetired) && (
+            <Button
+              size="xs"
+              variant={showRetired ? "filled" : "light"}
+              color="gray"
+              leftSection={<IconArchive size={12} />}
+              onClick={() => setShowRetired((on) => !on)}
+            >
+              {showRetired ? "Back to active" : `Retired (${retiredCount})`}
             </Button>
           )}
           {!selecting &&
@@ -629,14 +688,38 @@ export default function Bins() {
                       <IconPencil size={18} />
                     </ActionIcon>
                     {retired ? (
-                      <ActionIcon
-                        variant="subtle"
-                        color="green"
-                        aria-label={`Restore ${boxTitle(bin, numbersInternal)}`}
-                        onClick={() => void setStatus(bin.id, "restore")}
-                      >
-                        <IconArchiveOff size={18} />
-                      </ActionIcon>
+                      <>
+                        <ActionIcon
+                          variant="subtle"
+                          color="green"
+                          aria-label={`Restore ${boxTitle(bin, numbersInternal)}`}
+                          onClick={() => void setStatus(bin.id, "restore")}
+                        >
+                          <IconArchiveOff size={18} />
+                        </ActionIcon>
+                        {confirmDelete === bin.id ? (
+                          <Button
+                            size="compact-xs"
+                            color="red"
+                            onClick={() => {
+                              setConfirmDelete(null);
+                              void setStatus(bin.id, "delete");
+                            }}
+                            onBlur={() => setConfirmDelete(null)}
+                          >
+                            Delete for good
+                          </Button>
+                        ) : (
+                          <ActionIcon
+                            variant="subtle"
+                            color="red"
+                            aria-label={`Delete ${boxTitle(bin, numbersInternal)}`}
+                            onClick={() => setConfirmDelete(bin.id)}
+                          >
+                            <IconTrash size={18} />
+                          </ActionIcon>
+                        )}
+                      </>
                     ) : (
                       <ActionIcon
                         variant="subtle"

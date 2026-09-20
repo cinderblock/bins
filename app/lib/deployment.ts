@@ -16,7 +16,7 @@ import { db, getMeta, setMeta } from "./db";
 export const DEPLOYMENT_KEY = "deployment";
 
 /** Which surface `/` renders — see api/config.ts for the reasoning. */
-export type HomeView = "scanner" | "browse";
+export type HomeView = "scanner" | "browse" | "shelves";
 
 /** Whether the box number is meaningful to humans here — see api/config.ts. */
 export type BoxNumbers = "public" | "internal";
@@ -94,7 +94,10 @@ export async function refreshDeployment(): Promise<LandingResponse | null> {
       openAccess: body.openAccess === true,
       remote: body.remote === true,
       passkeys: body.passkeys === true,
-      homeView: body.homeView === "browse" ? "browse" : "scanner",
+      homeView:
+        body.homeView === "browse" || body.homeView === "shelves"
+          ? body.homeView
+          : "scanner",
       boxNumbers: body.boxNumbers === "internal" ? "internal" : "public",
       labelPrinting: body.labelPrinting === true,
       labelArt: body.labelArt === true,

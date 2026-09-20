@@ -178,6 +178,7 @@ export class DrizzleStateStore implements StateStore {
       cols: row.cols,
       rows: row.rows,
       span: row.span,
+      code: row.code,
       archived: row.archived,
       fieldClocks: row.fieldClocks,
     };

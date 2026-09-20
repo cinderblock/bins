@@ -840,6 +840,40 @@ describe("structured locations", () => {
     expect(snapshot).toContain('"icon":"pencil-case"');
   });
 
+  test("a shelf's sticker code rides its definition and can be cleared", async () => {
+    const snapshot = await expectConvergence([
+      op({
+        type: "location.upsert",
+        effectiveTime: 1000,
+        payload: {
+          locationId: shelf,
+          name: "A1",
+          sortOrder: 1,
+          code: "  H4K9 ",
+        },
+      }),
+    ] as CanonicalOp[]);
+    // Trimmed on the way in, so a stray space typed into the field never
+    // makes a printed sticker unmatchable.
+    expect(snapshot).toContain('"code":"H4K9"');
+
+    // An upsert describes the WHOLE place, so a later one without a code
+    // takes it off rather than leaving a stale one behind.
+    const cleared = await expectConvergence([
+      op({
+        type: "location.upsert",
+        effectiveTime: 1000,
+        payload: { locationId: shelf, name: "A1", sortOrder: 1, code: "H4K9" },
+      }),
+      op({
+        type: "location.upsert",
+        effectiveTime: 2000,
+        payload: { locationId: shelf, name: "A1", sortOrder: 1 },
+      }),
+    ] as CanonicalOp[]);
+    expect(cleared).toContain('"code":null');
+  });
+
   test("a box in a slot converges, and re-upsert can drop a grid", async () => {
     // An upsert describes the WHOLE place, so a shelf that loses its grid
     // really loses it rather than keeping a stale one from an earlier write.

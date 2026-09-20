@@ -183,7 +183,7 @@ function configOf(group: GroupRow) {
 async function authorBinStatusOp(
   ctx: Ctx,
   binId: number,
-  type: "bin.retire" | "bin.restore",
+  type: "bin.retire" | "bin.restore" | "bin.delete",
 ): Promise<void> {
   await serializedTransaction(async () => {
     const store = new DrizzleStateStore(ctx.groupId);
@@ -402,7 +402,11 @@ export async function handleAdmin(
     return json({ bins });
   }
 
-  if (path === "/api/admin/bins/retire" || path === "/api/admin/bins/restore") {
+  if (
+    path === "/api/admin/bins/retire" ||
+    path === "/api/admin/bins/restore" ||
+    path === "/api/admin/bins/delete"
+  ) {
     const parsed = binStatusSchema.safeParse(body);
     if (!parsed.success) return error(400, "invalid bin status request");
     // Group-scoped: an admin must never flip a bin outside their group.
@@ -411,13 +415,25 @@ export async function handleAdmin(
         eq(schema.bin.id, parsed.data.binId),
         eq(schema.bin.groupId, ctx.groupId),
       ),
-      columns: { id: true },
+      columns: { id: true, status: true },
     });
     if (!existing) return error(404, "no such bin");
+    // Deleting goes through retiring, deliberately. Retire is the reversible
+    // step that says "the contents are gone"; delete is the one that takes
+    // the record out of the app. Making the destructive one reachable only
+    // from the reversible one means it can't be the first thing a misaimed
+    // tap does.
+    if (path.endsWith("delete") && existing.status !== "retired") {
+      return error(409, "retire the box first, then delete it");
+    }
     await authorBinStatusOp(
       ctx,
       parsed.data.binId,
-      path.endsWith("retire") ? "bin.retire" : "bin.restore",
+      path.endsWith("retire")
+        ? "bin.retire"
+        : path.endsWith("delete")
+          ? "bin.delete"
+          : "bin.restore",
     );
     return json({ ok: true });
   }

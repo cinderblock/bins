@@ -57,6 +57,8 @@ type Draft = {
   cols: number;
   rows: number;
   span: number;
+  /** What this shelf's own printed sticker says; "" = none. */
+  code: string;
 };
 
 const EMPTY: Draft = {
@@ -67,6 +69,7 @@ const EMPTY: Draft = {
   cols: 3,
   rows: 2,
   span: 1,
+  code: "",
 };
 
 export function ShelfBuilder() {
@@ -108,6 +111,23 @@ export function ShelfBuilder() {
       ),
     );
 
+  // Two shelves answering to one sticker is ambiguous, and the reducer
+  // can't refuse it without becoming order-dependent (shared/ops.ts), so
+  // the builder is where a person finds out.
+  const codeClash = (() => {
+    const key = draft.code.trim().toLowerCase();
+    if (!key) return null;
+    const others = locations.filter(
+      (l) =>
+        l.id !== draft.id &&
+        !l.archived &&
+        (l.code ?? "").trim().toLowerCase() === key,
+    );
+    return others.length > 0
+      ? `${others.map((l) => l.name).join(", ")} already claims this sticker`
+      : null;
+  })();
+
   async function save() {
     const name = draft.name.trim();
     if (!name) return;
@@ -129,6 +149,7 @@ export function ShelfBuilder() {
       cols: draft.grid ? draft.cols : null,
       rows: draft.grid ? draft.rows : null,
       span: draft.span > 1 ? draft.span : null,
+      code: draft.code,
     });
     setDraft(EMPTY);
   }
@@ -142,6 +163,7 @@ export function ShelfBuilder() {
       cols: location.cols ?? 3,
       rows: location.rows ?? 2,
       span: location.span ?? 1,
+      code: location.code ?? "",
     });
   }
 
@@ -237,6 +259,19 @@ export function ShelfBuilder() {
             max={8}
             value={draft.span}
             onChange={(v) => setDraft((d) => ({ ...d, span: Number(v) || 1 }))}
+          />
+          {/* Normally learned by scanning: put-away offers to bind an
+              unknown sticker to a shelf with the camera already on it. This
+              is for fixing one up, or reading back what a shelf claims. */}
+          <TextInput
+            label="Sticker code"
+            description="Whatever is printed on this shelf's own sticker. Scanning it in Put away files boxes here."
+            placeholder="usually set by scanning"
+            value={draft.code}
+            onChange={(e) =>
+              setDraft((d) => ({ ...d, code: e.currentTarget.value }))
+            }
+            error={codeClash}
           />
           <Group justify="space-between">
             {draft.id ? (

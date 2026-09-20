@@ -54,6 +54,12 @@ where.
   a passkey sign-in — no access code, no sticker, no password — and it works
   in a fresh browser, minting the device on the spot. A member who takes a
   phone off-site sees a sign-in card until they are back on the network.
+- **Put boxes away by scanning**: in the scanner, "Put away" picks a shelf —
+  scan that shelf's own sticker, or tap one you used recently — and then
+  every box you scan lands there, with a running count and no taps in
+  between. A shelf sticker can say anything: the app learns what an unknown
+  one means the first time you scan it, so stickers printed long before any
+  of this still work.
 - **Scans are recorded**: every printed sticker carries a short code in its
   QR fragment, so opening one records a sighting (when, and which sticker).
   Boxes show "scanned 3d ago", and a scan of an older print than the box's

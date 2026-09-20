@@ -289,6 +289,7 @@ export default function BinPage() {
               )}
               <FillLevelBadge percent={bin.fillLevel} />
               {bin.status === "retired" && <Badge color="gray">retired</Badge>}
+              {bin.status === "deleted" && <Badge color="red">deleted</Badge>}
             </Group>
             {!numbersInternal && bin.name && <Text size="sm">{bin.name}</Text>}
             {bin.description && (
@@ -301,7 +302,7 @@ export default function BinPage() {
               all-boxes list, behind the admin password — so nobody found it.
               It lives next to the name it changes now; what the button DOES
               still depends on who you are (see EditBoxSheet). */}
-          {bin.status !== "unclaimed" && (
+          {bin.status !== "unclaimed" && bin.status !== "deleted" && (
             <ActionIcon
               variant="subtle"
               color="gray"
@@ -316,17 +317,20 @@ export default function BinPage() {
         </Group>
         <Group gap="xs">
           {/* The label studio: title, subtext, a drawing, preview, print. */}
-          {canEditLabel && bin.status !== "unclaimed" && !newFlow && (
-            <Button
-              size="xs"
-              variant="light"
-              radius="xl"
-              leftSection={<IconPrinter size={16} />}
-              onClick={() => setLabelOpen(true)}
-            >
-              Label
-            </Button>
-          )}
+          {canEditLabel &&
+            bin.status !== "unclaimed" &&
+            bin.status !== "deleted" &&
+            !newFlow && (
+              <Button
+                size="xs"
+                variant="light"
+                radius="xl"
+                leftSection={<IconPrinter size={16} />}
+                onClick={() => setLabelOpen(true)}
+              >
+                Label
+              </Button>
+            )}
         </Group>
       </Group>
 
@@ -337,6 +341,23 @@ export default function BinPage() {
           worse, start putting things in a box the system thinks is empty.
           The record is kept on purpose — the id is never reissued, so this
           page is exactly how a stale sticker gets identified. */}
+      {/* Deleted: the record is out of the app, but the id lives forever so
+          this page can still say what a stale sticker means. Nothing else
+          is offered — there is nothing here to work on. */}
+      {bin.status === "deleted" && (
+        <Box maw={PAGE_MAXW} mx="auto" px="md" pb="xs">
+          <Alert color="red" variant="light" icon={<IconTrash />}>
+            <Text fw={600} size="sm">
+              This box was deleted.
+            </Text>
+            <Text size="sm">
+              An admin removed the record. Peel this sticker off — the number is
+              never given to another box, so it will never mean anything else.
+            </Text>
+          </Alert>
+        </Box>
+      )}
+
       {bin.status === "retired" && (
         <Box maw={PAGE_MAXW} mx="auto" px="md" pb="xs">
           <Alert color="orange" variant="light" icon={<IconArchive />}>
@@ -560,7 +581,7 @@ export default function BinPage() {
       )}
 
       {/* Bottom ActionBar — the whole point of the page */}
-      {bin.status !== "unclaimed" && !newFlow && (
+      {bin.status !== "unclaimed" && bin.status !== "deleted" && !newFlow && (
         <Paper
           radius={0}
           p="sm"

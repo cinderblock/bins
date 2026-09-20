@@ -11,6 +11,7 @@ import { locationLabel, slotNames } from "@shared/locations";
 import type { BinState, LocationState } from "@shared/reducer";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "./db";
+import { placeCodeKey } from "./format";
 
 export type PlaceMap = ReadonlyMap<string, LocationState>;
 
@@ -111,6 +112,42 @@ export function useOccupancy(): Occupancy {
     [],
     new Map() as Occupancy,
   );
+}
+
+/**
+ * The place whose sticker says `code`, or null.
+ *
+ * Codes are not unique in the data model — the reducer cannot check that
+ * without reading other rows, which would make it order-dependent (see
+ * shared/ops.ts) — so this is deterministic where it can be: archived places
+ * are ignored, and among survivors the lowest id wins so every device picks
+ * the same one. `ambiguous` says a human needs to fix the duplicate.
+ */
+export function findPlaceByCode(
+  byId: PlaceMap,
+  code: string,
+): { place: LocationState | null; ambiguous: boolean } {
+  const key = placeCodeKey(code);
+  const hits: LocationState[] = [];
+  for (const place of byId.values()) {
+    if (place.archived || !place.code) continue;
+    if (placeCodeKey(place.code) === key) hits.push(place);
+  }
+  hits.sort((a, b) => a.id.localeCompare(b.id));
+  return { place: hits[0] ?? null, ambiguous: hits.length > 1 };
+}
+
+/** Places already carrying a sticker code, for "is this one taken" checks. */
+export function codeOwners(byId: PlaceMap): Map<string, LocationState[]> {
+  const map = new Map<string, LocationState[]>();
+  for (const place of byId.values()) {
+    if (!place.code) continue;
+    const key = placeCodeKey(place.code);
+    const list = map.get(key) ?? [];
+    list.push(place);
+    map.set(key, list);
+  }
+  return map;
 }
 
 /** Slot names of a place, or [] when it has no grid. */

@@ -20,7 +20,13 @@
  */
 import type { CanonicalOp, EntryKind } from "./ops";
 
-export type BinStatus = "unclaimed" | "active" | "retired";
+/**
+ * `deleted` is a tombstone an admin can set on a RETIRED box: the record is
+ * gone from every view, but the id survives so a stale sticker still reads as
+ * dead rather than resolving to whatever gets allocated next. See the
+ * `bin.delete` op.
+ */
+export type BinStatus = "unclaimed" | "active" | "retired" | "deleted";
 
 export interface BinState {
   /** The global short ID (the number in the QR URL). */
@@ -137,6 +143,8 @@ export interface LocationState {
   rows: number | null;
   /** Vertical size in shelf units when drawn in a bay; null = 1. */
   span: number | null;
+  /** What the shelf's own printed sticker says; null = it has none. */
+  code: string | null;
   archived: boolean;
   fieldClocks: Record<string, string>;
 }
@@ -414,13 +422,24 @@ export async function applyOp(
     }
 
     case "bin.retire":
-    case "bin.restore": {
-      // Status is LWW on the same `status` clock as bin.claim, so retire and
-      // restore just compete like any other write — last one wins, converges.
+    case "bin.restore":
+    case "bin.delete": {
+      // Status is LWW on the same `status` clock as bin.claim, so retire,
+      // restore and delete just compete like any other write — last one
+      // wins, converges. Delete is not special-cased into a terminal state:
+      // that would need "has anything happened since", which is exactly the
+      // order-dependence the reducer must not have. An admin who deletes and
+      // then restores gets the box back, and both devices agree on which
+      // came last.
       const bin = await touchBin(store, op);
       const clock = clockOf(op);
       if (wins(clock, bin.fieldClocks.status)) {
-        bin.status = op.type === "bin.retire" ? "retired" : "active";
+        bin.status =
+          op.type === "bin.retire"
+            ? "retired"
+            : op.type === "bin.delete"
+              ? "deleted"
+              : "active";
         bin.fieldClocks.status = clock;
       }
       await store.putBin(bin);
@@ -569,6 +588,7 @@ export async function applyOp(
         cols: null,
         rows: null,
         span: null,
+        code: null,
         archived: false,
         fieldClocks: {},
       };
@@ -582,6 +602,10 @@ export async function applyOp(
         location.cols = op.payload.cols ?? null;
         location.rows = op.payload.rows ?? null;
         location.span = op.payload.span ?? null;
+        // Trimmed, so a stray space typed into the field never makes a
+        // sticker unmatchable. Case is preserved for display; lookup
+        // lower-cases both sides (app/lib/places.ts).
+        location.code = op.payload.code?.trim() || null;
         location.fieldClocks.value = clock;
       }
       await store.putLocation(location);
@@ -602,6 +626,7 @@ export async function applyOp(
           cols: null,
           rows: null,
           span: null,
+          code: null,
           archived,
           fieldClocks: { archived: clock },
         });

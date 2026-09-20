@@ -184,6 +184,32 @@ db.version(9).upgrade((tx) =>
     }),
 );
 
+// v12: a shelf can carry the string printed on its own sticker, so scanning
+// one files a box onto it. Indexed because put-away looks a place up by code
+// on every shelf scan. `code` is stored as typed (case preserved) and matched
+// case-insensitively, so the index is a starting point, not the match itself.
+db.version(12)
+  .stores({
+    bins: "id, updatedAt, status, *labelIds, handle, lastSeenAt",
+    entries: "id, binId, effectiveTime",
+    locations: "id, sortOrder, code",
+    labels: "id, sortOrder",
+    boxSizes: "id, sortOrder",
+    suggestions: "id, binId, status, [binId+status], createdAt",
+    pendingOps: "opId",
+    blobs: "hash, status, role, lastAccessAt",
+    errorQueue: "++id, at",
+    meta: "key",
+  })
+  .upgrade((tx) =>
+    tx
+      .table("locations")
+      .toCollection()
+      .modify((row: Record<string, unknown>) => {
+        if (row.code === undefined) row.code = null;
+      }),
+  );
+
 // v11: sticker codes and sightings. `lastSeenAt` is indexed so "not scanned
 // since" is a range query rather than a scan. Backfill nulls as ever.
 db.version(11)

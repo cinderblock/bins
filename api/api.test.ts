@@ -1647,6 +1647,56 @@ describe("open access", () => {
     }
   });
 
+  test("delete is admin-only, needs a retired box, and is a tombstone", async () => {
+    const alloc = await call("POST", "/api/admin/bins/allocate", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", count: 1 },
+    });
+    const fresh = ((await alloc.json()) as { bins: { id: number }[] })
+      .bins[0] as { id: number };
+
+    // Deleting goes THROUGH retiring on purpose: retire is the reversible
+    // step, so the irreversible one can't be the first thing a misaimed tap
+    // reaches.
+    const tooSoon = await call("POST", "/api/admin/bins/delete", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", binId: fresh.id },
+    });
+    expect(tooSoon.status).toBe(409);
+
+    await call("POST", "/api/admin/bins/retire", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", binId: fresh.id },
+    });
+    const noPassword = await call("POST", "/api/admin/bins/delete", {
+      token: tokenA,
+      body: { binId: fresh.id },
+    });
+    expect(noPassword.status).toBe(400);
+
+    const deleted = await call("POST", "/api/admin/bins/delete", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", binId: fresh.id },
+    });
+    expect(deleted.status).toBe(200);
+
+    // A tombstone, not a purge: the ROW SURVIVES so the id is never handed
+    // out again and a leftover sticker still reads as dead rather than
+    // resolving to whatever gets allocated next.
+    const { eq: eqBin } = await import("drizzle-orm");
+    const row = await db.query.bin.findFirst({
+      where: eqBin(schema.bin.id, fresh.id),
+    });
+    expect(row?.status).toBe("deleted");
+
+    // And it reaches other devices the ordinary way, as an op.
+    const pull = await call("GET", "/api/sync/pull?since=0&limit=1000", {
+      token: tokenB,
+    });
+    const ops = ((await pull.json()) as { ops: { type: string }[] }).ops;
+    expect(ops.some((o) => o.type === "bin.delete")).toBe(true);
+  });
+
   test("the label says what became of the drawing, and never swaps it", async () => {
     const sharp = (await import("sharp")).default;
     const drawing = await sharp({

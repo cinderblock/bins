@@ -23,6 +23,14 @@ export const location = sqliteTable(
     rows: integer("rows"),
     /** Vertical size in shelf units when drawn in a bay; null = 1. */
     span: integer("span"),
+    /**
+     * What this shelf's own printed sticker says. Opaque on purpose — the
+     * stickers predate the app and are not getting reprinted, so the app
+     * reads whatever is on them. Not unique in the schema: uniqueness can't
+     * be enforced in the reducer without breaking convergence, so it is an
+     * advisory the UI surfaces (see shared/ops.ts).
+     */
+    code: text("code"),
     archived: integer("archived", { mode: "boolean" }).notNull().default(false),
     fieldClocks: text("field_clocks", { mode: "json" })
       .notNull()

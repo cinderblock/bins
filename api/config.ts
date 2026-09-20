@@ -145,7 +145,7 @@ export function boxNumbers(): BoxNumbers {
     : "public";
 }
 
-export type HomeView = "scanner" | "browse";
+export type HomeView = "scanner" | "browse" | "shelves";
 
 /**
  * Which surface the app opens on.
@@ -155,15 +155,19 @@ export type HomeView = "scanner" | "browse";
  * - `browse` — open on the box list + search, with scanning one prominent tap
  *   away. Right when the job is "which box is the thing in", which is what a
  *   standing warehouse looks like.
+ * - `shelves` — open on the wall: every bay, shelf and slot with the box in
+ *   it. Right where the shelving IS the index and people navigate by where
+ *   things are rather than by searching for them.
  *
  * Deliberately NOT tied to OPEN_ACCESS: a network perimeter has nothing to do
  * with whether you want a camera or a list first. Two orthogonal facts about a
  * deployment.
  */
 export function homeView(): HomeView {
-  return process.env.HOME_VIEW?.trim().toLowerCase() === "browse"
-    ? "browse"
-    : "scanner";
+  const raw = process.env.HOME_VIEW?.trim().toLowerCase();
+  if (raw === "browse") return "browse";
+  if (raw === "shelves") return "shelves";
+  return "scanner";
 }
 
 /**

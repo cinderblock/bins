@@ -22,6 +22,7 @@ import {
 } from "@mantine/core";
 import { useDocumentTitle, useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
+import type { BinState } from "@shared/reducer";
 import {
   IconBoxMultiple,
   IconBulb,
@@ -29,6 +30,7 @@ import {
   IconCamera,
   IconCameraOff,
   IconInfoCircle,
+  IconPackageImport,
   IconSearch,
   IconSettings,
 } from "@tabler/icons-react";
@@ -38,10 +40,14 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import wasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url";
 import { BinPeek } from "~/components/BinPeek";
+import { BindStickerSheet } from "~/components/BindStickerSheet";
+import { PutawayBar } from "~/components/PutawayBar";
 import { addPhoto } from "~/lib/actions";
 import { recordSighting } from "~/lib/actions";
+import { setBinLocation } from "~/lib/actions";
 import {
   boxPath,
+  boxTitle,
   findBox,
   useBoxNumbersInternal,
   useBoxTitle,
@@ -54,8 +60,19 @@ import {
 } from "~/lib/camera";
 import { db, getMeta, setMeta } from "~/lib/db";
 import { setDeskMode } from "~/lib/deskMode";
-import { type ScanTarget, binIdFromScan } from "~/lib/format";
+import {
+  type ScanTarget,
+  binIdFromScan,
+  placeCodeFromScan,
+} from "~/lib/format";
 import { captureFromVideo } from "~/lib/photos";
+import { findPlaceByCode, usePlaceMap } from "~/lib/places";
+import {
+  rememberRecentPlace,
+  setPutawayPlace,
+  usePutawayPlaceId,
+  useRecentPlaceIds,
+} from "~/lib/putaway";
 import { captureErrorMessage } from "~/lib/storage";
 import { DESKTOP_MEDIA, PAGE_MAXW, TOUCH_TARGET } from "~/lib/ui";
 import { photoSavedWithUndo } from "~/lib/undo";
@@ -80,7 +97,17 @@ function useScanner(
   // Desktop scans opt-in (enabled) and must turn the webcam LED off when the
   // scanner goes away (releaseOnExit); phones keep the stream for reuse.
   { enabled, releaseOnExit }: { enabled: boolean; releaseOnExit: boolean },
-  onHit: (target: ScanTarget) => void,
+  /**
+   * Every code read, with the box it names when it names one.
+   *
+   * The RAW value matters now: a shelf's own sticker is an opaque string
+   * printed long before this app existed, so it can't be recognised by
+   * shape — only by looking it up. Unrecognisable codes still arrive here
+   * and the caller ignores them; the duplicate suppressor below keeps a
+   * stray QR sitting in frame from firing more than once every couple of
+   * seconds.
+   */
+  onHit: (hit: { raw: string; target: ScanTarget | null }) => void,
 ) {
   const [cameraError, setCameraError] = useState(false);
   const [torchAvailable, setTorchAvailable] = useState(false);
@@ -114,12 +141,9 @@ function useScanner(
           ) {
             continue;
           }
-          const target = binIdFromScan(value);
-          if (target !== null) {
-            lastHit = { value, at: Date.now() };
-            onHitRef.current(target);
-            break;
-          }
+          lastHit = { value, at: Date.now() };
+          onHitRef.current({ raw: value, target: binIdFromScan(value) });
+          break;
         }
       } catch {
         // Detector hiccups on some frames — just try the next one.
@@ -226,6 +250,31 @@ export default function Scanner() {
   const [flash, setFlash] = useState(false);
   const [capturing, setCapturing] = useState(false);
 
+  // --- put-away -------------------------------------------------------------
+  // Filing boxes onto a shelf: the shelf sticks, and every box scanned lands
+  // on it. See lib/putaway.ts for why the shelf is remembered per device.
+  const [putaway, setPutaway] = useState(false);
+  const byId = usePlaceMap();
+  const putawayPlaceId = usePutawayPlaceId();
+  const putawayPlace = putawayPlaceId
+    ? (byId.get(putawayPlaceId) ?? null)
+    : null;
+  const recentIds = useRecentPlaceIds();
+  const recentPlaces = recentIds
+    .map((id) => byId.get(id))
+    .filter((p): p is NonNullable<typeof p> => !!p && !p.archived);
+  const [filedCount, setFiledCount] = useState(0);
+  // An unrecognised sticker, waiting to be told which shelf it is on.
+  const [unknownCode, setUnknownCode] = useState<string | null>(null);
+  // Refs because onScan is called from the detector loop, which closes over
+  // the render it was registered in.
+  const putawayRef = useRef(putaway);
+  putawayRef.current = putaway;
+  const putawayPlaceRef = useRef(putawayPlace);
+  putawayPlaceRef.current = putawayPlace;
+  const byIdRef = useRef(byId);
+  byIdRef.current = byId;
+
   // A desktop's camera faces the user, not the boxes — there the scanner is
   // opt-in ("Start camera") behind a card that also takes a typed bin number.
   const isDesktop =
@@ -251,11 +300,80 @@ export default function Scanner() {
     void setMeta(CURRENT_BIN_KEY, binId);
   }
 
+  /**
+   * A code that isn't a box: in put-away, the shelf stickers. Returns true
+   * when it was consumed, so a box scan isn't also attempted.
+   */
+  function onPlaceCode(raw: string): boolean {
+    if (!putawayRef.current) return false;
+    const code = placeCodeFromScan(raw);
+    if (!code) return false;
+    const { place, ambiguous } = findPlaceByCode(byIdRef.current, code);
+    if (!place) {
+      // Not known yet — this is the moment to learn it, with the sticker
+      // still in front of the camera.
+      setUnknownCode(code);
+      return true;
+    }
+    if (ambiguous) {
+      notifications.show({
+        message: `More than one shelf claims that sticker — using ${place.name}. Fix it in Shelves.`,
+        color: "orange",
+      });
+    }
+    void pickPlace(place.id);
+    return true;
+  }
+
+  async function pickPlace(placeId: string) {
+    const place = byIdRef.current.get(placeId);
+    await setPutawayPlace(placeId);
+    setFiledCount(0);
+    if (place)
+      notifications.show({
+        message: `Filing onto ${place.name}. Scan boxes to put them here.`,
+        color: "blue",
+      });
+  }
+
+  /** Put a scanned box on the current shelf, or ask for one first. */
+  async function fileBox(bin: BinState): Promise<void> {
+    const place = putawayPlaceRef.current;
+    if (!place) {
+      notifications.show({
+        message: "Pick a shelf first — scan its sticker or tap a recent one.",
+        color: "orange",
+      });
+      return;
+    }
+    await setBinLocation(bin.id, { locationId: place.id });
+    await rememberRecentPlace(place.id);
+    setFiledCount((n) => n + 1);
+    notifications.show({
+      message: `${boxTitle(bin, numbersInternal)} → ${place.name}`,
+      color: "green",
+    });
+  }
+
   async function onScan(target: ScanTarget) {
     // A bare number is not a sticker here: only handles are printed, so a
     // numeric code is someone else's QR, not one of ours.
     if (numbersInternal && target.handle === null) return;
     const bin = await findBox(target);
+    // Put-away: the box goes on the shelf and the camera stays ready for the
+    // next one. No navigation, no peek — the whole point is rhythm.
+    if (putawayRef.current) {
+      if (bin) {
+        void recordSighting(bin.id, "scanner", target.code);
+        await fileBox(bin);
+      } else {
+        notifications.show({
+          message: "That box isn't in this group yet.",
+          color: "orange",
+        });
+      }
+      return;
+    }
     // Same box again: don't re-pop a peek the user collapsed.
     if (bin ? bin.id === currentBinId : target.binId === currentBinId) return;
     // Seen, by the in-app camera, with whatever code the sticker carried.
@@ -275,8 +393,11 @@ export default function Scanner() {
   const { cameraError, torchAvailable } = useScanner(
     videoRef,
     { enabled: scanning, releaseOnExit: isDesktop },
-    (target) => {
-      void onScan(target);
+    ({ raw, target }) => {
+      // Shelf stickers first: in put-away they are the thing most likely to
+      // be in frame, and they never look like a box URL.
+      if (onPlaceCode(raw)) return;
+      if (target) void onScan(target);
     },
   );
 
@@ -357,6 +478,22 @@ export default function Scanner() {
           bins
         </Text>
         <Group gap="xs">
+          {/* Put-away: the other thing a camera is for here. Labelled, not a
+              bare glyph — see the nav row at the bottom for why. */}
+          {scanning && (
+            <Button
+              variant={putaway ? "filled" : "default"}
+              size="md"
+              radius="xl"
+              leftSection={<IconPackageImport size={18} />}
+              onClick={() => {
+                setPutaway((on) => !on);
+                setFiledCount(0);
+              }}
+            >
+              {putaway ? "Putting away" : "Put away"}
+            </Button>
+          )}
           {torchAvailable && (
             <ActionIcon
               variant="default"
@@ -470,14 +607,28 @@ export default function Scanner() {
             gap: 10,
           }}
         >
-          {currentBinId !== null && peekOpen && (
+          {putaway && scanning && (
+            <PutawayBar
+              place={putawayPlace}
+              byId={byId}
+              recent={recentPlaces}
+              filed={filedCount}
+              onPick={(id) => void pickPlace(id)}
+              onClear={() => {
+                void setPutawayPlace(null);
+                setFiledCount(0);
+              }}
+            />
+          )}
+
+          {!putaway && currentBinId !== null && peekOpen && (
             <BinPeek
               binId={currentBinId}
               onCollapse={() => setPeekOpen(false)}
             />
           )}
 
-          {currentBinId !== null && scanning && (
+          {!putaway && currentBinId !== null && scanning && (
             <Group gap="xs" wrap="nowrap">
               <Button
                 size="lg"
@@ -541,6 +692,16 @@ export default function Scanner() {
           </Group>
         </div>
       </div>
+
+      <BindStickerSheet
+        code={unknownCode}
+        byId={byId}
+        onClose={() => setUnknownCode(null)}
+        onBound={(placeId) => {
+          setUnknownCode(null);
+          void pickPlace(placeId);
+        }}
+      />
     </div>
   );
 }

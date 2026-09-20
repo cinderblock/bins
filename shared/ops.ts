@@ -287,6 +287,22 @@ export const clientOpSchema = z.discriminatedUnion("type", [
        * no slot. Null/absent = 1.
        */
       span: z.number().int().min(1).max(8).nullable().optional(),
+      /**
+       * What is printed on this shelf's own sticker.
+       *
+       * Deliberately an OPAQUE STRING, not a URL or an id: shelf stickers
+       * get printed long before any particular app exists, and reprinting a
+       * warehouse is not a thing anyone will do. So the app reads whatever
+       * is already on the shelf. Compared case-insensitively after
+       * trimming (see placeCodeFromScan).
+       *
+       * Uniqueness is NOT enforced here. The reducer would have to read
+       * other rows to check, which makes it order-dependent and breaks
+       * convergence — the same reason location cycles are tolerated and
+       * surfaced rather than rejected (shared/locations.ts). The UI warns
+       * about a duplicate instead.
+       */
+      code: z.string().min(1).max(64).nullable().optional(),
     }),
   }),
   z.object({
@@ -420,6 +436,24 @@ export const serverOpSchema = z.discriminatedUnion("type", [
   z.object({
     ...opBase,
     type: z.literal("bin.restore"),
+    binId,
+    payload: z.object({}),
+  }),
+  /**
+   * Delete a box for good — the admin's answer to "this record should not
+   * exist", available on a RETIRED box (see api/admin.ts).
+   *
+   * A tombstone, not a purge, and that is not a shortcut. The op log is the
+   * source of truth and replicas pull it incrementally: a row dropped from
+   * the server's tables would simply never be mentioned to any device, and
+   * replaying the log would rebuild it. The tombstone converges like
+   * everything else — and it keeps the invariant that an id is never
+   * reused, which is exactly what lets a leftover sticker be identified as
+   * dead rather than resolve to somebody else's things.
+   */
+  z.object({
+    ...opBase,
+    type: z.literal("bin.delete"),
     binId,
     payload: z.object({}),
   }),

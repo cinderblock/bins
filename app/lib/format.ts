@@ -46,6 +46,43 @@ const HANDLE =
  * Every historical form stays accepted forever: stickers are physical and
  * outlive any change of scheme (plans/multi-instance.md).
  */
+/**
+ * Normalise a scanned value into a PLACE code — what a shelf's own sticker
+ * says.
+ *
+ * Shelf stickers are printed long before any app exists and nobody is going
+ * to reprint a warehouse, so this deliberately accepts an opaque string
+ * rather than defining a scheme. If the value happens to be a URL (a newer
+ * sticker, or a code that merely looks like one), its last non-empty path
+ * segment is taken, so `https://x/s/H4K9` and a bare `H4K9` are the same
+ * shelf.
+ *
+ * Returns null for anything implausible as a printed code — blank, or long
+ * enough to be a sentence — so that a stray QR in the camera's view does not
+ * get treated as a shelf.
+ */
+export function placeCodeFromScan(raw: string): string | null {
+  let value = raw.trim();
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    const last = url.pathname.split("/").filter(Boolean).pop();
+    // A URL with no path is a link to a site, not a shelf.
+    if (!last) return null;
+    value = decodeURIComponent(last);
+  } catch {
+    // Not a URL: the sticker's own string, which is the normal case here.
+  }
+  value = value.trim();
+  if (value.length < 2 || value.length > 64) return null;
+  return value;
+}
+
+/** Codes match case- and whitespace-insensitively; this is the comparison key. */
+export function placeCodeKey(code: string): string {
+  return code.trim().toLowerCase();
+}
+
 export function binIdFromScan(raw: string): ScanTarget | null {
   const trimmed = raw.trim();
   if (/^\d{1,9}$/.test(trimmed))
