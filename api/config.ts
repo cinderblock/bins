@@ -301,3 +301,16 @@ export function remoteAccess(): RemoteAccess {
 export function isRemote(req: Request): boolean {
   return remoteAccess() === "passkey" && !onPerimeter(req);
 }
+
+/**
+ * Put the AI assistant behind the admin password.
+ *
+ * Default OFF, unlike label art. Printing is a provisioning action an admin
+ * does occasionally; "which box does this go in" is the everyday question the
+ * feature exists to answer, and gating it would defeat the point. The money is
+ * protected by the monthly ceiling (AI_BUDGET_USD) and a per-device hourly
+ * limit instead — but an operator who disagrees flips this.
+ */
+export function aiAssistAdminOnly(): boolean {
+  return envFlag("AI_ASSIST_ADMIN_ONLY");
+}

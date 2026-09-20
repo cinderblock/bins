@@ -9,6 +9,7 @@ import {
   type LocationNode,
   MAX_LOCATION_DEPTH,
   hasCycle,
+  locationGeometry,
   locationLabel,
   locationPath,
   slotCapacity,
@@ -135,5 +136,36 @@ describe("slots", () => {
 
   test("a place with no grid offers no slots", () => {
     expect(slotNames(aisle)).toEqual([]);
+  });
+});
+
+describe("geometry descriptors — the seam new shapes arrive through", () => {
+  test("a grid describes itself: label, capacity and slot names", () => {
+    const geometry = locationGeometry({
+      id: "s",
+      name: "H4",
+      parentId: null,
+      cols: 4,
+      rows: 3,
+    });
+    expect(geometry?.kind).toBe("grid");
+    expect(geometry?.label).toBe("4×3 grid");
+    expect(geometry?.capacity).toBe(12);
+    expect(geometry?.slots).toHaveLength(12);
+    expect(geometry?.slots[0]).toBe("1");
+  });
+
+  test("a place with no shape has no descriptor — that is normal, not broken", () => {
+    expect(
+      locationGeometry({ id: "a", name: "Trailer", parentId: null }),
+    ).toBeNull();
+  });
+
+  test("a half-defined grid is shapeless rather than a zero-capacity one", () => {
+    // `capacity: null` (unknown) and `capacity: 0` (full) must never collapse
+    // into each other — they are opposite answers to "is there room".
+    expect(
+      locationGeometry({ id: "a", name: "Half", parentId: null, cols: 4 }),
+    ).toBeNull();
   });
 });

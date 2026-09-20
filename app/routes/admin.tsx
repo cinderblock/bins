@@ -52,6 +52,8 @@ type Config = {
   name: string;
   landingTitle: string | null;
   landingSubtitle: string | null;
+  /** Feeds the AI assistant's prompt — see api/ai/ask.ts. */
+  sortingNotes: string | null;
 };
 
 type DeviceRow = {
@@ -184,6 +186,7 @@ export default function Admin() {
           name: config.name,
           landingTitle: config.landingTitle ?? "",
           landingSubtitle: config.landingSubtitle ?? "",
+          sortingNotes: config.sortingNotes ?? "",
           ...(newAccessCode ? { newAccessCode } : {}),
           ...(newAdminPassword ? { newAdminPassword } : {}),
         }),
@@ -405,6 +408,25 @@ export default function Admin() {
                     setConfig({
                       ...config,
                       landingSubtitle: e.currentTarget.value,
+                    })
+                  }
+                />
+                <Textarea
+                  label="How this group sorts things"
+                  description="Plain words. The AI assistant follows these over its own instincts when suggesting where a box goes — it can see your categories and shelves, but not your habits."
+                  placeholder={[
+                    "Booze and soda go together.",
+                    "Nothing heavy above shoulder height.",
+                    "Seasonal stuff lives in the trailer.",
+                  ].join("\n")}
+                  autosize
+                  minRows={3}
+                  maxRows={8}
+                  value={config.sortingNotes ?? ""}
+                  onChange={(e) =>
+                    setConfig({
+                      ...config,
+                      sortingNotes: e.currentTarget.value,
                     })
                   }
                 />

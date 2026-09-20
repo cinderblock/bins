@@ -37,6 +37,19 @@ export const group = sqliteTable("group", {
   landingSubtitle: text("landing_subtitle"),
   /** sha256 hex of the /admin password. Null = admin surface disabled. */
   adminPasswordHash: text("admin_password_hash"),
+  /**
+   * How this group sorts things, in the operator's own words ("booze and
+   * soda go together", "nothing heavy above shoulder height").
+   *
+   * The one input the AI assistant cannot derive: the label and location
+   * vocabularies say what EXISTS, never what belongs with what. Tribal
+   * knowledge, so it is group data rather than anything tracked in the repo —
+   * which is also why it lives here and not in a constant.
+   *
+   * Null for groups predating the column; the assistant simply reasons
+   * without conventions, which is a worse answer rather than a broken one.
+   */
+  sortingNotes: text("sorting_notes"),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .default(now),

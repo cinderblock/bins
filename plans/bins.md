@@ -8,6 +8,10 @@ specifics. Those live in untracked `plans/local.md` (read it too if present).
 Companion plan: `plans/multi-instance.md` — running a SECOND deployment of
 the same `master` with a different trust model (open-access mode, matrix
 deploy, generic label printing, itemized contents, voice memos).
+Companion plan: `plans/ai-assist.md` — the LLM backend shared by the
+"where does this go / where would I find this" assistant and (next) vision
+captioning: provider abstraction, the snapshot+diff prompt layering that
+makes caching work, and the geometry descriptor.
 Companion plan: `plans/mobile-ux-and-suggestions.md` — field reports from a
 live deployment: the touch revamp of the category picker + sheets, the
 landing's new way in, and the (unbuilt) member-suggests / admin-approves
@@ -538,9 +542,19 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   distance — see the plan for why no distance threshold can work. The pure
   math is exported and unit-tested (21 tests) because multi-touch is the one
   thing the browser automation can't drive.
-- [ ] Phase 5 — AI embellishment: server job (gated on ANTHROPIC_API_KEY) runs
-  Claude vision over new contents photos → server-authored `bin.aiItems` ops →
-  feeds search for free. Schema/op type not yet defined.
+- [x] **AI assistant** (2026-09-20) — "which box should this go in / where
+  would I find X" over the whole catalog, answered server-side. Provider-
+  pluggable (Gemini default, OpenAI and Anthropic implemented behind the
+  same interface); prompt layered snapshot + append-only diff tail so a write
+  does not invalidate the cached prefix; `group.sorting_notes` (migration
+  0018) carries the one input a model cannot infer. Never yet run against a
+  live provider — see `plans/ai-assist.md`.
+- [ ] Phase 5 — AI embellishment: vision over new contents photos → item list
+  → feeds search for free. Now rides the `api/ai/` backend above rather than
+  needing its own provider plumbing, so what is left is the schema/op-type
+  decision (`plans/ai-assist.md`, step 7) and the batch job. Until it lands,
+  a photo-only box is invisible to search and the catalog says so explicitly
+  ("contents recorded only as a photo").
 - [ ] On-device testing (iPhone + Android): camera lifecycle in installed PWA,
   scan-to-bin latency, airplane-mode round-trip on two devices.
 

@@ -41,6 +41,7 @@ import {
   IconQrcode,
   IconSearch,
   IconSettings,
+  IconSparkles,
   IconTrash,
 } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -48,6 +49,7 @@ import type MiniSearch from "minisearch";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { AdminUnlock } from "~/components/AdminUnlock";
+import { AskAiSheet } from "~/components/AskAiSheet";
 import { BinDetailPane } from "~/components/BinDetailPane";
 import { FillLevelBadge, FillLevelInput } from "~/components/FillLevel";
 import { InlineCreate } from "~/components/InlineCreate";
@@ -57,6 +59,7 @@ import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { WeightInput } from "~/components/WeightInput";
 import { setBinFields, setBinLabel, setBinLocation } from "~/lib/actions";
 import { forgetAdmin, useAdminPassword } from "~/lib/admin";
+import { type AskKind, useAiAvailable } from "~/lib/ai";
 import { apiJson } from "~/lib/api";
 import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import { useBoxSizes } from "~/lib/boxSizes";
@@ -128,6 +131,8 @@ export default function Bins() {
   );
 
   const [query, setQuery] = useState("");
+  const aiAvailable = useAiAvailable();
+  const [askKind, setAskKind] = useState<AskKind | null>(null);
   const [filterLabel, setFilterLabel] = useState<string | null>(null);
   const indexRef = useRef<MiniSearch<SearchDoc> | null>(null);
   const [indexReady, setIndexReady] = useState(0);
@@ -472,6 +477,39 @@ export default function Bins() {
         onChange={(e) => setQuery(e.currentTarget.value)}
         autoFocus={focusSearch}
       />
+
+      {/* The typed query doubles as the question, so there is no second text
+          field to fill in. Hidden entirely when the server has no provider
+          configured — the list below is the feature that always works. */}
+      {aiAvailable && query.trim() && (
+        <Group gap="xs">
+          <Button
+            size="compact-sm"
+            variant="light"
+            leftSection={<IconSparkles size={14} />}
+            onClick={() => setAskKind("find")}
+          >
+            Where is it?
+          </Button>
+          <Button
+            size="compact-sm"
+            variant="light"
+            leftSection={<IconSparkles size={14} />}
+            onClick={() => setAskKind("place")}
+          >
+            Where should it go?
+          </Button>
+        </Group>
+      )}
+
+      {askKind && (
+        <AskAiSheet
+          opened
+          onClose={() => setAskKind(null)}
+          kind={askKind}
+          query={query.trim()}
+        />
+      )}
 
       {labels.length > 0 && (
         <Group gap="xs">

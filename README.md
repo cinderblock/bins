@@ -25,6 +25,14 @@ where.
 - **"Which box is X in"** search over names, subtext, shelves, labels and
   notes — offline,
   fuzzy ("sharpee" finds the Sharpies).
+- **AI assistant** (optional, off without a key): asks the whole inventory
+  where a thing should go — naming existing boxes with room, or saying
+  plainly that it is time to start a new one — and answers "where would I
+  find X" by meaning rather than spelling. It reads your categories, shelf
+  geometry, fill levels and your own sorting conventions, and it only ever
+  proposes: every answer is a link to a real box, and nothing is written
+  without a tap. Works with Gemini, OpenAI or Anthropic; budget-capped, and
+  the offline search above is untouched. See `.env.example`.
 - **No accounts**: scanning any sticker once IS the login — pick a display
   name and you're in. Signed-out visitors on any other URL get a branded
   landing page (title/subtitle set per group) that names the box they were

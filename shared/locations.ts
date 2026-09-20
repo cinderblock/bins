@@ -142,3 +142,53 @@ export function slotNames(location: LocationNode): string[] {
   }
   return names;
 }
+
+/**
+ * The kinds of shape a place can have. New geometries (a run of pallets, a
+ * stack, a zone with a capacity but no addressable positions) add a member
+ * here and a branch in `locationGeometry` — nothing else.
+ */
+export type LocationGeometryKind = "grid";
+
+/**
+ * A place's shape, described generically.
+ *
+ * Geometry is going to grow, and every reader that pokes at `cols`/`rows`
+ * directly is a place that would need editing when it does — the shelf UI,
+ * the AI prompt serializer, anything that counts free space. So those columns
+ * are private to this file by convention: callers ask for a descriptor and
+ * get a kind, a human phrase, a capacity and the addressable slot names,
+ * whatever the underlying shape turns out to be.
+ *
+ * `capacity: null` means unbounded or unknown, which is different from 0 and
+ * has to stay distinguishable — "this shelf is full" and "this area has no
+ * fixed capacity" are not the same answer to "is there room".
+ */
+export type LocationGeometry = {
+  kind: LocationGeometryKind;
+  /** Human phrase for prompts and UI: "4×3 grid". */
+  label: string;
+  /** How many boxes it holds, or null when unbounded/unknown. */
+  capacity: number | null;
+  /** Addressable positions in order; empty when the shape has none. */
+  slots: string[];
+};
+
+/**
+ * Describe a place's shape, or null when it has none (an unstructured place
+ * that simply holds things — the default, and always legitimate).
+ */
+export function locationGeometry(
+  location: LocationNode,
+): LocationGeometry | null {
+  const capacity = slotCapacity(location);
+  if (capacity !== null) {
+    return {
+      kind: "grid",
+      label: `${location.cols}×${location.rows} grid`,
+      capacity,
+      slots: slotNames(location),
+    };
+  }
+  return null;
+}

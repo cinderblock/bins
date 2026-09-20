@@ -1,4 +1,5 @@
 import { handleAdmin } from "./admin";
+import { aiStatus, handleAskRequest } from "./ai/handler";
 import {
   handleDevices,
   handleJoin,
@@ -14,7 +15,7 @@ import { handleBlob } from "./blobs";
  * (dev, TCP) and server.ts (production, unix socket).
  */
 import { isRemote } from "./config";
-import { type Ctx, authenticate, canWrite, error } from "./context";
+import { type Ctx, authenticate, canWrite, error, json } from "./context";
 import { handlePreflight, isCorsPath, withCors } from "./cors";
 import { handleErrorReport } from "./errors";
 import { handleLanding } from "./landing";
@@ -168,6 +169,15 @@ async function dispatch(
   if (path.startsWith("/api/admin/") && method === "POST") {
     if (ctx.kind !== "member") return error(403, "members only");
     return await handleAdmin(req, ctx, path);
+  }
+
+  // The AI assistant. Member-facing by default (see aiAssistAdminOnly) —
+  // asking where a box goes is the everyday flow, not a provisioning action.
+  if (path.startsWith("/api/ai/")) {
+    if (path === "/api/ai/status" && method === "GET") return json(aiStatus());
+    if (path === "/api/ai/ask" && method === "POST")
+      return await handleAskRequest(req, ctx);
+    return error(404, "no such endpoint");
   }
 
   const blobMatch = path.match(/^\/api\/blobs\/([0-9a-f]{64})$/);

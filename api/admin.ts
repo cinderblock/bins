@@ -52,6 +52,8 @@ const patchSchema = withPassword.extend({
   landingSubtitle: z.string().max(200).optional(),
   newAccessCode: z.string().min(4).max(200).optional(),
   newAdminPassword: z.string().min(4).max(200).optional(),
+  /** How this group sorts things; empty string clears it (stored as null). */
+  sortingNotes: z.string().max(4000).optional(),
 });
 
 const importSchema = withPassword.extend({
@@ -139,7 +141,7 @@ function integrationView(row: typeof schema.device.$inferSelect) {
 }
 
 /** Returns the caller's group when the admin password checks out. */
-async function requireAdmin(
+export async function requireAdmin(
   ctx: Ctx,
   body: unknown,
 ): Promise<GroupRow | Response> {
@@ -171,6 +173,9 @@ function configOf(group: GroupRow) {
     // Shown to an unlocked admin so the code never has to be remembered. Null
     // for groups predating the plaintext column — rotate once to populate it.
     accessCode: group.accessCode,
+    // Feeds the AI assistant's prompt (api/ai/ask.ts) — the one thing it
+    // cannot infer from the label and location vocabularies.
+    sortingNotes: group.sortingNotes,
   };
 }
 
@@ -366,6 +371,8 @@ export async function handleAdmin(
     }
     if (p.newAdminPassword !== undefined)
       updates.adminPasswordHash = sha256Hex(p.newAdminPassword);
+    if (p.sortingNotes !== undefined)
+      updates.sortingNotes = p.sortingNotes.trim() || null;
     if (Object.keys(updates).length > 0) {
       await db
         .update(schema.group)
