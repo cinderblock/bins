@@ -20,6 +20,8 @@ export default [
     // Browse + search every box; bulk-move for members, retire/restore +
     // edit for admins. /search is a legacy alias that redirects here.
     route("bins", "routes/bins.tsx"),
+    // The virtual wall: every bay, shelf and slot with the box in it.
+    route("shelves", "routes/shelves.tsx"),
     route("search", "routes/search.tsx"),
     route("settings", "routes/settings.tsx"),
     // Sticker codes: allocate + export bin IDs/codes (admin-gated in-page).

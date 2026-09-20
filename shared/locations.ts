@@ -19,6 +19,8 @@ export type LocationNode = {
   parentId: string | null;
   cols?: number | null;
   rows?: number | null;
+  /** Drawn height in shelf units; null/absent = 1. Rendering only. */
+  span?: number | null;
 };
 
 /**

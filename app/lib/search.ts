@@ -4,6 +4,7 @@
  * (hundreds of bins, thousands of notes) rebuilding the index on demand takes
  * milliseconds, so no incremental bookkeeping.
  */
+import { locationLabel } from "@shared/locations";
 import MiniSearch from "minisearch";
 import { db } from "./db";
 
@@ -20,11 +21,13 @@ export interface SearchDoc {
 }
 
 export async function buildSearchIndex(): Promise<MiniSearch<SearchDoc>> {
-  const [bins, entries, labels] = await Promise.all([
+  const [bins, entries, labels, places] = await Promise.all([
     db.bins.toArray(),
     db.entries.toArray(),
     db.labels.toArray(),
+    db.locations.toArray(),
   ]);
+  const placeById = new Map(places.map((p) => [p.id, p]));
   const notesByBin = new Map<number, string[]>();
   for (const entry of entries) {
     if (entry.kind !== "note" || entry.deletedByOpId || !entry.text) continue;
@@ -58,7 +61,11 @@ export async function buildSearchIndex(): Promise<MiniSearch<SearchDoc>> {
         name: bin.name ?? "",
         description: bin.description ?? "",
         externalLabel: bin.externalLabel ?? "",
-        locationName: bin.locationName ?? "",
+        // A structured placement searches by its breadcrumb ("Wall D D1"),
+        // so "D1" finds everything on that shelf.
+        locationName: bin.locationId
+          ? `${locationLabel(placeById, bin.locationId, " ")} ${bin.slot ?? ""}`
+          : (bin.locationName ?? ""),
         labels: bin.labelIds.map((id) => labelName.get(id) ?? "").join(" "),
         notes: (notesByBin.get(bin.id) ?? []).join("\n"),
       })),

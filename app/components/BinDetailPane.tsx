@@ -50,6 +50,7 @@ import { useBoxSizes } from "~/lib/boxSizes";
 import { db } from "~/lib/db";
 import { relativeTime } from "~/lib/format";
 import { formatWeight } from "~/lib/labels";
+import { describeBinLocationLong, usePlaceMap } from "~/lib/places";
 import { deleteEntryWithUndo } from "~/lib/undo";
 
 export function BinDetailPane({ binId }: { binId: number | null }) {
@@ -73,6 +74,7 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
   const labels = useLiveQuery(async () => db.labels.toArray(), [], []);
   const sizes = useBoxSizes();
   const numbersInternal = useBoxNumbersInternal();
+  const placeById = usePlaceMap();
   const authors = useAuthors();
   /**
    * Which photo fills the hero slot. Stored WITH its box so moving to another
@@ -181,12 +183,17 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
           </Anchor>
         </Group>
 
-        {bin.locationName && (
-          <Group gap={4} c="dimmed">
-            <IconMapPin size={16} />
-            <Text size="sm">{bin.locationName}</Text>
-          </Group>
-        )}
+        {(() => {
+          const where = describeBinLocationLong(bin, placeById);
+          return (
+            where && (
+              <Group gap={4} c="dimmed">
+                <IconMapPin size={16} />
+                <Text size="sm">{where}</Text>
+              </Group>
+            )
+          );
+        })()}
 
         {binLabels.length > 0 && (
           <Group gap={6}>

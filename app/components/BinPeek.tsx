@@ -32,6 +32,7 @@ import { PhotoLightbox } from "~/components/PhotoLightbox";
 import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import { db } from "~/lib/db";
 import { relativeTime } from "~/lib/format";
+import { describeBinLocation, usePlaceMap } from "~/lib/places";
 
 export function BinPeek({
   binId,
@@ -57,8 +58,10 @@ export function BinPeek({
 
   const [lightbox, setLightbox] = useState<EntryState | null>(null);
   const numbersInternal = useBoxNumbersInternal();
+  const placeById = usePlaceMap();
 
   if (!bin) return null;
+  const where = describeBinLocation(bin, placeById);
   const photos = entries.filter((e) => e.photoHash);
   const notes = entries.filter((e) => e.kind === "note");
 
@@ -106,9 +109,8 @@ export function BinPeek({
 
       <Group gap={6} mb="xs">
         <IconMapPin size={14} style={{ opacity: 0.6 }} />
-        <Text size="sm" c={bin.locationName ? undefined : "dimmed"}>
-          {bin.locationName ?? "no location set"} · updated{" "}
-          {relativeTime(bin.updatedAt)}
+        <Text size="sm" c={where ? undefined : "dimmed"}>
+          {where ?? "no location set"} · updated {relativeTime(bin.updatedAt)}
         </Text>
       </Group>
 

@@ -57,6 +57,7 @@ import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
 import { relativeTime } from "~/lib/format";
 import { formatWeight, labelColor } from "~/lib/labels";
+import { describeBinLocationLong, usePlaceMap } from "~/lib/places";
 import { SizeIcon } from "~/lib/sizeIcons";
 import { usePendingSuggestions } from "~/lib/suggestions";
 import { syncNow } from "~/lib/sync";
@@ -105,6 +106,7 @@ export default function BinPage() {
   );
   const authors = useAuthors();
   const sizes = useBoxSizes();
+  const placeById = usePlaceMap();
 
   // The group's label rows, to render a bin's labelIds as named, colored chips.
   const labelById = useLiveQuery(
@@ -342,9 +344,14 @@ export default function BinPage() {
           {/* Location + labels line */}
           <Group gap="xs">
             <IconMapPin size={16} style={{ opacity: 0.6 }} />
-            <Text size="sm" c={bin.locationName ? undefined : "dimmed"}>
-              {bin.locationName ?? "no location set"}
-            </Text>
+            {(() => {
+              const where = describeBinLocationLong(bin, placeById);
+              return (
+                <Text size="sm" c={where ? undefined : "dimmed"}>
+                  {where ?? "no location set"}
+                </Text>
+              );
+            })()}
             {bin.externalLabel && (
               <Badge
                 variant="outline"
@@ -545,8 +552,7 @@ export default function BinPage() {
         onClose={() => setNoteOpen(false)}
       />
       <LocationSheet
-        binId={bin.id}
-        current={bin.locationName}
+        bin={bin}
         opened={locationOpen}
         onClose={() => setLocationOpen(false)}
       />

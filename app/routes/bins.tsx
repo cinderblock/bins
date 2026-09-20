@@ -27,11 +27,13 @@ import {
 } from "@mantine/core";
 import { useDocumentTitle, useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
+import { locationLabel } from "@shared/locations";
 import type { BinState } from "@shared/reducer";
 import {
   IconArchive,
   IconArchiveOff,
   IconArrowLeft,
+  IconLayoutGrid,
   IconLock,
   IconMapPin,
   IconPencil,
@@ -62,6 +64,7 @@ import { useBoxSizes } from "~/lib/boxSizes";
 import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
 import { formatWeight, labelColor } from "~/lib/labels";
+import { describeBinLocation, usePlaceMap } from "~/lib/places";
 import { type SearchDoc, buildSearchIndex } from "~/lib/search";
 import { SizeIcon } from "~/lib/sizeIcons";
 import { syncNow } from "~/lib/sync";
@@ -108,6 +111,7 @@ export default function Bins() {
   const labelById = useLabelMap();
   const sizes = useBoxSizes();
   const sizeById = new Map(sizes.map((s) => [s.id, s]));
+  const placeById = usePlaceMap();
 
   // Search-intent entries (the scanner's magnifier icon, the /search
   // redirect) land with this state so the keyboard pops immediately.
@@ -218,10 +222,21 @@ export default function Bins() {
     else navigate(boxPath(bin, numbersInternal));
   }
 
-  async function moveSelected(name: string | null) {
+  async function moveSelected(
+    target: { locationId: string; name: string } | string | null,
+  ) {
     const ids = [...selected];
-    for (const id of ids) await setBinLocation(id, name);
+    // A bulk move lands boxes ON a place, never in a slot: slots are one box
+    // each and are picked one at a time on the box page.
+    for (const id of ids)
+      await setBinLocation(
+        id,
+        typeof target === "object" && target
+          ? { locationId: target.locationId }
+          : target,
+      );
     const n = ids.length;
+    const name = typeof target === "object" ? target?.name : target;
     notifications.show({
       message: name
         ? `Moved ${n} box${n === 1 ? "" : "es"} to ${name}`
@@ -370,6 +385,28 @@ export default function Bins() {
             >
               New box
             </Button>
+          )}
+          {!selecting && placeById.size > 0 && (
+            <ActionIcon
+              variant="default"
+              size="xl"
+              radius="xl"
+              aria-label="Shelves"
+              onClick={() => navigate("/shelves")}
+            >
+              <IconLayoutGrid />
+            </ActionIcon>
+          )}
+          {!selecting && placeById.size > 0 && (
+            <ActionIcon
+              variant="default"
+              size="xl"
+              radius="xl"
+              aria-label="Shelves"
+              onClick={() => navigate("/shelves")}
+            >
+              <IconLayoutGrid />
+            </ActionIcon>
           )}
           {/* Browse-home deployments open here, so scanning has to be one
               obvious tap away — opt-in, but never buried. */}
@@ -557,15 +594,20 @@ export default function Bins() {
                             </Badge>
                           ) : null;
                         })()}
-                        {bin.locationName && (
-                          <Badge
-                            variant="light"
-                            leftSection={<IconMapPin size={12} />}
-                            style={{ textTransform: "none" }}
-                          >
-                            {bin.locationName}
-                          </Badge>
-                        )}
+                        {(() => {
+                          const where = describeBinLocation(bin, placeById);
+                          return (
+                            where && (
+                              <Badge
+                                variant="light"
+                                leftSection={<IconMapPin size={12} />}
+                                style={{ textTransform: "none" }}
+                              >
+                                {where}
+                              </Badge>
+                            )
+                          );
+                        })()}
                         {bin.weightGrams != null && (
                           <Badge variant="light" color="gray">
                             {formatWeight(bin.weightGrams)}
@@ -707,12 +749,17 @@ function MoveSheet({
   opened: boolean;
   count: number;
   onClose: () => void;
-  onPick: (name: string | null) => void | Promise<void>;
+  onPick: (
+    target: { locationId: string; name: string } | string | null,
+  ) => void | Promise<void>;
 }) {
   const places = usePlaces();
+  const byId = usePlaceMap();
   const [freeform, setFreeform] = useState("");
-  const pick = (name: string | null) => {
-    void onPick(name);
+  const pick = (
+    target: { locationId: string; name: string } | string | null,
+  ) => {
+    void onPick(target);
     setFreeform("");
   };
   return (
@@ -727,9 +774,9 @@ function MoveSheet({
             key={place.id}
             size="lg"
             variant="light"
-            onClick={() => pick(place.name)}
+            onClick={() => pick({ locationId: place.id, name: place.name })}
           >
-            {place.name}
+            {locationLabel(byId, place.id) || place.name}
           </Button>
         ))}
         <Group gap="xs" mt="xs">

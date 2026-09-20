@@ -7,17 +7,24 @@
  * Nothing about any particular site is in this file. Places are op-driven rows
  * configured here and synced like everything else, so "H4 is 3 wide by 2 tall"
  * is data belonging to one deployment, never code in this repo.
+ *
+ * Two ways to add. One place at a time (a room, a trailer, a single shelf),
+ * or a whole BAY: a column of numbered shelves, each with its own grid, in a
+ * few taps — because a real wall is twelve bays of six shelves and nobody
+ * should type seventy-two rows.
  */
 import {
   ActionIcon,
   Badge,
   Button,
+  Checkbox,
   Group,
   NumberInput,
   Paper,
   Select,
   Stack,
   Switch,
+  Table,
   Text,
   TextInput,
 } from "@mantine/core";
@@ -37,8 +44,10 @@ import {
 } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
+import { Link } from "react-router";
 import { archiveLocation, upsertLocation } from "~/lib/actions";
 import { db } from "~/lib/db";
+import { childrenOf } from "~/lib/places";
 
 type Draft = {
   id: string | null;
@@ -47,6 +56,7 @@ type Draft = {
   grid: boolean;
   cols: number;
   rows: number;
+  span: number;
 };
 
 const EMPTY: Draft = {
@@ -56,6 +66,7 @@ const EMPTY: Draft = {
   grid: false,
   cols: 3,
   rows: 2,
+  span: 1,
 };
 
 export function ShelfBuilder() {
@@ -105,6 +116,7 @@ export function ShelfBuilder() {
       parentId: draft.parentId,
       cols: draft.grid ? draft.cols : null,
       rows: draft.grid ? draft.rows : null,
+      span: draft.span > 1 ? draft.span : null,
     });
     setDraft(EMPTY);
   }
@@ -117,6 +129,7 @@ export function ShelfBuilder() {
       grid: location.cols != null && location.rows != null,
       cols: location.cols ?? 3,
       rows: location.rows ?? 2,
+      span: location.span ?? 1,
     });
   }
 
@@ -130,13 +143,24 @@ export function ShelfBuilder() {
 
   return (
     <Stack gap="sm">
-      <Group gap="xs">
-        <IconLayoutGrid size={18} />
-        <Text fw={600}>Places &amp; shelves</Text>
+      <Group justify="space-between">
+        <Group gap="xs">
+          <IconLayoutGrid size={18} />
+          <Text fw={600}>Places &amp; shelves</Text>
+        </Group>
+        <Button
+          component={Link}
+          to="/shelves"
+          size="compact-sm"
+          variant="light"
+        >
+          View the shelves
+        </Button>
       </Group>
       <Text size="xs" c="dimmed">
         Where boxes live. Give a shelf a grid and it gets numbered slots you can
         put boxes into; leave it off for a plain place like a room or a trailer.
+        Nest shelves inside a bay and the shelf view draws the whole wall.
       </Text>
 
       <Paper p="sm" radius="md" withBorder>
@@ -178,7 +202,7 @@ export function ShelfBuilder() {
                   }
                 />
                 <NumberInput
-                  label="High"
+                  label="Stacked"
                   min={1}
                   max={64}
                   value={draft.rows}
@@ -194,6 +218,14 @@ export function ShelfBuilder() {
               <SlotPreview cols={draft.cols} rows={draft.rows} />
             </>
           )}
+          <NumberInput
+            label="Height, in shelf units"
+            description="Only affects how the shelf view draws it — a double-tall bottom shelf is 2."
+            min={1}
+            max={8}
+            value={draft.span}
+            onChange={(v) => setDraft((d) => ({ ...d, span: Number(v) || 1 }))}
+          />
           <Group justify="space-between">
             {draft.id ? (
               <Button variant="subtle" onClick={() => setDraft(EMPTY)}>
@@ -212,6 +244,8 @@ export function ShelfBuilder() {
           </Group>
         </Stack>
       </Paper>
+
+      <BayBuilder locations={locations} byId={byId} />
 
       {locations.some((l) => l.archived) && (
         <Switch
@@ -249,6 +283,11 @@ export function ShelfBuilder() {
                         color={used > capacity ? "red" : "gray"}
                       >
                         {used}/{capacity}
+                      </Badge>
+                    )}
+                    {capacity == null && used > 0 && (
+                      <Badge size="sm" variant="light" color="gray">
+                        {used}
                       </Badge>
                     )}
                     {location.archived && (
@@ -292,6 +331,291 @@ export function ShelfBuilder() {
         })}
       </Stack>
     </Stack>
+  );
+}
+
+/** One numbered shelf in a bay being built. */
+type ShelfRow = {
+  number: number;
+  grid: boolean;
+  cols: number;
+  rows: number;
+  span: number;
+};
+
+function defaultRows(from: number, to: number): ShelfRow[] {
+  const rows: ShelfRow[] = [];
+  for (let n = from; n <= to; n++)
+    rows.push({ number: n, grid: true, cols: 3, rows: 2, span: 1 });
+  return rows;
+}
+
+/**
+ * Build a whole bay — a parent place plus one child shelf per number, each
+ * with its own grid — in one go. The numbers become the shelf names ("D0",
+ * "D1", …) and the sort order, so the shelf view stacks them bottom-up.
+ *
+ * "Same as" copies an existing bay's shelves as the starting table, which is
+ * how the second through twelfth bays of a wall take one tap each.
+ */
+function BayBuilder({
+  locations,
+  byId,
+}: {
+  locations: LocationState[];
+  byId: Map<string, LocationState>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [parentId, setParentId] = useState<string | null>(null);
+  const [from, setFrom] = useState(0);
+  const [to, setTo] = useState(5);
+  const [rows, setRows] = useState<ShelfRow[]>(defaultRows(0, 5));
+  const [busy, setBusy] = useState(false);
+
+  function resize(nextFrom: number, nextTo: number) {
+    setFrom(nextFrom);
+    setTo(nextTo);
+    setRows((prev) => {
+      const byNumber = new Map(prev.map((r) => [r.number, r]));
+      return defaultRows(nextFrom, nextTo).map(
+        (r) => byNumber.get(r.number) ?? r,
+      );
+    });
+  }
+
+  // Bays = places that have children. Copying one seeds the table from its
+  // shelves, numbered by their position in the bay.
+  const bays = locations.filter(
+    (l) => !l.archived && childrenOf(byId, l.id).length > 0,
+  );
+  function copyFrom(bayId: string | null) {
+    if (!bayId) return;
+    const shelves = childrenOf(byId, bayId);
+    const numbers = shelves.map((s) => {
+      const m = s.name.match(/(\d+)\s*$/);
+      return m ? Number(m[1]) : s.sortOrder;
+    });
+    const lo = Math.min(...numbers);
+    const hi = Math.max(...numbers);
+    setFrom(lo);
+    setTo(hi);
+    setRows(
+      defaultRows(lo, hi).map((r) => {
+        const at = numbers.indexOf(r.number);
+        const s = at >= 0 ? shelves[at] : undefined;
+        return s
+          ? {
+              number: r.number,
+              grid: s.cols != null && s.rows != null,
+              cols: s.cols ?? 3,
+              rows: s.rows ?? 2,
+              span: s.span ?? 1,
+            }
+          : r;
+      }),
+    );
+  }
+
+  function update(number: number, patch: Partial<ShelfRow>) {
+    setRows((prev) =>
+      prev.map((r) => (r.number === number ? { ...r, ...patch } : r)),
+    );
+  }
+
+  async function build() {
+    const bay = name.trim();
+    if (!bay) return;
+    setBusy(true);
+    try {
+      const bayId = crypto.randomUUID();
+      // The bay itself sits after everything at its level.
+      const siblings = childrenOf(byId, parentId, true);
+      const baySort =
+        siblings.reduce((max, s) => Math.max(max, s.sortOrder), -1) + 1;
+      await upsertLocation(bayId, bay, baySort, { parentId });
+      for (const row of rows) {
+        await upsertLocation(
+          crypto.randomUUID(),
+          `${bay}${row.number}`,
+          row.number,
+          {
+            parentId: bayId,
+            cols: row.grid ? row.cols : null,
+            rows: row.grid ? row.rows : null,
+            span: row.span > 1 ? row.span : null,
+          },
+        );
+      }
+      notifications.show({
+        message: `Added bay ${bay} with ${rows.length} shelves`,
+        color: "green",
+      });
+      setName("");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const parentOptions = locations
+    .filter((l) => !l.archived)
+    .map((l) => ({ value: l.id, label: locationLabel(byId, l.id) || l.name }));
+
+  if (!open) {
+    return (
+      <Button
+        variant="light"
+        leftSection={<IconPlus size={16} />}
+        onClick={() => setOpen(true)}
+        style={{ alignSelf: "flex-start" }}
+      >
+        Add a bay of shelves
+      </Button>
+    );
+  }
+
+  return (
+    <Paper p="sm" radius="md" withBorder>
+      <Stack gap="xs">
+        <Text fw={600} size="sm">
+          Add a bay of shelves
+        </Text>
+        <Text size="xs" c="dimmed">
+          A bay is one column of numbered shelves. Shelf names are the bay name
+          plus the number, so bay "D" with shelves 0–5 makes D0 … D5, numbered
+          from the bottom.
+        </Text>
+        <Group grow>
+          <TextInput
+            label="Bay name"
+            placeholder="e.g. D"
+            value={name}
+            onChange={(e) => setName(e.currentTarget.value)}
+          />
+          <Select
+            label="Inside"
+            placeholder="Nowhere in particular"
+            data={parentOptions}
+            value={parentId}
+            onChange={setParentId}
+            clearable
+            searchable
+          />
+        </Group>
+        <Group grow>
+          <NumberInput
+            label="Bottom shelf number"
+            min={0}
+            max={99}
+            value={from}
+            onChange={(v) => resize(Math.min(Number(v) || 0, to), to)}
+          />
+          <NumberInput
+            label="Top shelf number"
+            min={0}
+            max={99}
+            value={to}
+            onChange={(v) => resize(from, Math.max(Number(v) || 0, from))}
+          />
+          {bays.length > 0 && (
+            <Select
+              label="Same shelves as"
+              placeholder="an existing bay"
+              data={bays.map((b) => ({ value: b.id, label: b.name }))}
+              onChange={copyFrom}
+              clearable
+            />
+          )}
+        </Group>
+        <Table withRowBorders={false} verticalSpacing={2}>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Shelf</Table.Th>
+              <Table.Th>Slots</Table.Th>
+              <Table.Th>Across</Table.Th>
+              <Table.Th>Stacked</Table.Th>
+              <Table.Th>Height</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {[...rows].reverse().map((row) => (
+              <Table.Tr key={row.number}>
+                <Table.Td>
+                  <Text size="sm" fw={600}>
+                    {name.trim() || "?"}
+                    {row.number}
+                  </Text>
+                </Table.Td>
+                <Table.Td>
+                  <Checkbox
+                    checked={row.grid}
+                    onChange={(e) =>
+                      update(row.number, { grid: e.currentTarget.checked })
+                    }
+                    aria-label="Holds boxes in numbered slots"
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <NumberInput
+                    size="xs"
+                    min={1}
+                    max={64}
+                    w={64}
+                    disabled={!row.grid}
+                    value={row.cols}
+                    onChange={(v) =>
+                      update(row.number, { cols: Number(v) || 1 })
+                    }
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <NumberInput
+                    size="xs"
+                    min={1}
+                    max={64}
+                    w={64}
+                    disabled={!row.grid}
+                    value={row.rows}
+                    onChange={(v) =>
+                      update(row.number, { rows: Number(v) || 1 })
+                    }
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <NumberInput
+                    size="xs"
+                    min={1}
+                    max={8}
+                    w={64}
+                    value={row.span}
+                    onChange={(v) =>
+                      update(row.number, { span: Number(v) || 1 })
+                    }
+                  />
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+        <Text size="xs" c="dimmed">
+          Top shelf first, like the wall. "Stacked" is how many boxes sit on top
+          of each other; "Height" only changes the drawing.
+        </Text>
+        <Group justify="space-between">
+          <Button variant="subtle" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            leftSection={<IconPlus size={16} />}
+            loading={busy}
+            disabled={!name.trim() || rows.length === 0}
+            onClick={() => void build()}
+          >
+            Add {rows.length} shelves
+          </Button>
+        </Group>
+      </Stack>
+    </Paper>
   );
 }
 
