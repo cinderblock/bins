@@ -108,22 +108,25 @@ function titleFit(
   return { fontSize: min, lines: Math.ceil(title.length / perLine) };
 }
 
-/** Pixel size of an artwork as supplied, for fitting it into its box. */
+/**
+ * Pixel size of an artwork as supplied, for fitting it into its box.
+ *
+ * Throws rather than returning null: a label that silently comes out without
+ * the drawing someone chose is the worst outcome — they approve a preview
+ * that looks whole, print stock, and only notice later. Whoever calls this
+ * turns the throw into something the person can read.
+ */
 async function imageSize(
   dataUrl: string,
-): Promise<{ width: number; height: number } | null> {
+): Promise<{ width: number; height: number }> {
   const comma = dataUrl.indexOf(",");
-  if (comma < 0) return null;
-  try {
-    const meta = await sharp(
-      Buffer.from(dataUrl.slice(comma + 1), "base64"),
-    ).metadata();
-    return meta.width && meta.height
-      ? { width: meta.width, height: meta.height }
-      : null;
-  } catch {
-    return null;
-  }
+  if (comma < 0) throw new Error("drawing is not a data URL");
+  const meta = await sharp(
+    Buffer.from(dataUrl.slice(comma + 1), "base64"),
+  ).metadata();
+  if (!meta.width || !meta.height)
+    throw new Error("drawing has no readable dimensions");
+  return { width: meta.width, height: meta.height };
 }
 
 /** Render to a PNG in the printer's portrait geometry. */
@@ -169,14 +172,19 @@ export async function renderLabel(
   let art: { src: string; width: number; height: number } | null = null;
   if (content.artDataUrl) {
     const size = await imageSize(content.artDataUrl);
-    if (size) {
-      const scale = Math.min(artBoxW / size.width, artBoxH / size.height, 4);
-      art = {
-        src: content.artDataUrl,
-        width: Math.max(1, Math.floor(size.width * scale)),
-        height: Math.max(1, Math.floor(size.height * scale)),
-      };
+    // A box too small to draw in would scale the picture to nothing, which
+    // looks exactly like no picture at all. Say so instead.
+    if (artBoxW < 16 || artBoxH < 16) {
+      throw new Error(
+        `no room for the drawing on this label (${artBoxW}x${artBoxH}px left after the title and QR)`,
+      );
     }
+    const scale = Math.min(artBoxW / size.width, artBoxH / size.height, 4);
+    art = {
+      src: content.artDataUrl,
+      width: Math.max(1, Math.floor(size.width * scale)),
+      height: Math.max(1, Math.floor(size.height * scale)),
+    };
   }
 
   const qrSrc =

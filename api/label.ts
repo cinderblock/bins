@@ -89,13 +89,28 @@ const PRINT_TIMEOUT_MS = 30_000;
  * printed — a preview that merely resembles the output is worse than none,
  * because it invites approving something that won't be what comes out.
  */
+/**
+ * What became of the drawing, so the caller can SAY so. A label quietly
+ * printed without the picture someone picked is the failure this exists to
+ * make impossible: they approve a preview, commit stock, and find out later.
+ *
+ * - `none`        — no drawing was asked for.
+ * - `saved`       — the box's chosen picture, exactly as approved.
+ * - `generated`   — no saved picture, so one was drawn on the way here.
+ * - `unavailable` — a picture WAS chosen but its bytes are not in this
+ *                   group's store. Never silently redrawn: a different
+ *                   picture is not the one that was approved, and redrawing
+ *                   on every preview spends real money.
+ */
+export type LabelArtState = "none" | "saved" | "generated" | "unavailable";
+
 async function buildLabel(
   ctx: Ctx,
   input: LabelInput,
   origin: string,
   /** Print mints a NEW sticker code; a preview shows the current one. */
   forPrint = false,
-): Promise<{ png: Buffer; title: string } | Response> {
+): Promise<{ png: Buffer; title: string; art: LabelArtState } | Response> {
   const geometry = parseLabelSize(labelSizeRaw());
   if (!geometry) {
     return error(500, `LABEL_SIZE is not valid: ${labelSizeRaw()}`);
@@ -161,18 +176,30 @@ async function buildLabel(
   };
 
   // The picture the box already chose comes first — it is what the person
-  // approved, and it costs nothing. Only a box with no picture, asked for one
-  // explicitly, generates on the way to the printer.
+  // approved, and it costs nothing. Only a box with NO chosen picture, asked
+  // for one explicitly, generates on the way to the printer.
+  //
+  // The client sends the hash the studio is showing rather than trusting the
+  // box row to have synced. `null` means "this box has no picture"; omitting
+  // the field means "use whatever the row says".
   const artHash =
     input.labelArtHash !== undefined ? input.labelArtHash : bin.labelArtHash;
   const wantArt = input.art ?? artHash !== null;
+  let artState: LabelArtState = "none";
   if (wantArt && artHash) {
     // Group-scoped read: a hash from another tenant's store is simply absent.
     const png = await readBlob(ctx.groupId, artHash);
-    if (png)
+    if (png) {
       content.artDataUrl = `data:image/png;base64,${png.toString("base64")}`;
+      artState = "saved";
+    } else {
+      // Deliberately NOT redrawn. The person approved a specific picture;
+      // substituting another one silently is worse than saying the bytes
+      // are missing, and a redraw on every preview spends real money.
+      artState = "unavailable";
+    }
   }
-  if (wantArt && !content.artDataUrl) {
+  if (wantArt && !artHash) {
     if (!artAvailable()) return error(501, "no image provider configured");
     try {
       content.artDataUrl = await generateArt({
@@ -180,6 +207,7 @@ async function buildLabel(
         lines,
         instructions: bin.artPrompt,
       });
+      artState = "generated";
     } catch (err) {
       // Budget and availability are the operator's business, not a crash.
       if (err instanceof ArtBudgetError) return error(402, err.message);
@@ -189,7 +217,13 @@ async function buildLabel(
     }
   }
 
-  return { png: await renderLabel(content, geometry), title };
+  try {
+    return { png: await renderLabel(content, geometry), title, art: artState };
+  } catch (err) {
+    // Rendering fails loudly or not at all — see api/labels/render.ts.
+    const reason = err instanceof Error ? err.message : String(err);
+    return error(500, `could not render the label: ${reason}`);
+  }
 }
 
 /**
@@ -204,7 +238,13 @@ export async function handleLabelPreview(
   const built = await buildLabel(ctx, input, origin);
   if (built instanceof Response) return built;
   return new Response(new Uint8Array(built.png), {
-    headers: { "Content-Type": "image/png", "Cache-Control": "no-store" },
+    headers: {
+      "Content-Type": "image/png",
+      "Cache-Control": "no-store",
+      // The body is a PNG, so what happened to the drawing rides in a header
+      // — the sheet shows it next to the preview.
+      "X-Bins-Label-Art": built.art,
+    },
   });
 }
 
@@ -257,5 +297,10 @@ export async function handleLabelPrint(
     }
   }
 
-  return json({ ok: true, printed: copies, title: built.title });
+  return json({
+    ok: true,
+    printed: copies,
+    title: built.title,
+    art: built.art,
+  });
 }

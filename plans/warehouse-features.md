@@ -339,6 +339,37 @@ The new-box flow becomes one screen modelled on the label generator:
       the WebAuthn ceremony itself needs a real authenticator (API test
       covers options/refusal/session/logout).
 
+- [x] **The drawing was missing from the print preview and the print
+      (2026-09-20).** Two causes, both now closed.
+      (1) `LabelPrintSheet` copied `hasArt` into state at MOUNT. The sheet is
+      mounted (closed) as soon as the box exists, which in the new-box flow is
+      before any drawing has been made, so `art` latched `false` and only an
+      effect corrected it on open — the first preview request went out asking
+      for no drawing at all, and a second one had to replace it. The switch is
+      derived now (`artChoice ?? hasArt`), so there is one request with the
+      right answer; the subtext is also compared by value, since the studio
+      rebuilds that array every keystroke and its identity was re-fetching the
+      preview for renders that changed nothing.
+      (2) Both the renderer and the label builder could drop a drawing in
+      SILENCE — `imageSize` returned null for anything sharp couldn't read,
+      and a chosen hash whose bytes were missing fell through to "generate a
+      fresh one", which bills per preview and substitutes a picture nobody
+      approved. Now the renderer throws (turned into a 500 with the reason),
+      a missing blob is reported rather than redrawn, and every label answers
+      with what became of its drawing — `none` / `saved` / `generated` /
+      `unavailable` — as `X-Bins-Label-Art` on the preview and a field on the
+      print result. The sheet shows an orange alert when it is `unavailable`
+      and the print toast says so too, so a label can never quietly come out
+      without the picture someone approved.
+      Verified against a production build with the image provider stubbed:
+      new box → generate → Save & print sends exactly one preview request
+      (`art: true`, right hash) and the returned PNG carries the drawing
+      (167k dark pixels against 44k for the same label without it); a box
+      pointed at a hash with no bytes renders without a picture AND shows the
+      alert. Tests: renderer proves the drawing lands and that an unreadable
+      one throws; the API test proves `saved` / `unavailable` / no silent
+      substitution.
+
 ## Things not to do
 
 - Don't change the bin primary key type; don't touch the reducer's id type.

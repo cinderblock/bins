@@ -1647,6 +1647,91 @@ describe("open access", () => {
     }
   });
 
+  test("the label says what became of the drawing, and never swaps it", async () => {
+    const sharp = (await import("sharp")).default;
+    const drawing = await sharp({
+      create: { width: 600, height: 400, channels: 3, background: "#ffffff" },
+    })
+      .composite([
+        {
+          input: Buffer.from(
+            `<svg width="600" height="400"><circle cx="300" cy="200" r="160" fill="black"/></svg>`,
+          ),
+          top: 0,
+          left: 0,
+        },
+      ])
+      .png()
+      .toBuffer();
+
+    const ink = async (res: Response) => {
+      const { data } = await sharp(Buffer.from(await res.arrayBuffer()))
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      let dark = 0;
+      for (let i = 0; i < data.length; i++) if ((data[i] ?? 255) < 128) dark++;
+      return dark;
+    };
+
+    // Put a picture in the group's store the way generating one does.
+    const { storeBlob } = await import("./blobs");
+    const me = (await (
+      await call("GET", "/api/auth/me", { token: tokenA })
+    ).json()) as { deviceId: string; group: { id: string } };
+    const hash = await storeBlob(
+      { deviceId: me.deviceId, groupId: me.group.id } as never,
+      drawing,
+      "image/png",
+    );
+
+    const plain = await call("POST", "/api/admin/bins/label/preview", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", binId, art: false },
+    });
+    expect(plain.status).toBe(200);
+    expect(plain.headers.get("X-Bins-Label-Art")).toBe("none");
+    const plainInk = await ink(plain);
+
+    // The chosen picture is ON the label, and the header says which one.
+    const withArt = await call("POST", "/api/admin/bins/label/preview", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", binId, art: true, labelArtHash: hash },
+    });
+    expect(withArt.status).toBe(200);
+    expect(withArt.headers.get("X-Bins-Label-Art")).toBe("saved");
+    expect(await ink(withArt)).toBeGreaterThan(plainInk * 2);
+
+    // A hash whose bytes are gone: the label comes back WITHOUT a picture,
+    // and says so. It must not quietly draw a different one — that would be
+    // a picture nobody approved, billed per preview.
+    const missing = "f".repeat(64);
+    const gone = await call("POST", "/api/admin/bins/label/preview", {
+      token: tokenA,
+      body: {
+        adminPassword: "admin-pw",
+        binId,
+        art: true,
+        labelArtHash: missing,
+      },
+    });
+    expect(gone.status).toBe(200);
+    expect(gone.headers.get("X-Bins-Label-Art")).toBe("unavailable");
+    expect(await ink(gone)).toBe(plainInk);
+
+    // Asking for art on a box that has none, with no provider configured,
+    // is still an honest refusal rather than a blank label.
+    const noProvider = await call("POST", "/api/admin/bins/label/preview", {
+      token: tokenA,
+      body: {
+        adminPassword: "admin-pw",
+        binId,
+        art: true,
+        labelArtHash: null,
+      },
+    });
+    expect(noProvider.status).toBe(501);
+  });
+
   test("an ipp:// printer gets a Print-Job, not a bare POST", async () => {
     const seen: { url: string; type: string | null; body: Uint8Array }[] = [];
     const realFetch = globalThis.fetch;

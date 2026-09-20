@@ -123,6 +123,79 @@ describe("label rendering", () => {
     expect(await ink(qr)).toBeGreaterThan(await ink(art));
   });
 
+  test("the chosen drawing actually lands on the label", async () => {
+    // The whole point of the picture is that it prints. A label that comes
+    // out looking complete but without it is the failure worth a test.
+    const drawing = await sharp({
+      create: {
+        width: 600,
+        height: 400,
+        channels: 3,
+        background: "#ffffff",
+      },
+    })
+      .composite([
+        {
+          input: Buffer.from(
+            `<svg width="600" height="400"><circle cx="300" cy="200" r="160" fill="black"/></svg>`,
+          ),
+          top: 0,
+          left: 0,
+        },
+      ])
+      .png()
+      .toBuffer();
+    const artDataUrl = `data:image/png;base64,${drawing.toString("base64")}`;
+    const ink = async (png: Buffer) => {
+      const { data } = await sharp(png)
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      let dark = 0;
+      for (let i = 0; i < data.length; i++) if ((data[i] ?? 255) < 128) dark++;
+      return dark;
+    };
+    const content = {
+      template: "qr" as const,
+      title: "Garden hoses",
+      url: "HTTPS://EXAMPLE/B/ABC#QQQQ",
+      lines: ["Green", "Two lengths"],
+    };
+    const without = await ink(await renderLabel(content, FOUR_BY_SIX));
+    const withArt = await ink(
+      await renderLabel({ ...content, artDataUrl }, FOUR_BY_SIX),
+    );
+    // A solid disc that fills most of the drawing's half of the label is
+    // unmistakable — not a few pixels of difference.
+    expect(withArt).toBeGreaterThan(without * 2);
+  });
+
+  test("a drawing it cannot read fails loudly rather than printing blank", async () => {
+    // Dropping it in silence is the worst outcome: a preview that looks
+    // whole, physical stock committed, and nobody the wiser until later.
+    await expect(
+      renderLabel(
+        {
+          template: "qr",
+          title: "Box",
+          url: "HTTPS://EXAMPLE/1",
+          artDataUrl: "data:image/png;base64,bm90LWFuLWltYWdl",
+        },
+        FOUR_BY_SIX,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      renderLabel(
+        {
+          template: "qr",
+          title: "Box",
+          url: "HTTPS://EXAMPLE/1",
+          artDataUrl: "definitely not a data url",
+        },
+        FOUR_BY_SIX,
+      ),
+    ).rejects.toThrow("not a data URL");
+  });
+
   test("an empty title still renders something printable", async () => {
     const png = await renderLabel(
       { template: "qr", title: "   " },
