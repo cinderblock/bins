@@ -40,7 +40,8 @@ where.
   studio — title, subtext, a generated black-and-white line drawing (guided
   by a sentence and up to five reference pictures, with a Lite/Flash/Pro
   model choice and the cost shown), a free live preview, size, categories,
-  fill level — then prints the sticker to any endpoint that accepts a PNG.
+  fill level — then prints the sticker straight to an IPP printer (anything
+  that does AirPrint) or to any endpoint that accepts a PNG.
   The chosen drawing lives on the box, so a reprint is free and identical.
 - **Box numbers are optional**: `BOX_NUMBERS=internal` hides the number
   everywhere and puts an opaque handle (`/b/<uuid>`) on stickers instead;

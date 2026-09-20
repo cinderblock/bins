@@ -45,7 +45,7 @@ function stubProvider(responder?: () => Response) {
 beforeEach(() => {
   rmSync(ART_DIR, { recursive: true, force: true });
   process.env.LABEL_ART_PATH = ART_DIR;
-  process.env.LABEL_ART_API_KEY = "test-key";
+  process.env.GEMINI_API_KEY = "test-key";
   process.env.LABEL_ART_MODEL = "gemini-2.5-flash-image"; // $0.039/image
 });
 
@@ -53,7 +53,7 @@ afterEach(() => {
   globalThis.fetch = realFetch;
   for (const v of [
     "LABEL_ART_PATH",
-    "LABEL_ART_API_KEY",
+    "GEMINI_API_KEY",
     "LABEL_ART_MODEL",
     "LABEL_ART_BUDGET_USD",
   ]) {
@@ -66,7 +66,7 @@ afterEach(() => {
 describe("art availability", () => {
   test("is off without a key, and never required", () => {
     // biome-ignore lint/performance/noDelete: unsetting an env var needs it
-    delete process.env.LABEL_ART_API_KEY;
+    delete process.env.GEMINI_API_KEY;
     expect(artAvailable()).toBe(false);
     expect(generateArt({ title: "Nuts" })).rejects.toBeInstanceOf(
       ArtUnavailableError,

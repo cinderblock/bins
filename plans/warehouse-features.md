@@ -186,7 +186,7 @@ The new-box flow becomes one screen modelled on the label generator:
 4. Shelves: done (`45378b2`).
 5. Label-first new box: done (studio commit).
 6. **← current** Per-instance env on the warehouse deployment (ops,
-   per-change authorization): `LABEL_ART_API_KEY`, `LABEL_ART_BUDGET_USD`,
+   per-change authorization): `GEMINI_API_KEY`, `LABEL_ART_BUDGET_USD`,
    optionally `LABEL_ART_MODEL`; `LABEL_PRINT_URL` once the print server
    accepts `POST image/png`. Then bump the ops pin to the built image.
 
@@ -198,9 +198,15 @@ The new-box flow becomes one screen modelled on the label generator:
   first box reading "#10" is the id reserved-range rule, not a bug.
 - The label art cache is keyed by model+prompt with no nonce, so the same
   box can never get a different drawing today.
-- The print server has no image-accepting endpoint yet (only its own 1-bpp
-  gzip format); bins already POSTs `image/png`, so that side needs a small
-  route before anything prints.
+- The print server's HTTP API has no image endpoint, but it already runs an
+  **IPP** server that accepts `image/png` (as any AirPrint-capable printer
+  does). So bins speaks IPP (`api/labels/ipp.ts`, a 30-line Print-Job
+  encoder, no dependency) when `LABEL_PRINT_URL` is `ipp://…`, and the print
+  server needs no change at all. Plain `http(s)://` POST stays for anything
+  else.
+- The art key is `GEMINI_API_KEY` (renamed 2026-09-20 from the neutral
+  `LABEL_ART_API_KEY`): every model the module can call is Google's, and a
+  neutral name only hid which account gets billed.
 
 ## Decisions from the operator (2026-09-19)
 

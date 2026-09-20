@@ -1438,6 +1438,46 @@ describe("open access", () => {
     }
   });
 
+  test("an ipp:// printer gets a Print-Job, not a bare POST", async () => {
+    const seen: { url: string; type: string | null; body: Uint8Array }[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      seen.push({
+        url: String(input),
+        type: new Headers(init?.headers).get("content-type"),
+        body: init?.body as Uint8Array,
+      });
+      // successful-ok
+      return new Response(new Uint8Array([2, 0, 0, 0, 0, 0, 0, 1, 3]), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+    process.env.LABEL_PRINT_URL = "ipp://labelpi:631/ipp/print";
+    try {
+      const res = await call("POST", "/api/admin/bins/label", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw", binId, copies: 1 },
+      });
+      expect(res.status).toBe(200);
+      expect(seen).toHaveLength(1);
+      const job = seen[0] as { url: string; type: string; body: Uint8Array };
+      expect(job.url).toBe("http://labelpi:631/ipp/print");
+      expect(job.type).toBe("application/ipp");
+      // IPP/2.0 Print-Job envelope, and the PNG rides inside it.
+      expect([...job.body.slice(0, 4)]).toEqual([2, 0, 0, 2]);
+      const text = Buffer.from(job.body).toString("latin1");
+      expect(text).toContain("image/png");
+      expect(text).toContain("\x89PNG");
+    } finally {
+      globalThis.fetch = realFetch;
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.LABEL_PRINT_URL;
+    }
+  });
+
   test("preview returns the same image without printing", async () => {
     let printed = 0;
     const realFetch = globalThis.fetch;
@@ -1486,7 +1526,7 @@ describe("open access", () => {
         { status: 200 },
       );
     }) as unknown as typeof fetch;
-    process.env.LABEL_ART_API_KEY = "test-key";
+    process.env.GEMINI_API_KEY = "test-key";
     process.env.LABEL_ART_PATH = join(TEST_DIR, "art");
     try {
       const status = await call("POST", "/api/admin/art/status", {
@@ -1550,7 +1590,7 @@ describe("open access", () => {
     } finally {
       globalThis.fetch = realFetch;
       // biome-ignore lint/performance/noDelete: unsetting an env var needs it
-      delete process.env.LABEL_ART_API_KEY;
+      delete process.env.GEMINI_API_KEY;
       // biome-ignore lint/performance/noDelete: unsetting an env var needs it
       delete process.env.LABEL_ART_PATH;
       // Leave the box as the later tests expect it: no drawing.

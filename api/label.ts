@@ -1,12 +1,14 @@
 /**
  * Print a box's label.
  *
- * bins renders the finished image and POSTs it as `image/png`. That is the
- * whole point of the design: ANY printer that accepts an image works — a
- * thermal printer behind a small HTTP shim, an IPP endpoint, a service that
- * turns it into a PDF — instead of only something that implements a bespoke
- * label API. The device still owns dithering, because ink density is a
- * property of the print head and media, not of the label.
+ * bins renders the finished image and hands it to the printer as `image/png`
+ * — as an IPP Print-Job when LABEL_PRINT_URL is `ipp://` (which is what
+ * AirPrint-capable and most network label printers already speak, so no
+ * shim on the printer's side), or as a bare HTTP POST otherwise. That is the
+ * whole point of the design: ANY printer that accepts an image works,
+ * instead of only something that implements a bespoke label API. The device
+ * still owns dithering, because ink density is a property of the print head
+ * and media, not of the label.
  *
  * Server-side because the printer credential must never reach a browser, the
  * image provider's key likewise, and the printer is typically only reachable
@@ -29,6 +31,7 @@ import {
   artAvailable,
   generateArt,
 } from "./labels/art";
+import { isIppUrl, printViaIpp } from "./labels/ipp";
 import { renderLabel } from "./labels/render";
 import { type LabelContent, parseLabelSize } from "./labels/spec";
 
@@ -186,6 +189,12 @@ export async function handleLabelPrint(
   // that actually made it so a jam halfway through isn't silent.
   for (let printed = 0; printed < copies; printed++) {
     try {
+      if (isIppUrl(url)) {
+        await printViaIpp(url, new Uint8Array(built.png), {
+          timeoutMs: PRINT_TIMEOUT_MS,
+        });
+        continue;
+      }
       const response = await fetch(url, {
         method: "POST",
         headers,

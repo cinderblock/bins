@@ -83,8 +83,13 @@ export type ArtRequest = {
   nonce?: string | null;
 };
 
+/**
+ * The Google Generative Language API key. Named for what it is: every model
+ * this module can call (Gemini image models, Imagen) is Google's, and a
+ * variable called something neutral would only hide which account is billed.
+ */
 export function artApiKey(): string | null {
-  return process.env.LABEL_ART_API_KEY?.trim() || null;
+  return process.env.GEMINI_API_KEY?.trim() || null;
 }
 
 export function artModel(): string {
