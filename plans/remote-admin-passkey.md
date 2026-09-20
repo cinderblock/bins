@@ -65,10 +65,11 @@ second way in opens for passkey holders.
 4. [x] Tests: remote gate on/off, joins refused, landing flags, session
        passes, anonymous options/verify shape. 183 green.
 5. [x] README (`REMOTE_ACCESS`, proxy requirement), `.env.example`.
-6. [ ] **CURRENT** — Ops (staged, shown, wait for yes): Caddy external block
-       proxies without the header; compose `REMOTE_ACCESS: passkey`; pin bump.
-7. [ ] Verify live: edge → shell 200, `/api/landing` remote:true, sync 403
-       without session, passkey sign-in from a phone on cellular.
+6. [x] Ops `5da1d2e`: Caddy external block proxies without the header;
+       compose `REMOTE_ACCESS: passkey`; pin `869d2e1`. Deployed 2026-09-20.
+7. [x] Verified live (below). Still to do BY HAND: enrol a passkey from the
+       LAN at `/admin/passkey`, then sign in from a phone on cellular — the
+       WebAuthn ceremony is the one part no automated check can stand in for.
 
 ## Findings / gotchas
 
@@ -95,6 +96,26 @@ second way in opens for passkey holders.
     `X-Bins-Perimeter: lan`; `join-open` from remote → `passkey required`.
   The WebAuthn ceremony itself still needs a real authenticator; the API
   tests cover its options/refusal/replay/enumeration shape.
+
+- **Deployed and verified live 2026-09-20** (ops `5da1d2e`, pin `869d2e1`,
+  `/_version` confirms). Checked from this workstation, which sits on the
+  LAN, so the internet path was exercised by forcing the Cloudflare edge
+  with `curl --resolve store.tomsawyerlabs.com:443:104.21.30.206`:
+  - LAN: `remote:false`, `openAccess:true`, `homeView:shelves`; an open join
+    still reaches body validation, so the warehouse floor is unchanged.
+  - Edge: the shell is served (200, `<title>bins</title>`) where it used to
+    be a 403 string; `remote:true` and `openAccess:false`, so the SPA draws
+    the passkey card and never the name-only join.
+  - Edge refusals: `/api/auth/join-open`, `/api/auth/join`, `/api/setup` all
+    answer `passkey required`.
+  - **The forged header is refused**: the same join sent with
+    `X-Bins-Perimeter: lan` through the edge still answers
+    `passkey required`, which is the proof that `header_up
+    -X-Bins-Perimeter` is doing its job. That was the one thing that could
+    have turned this into an open door.
+  - `/api/passkey/login/options` from the edge answers `no passkeys
+    registered` — the one door is open and says there is nothing behind it
+    yet, which is correct until a passkey is enrolled on the LAN.
 
 ## Things not to do
 

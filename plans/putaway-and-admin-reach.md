@@ -72,8 +72,8 @@ instance for real:
 6. [x] Tests: reducer (code rides and clears), places (lookup, duplicates,
        archived), format (sticker parsing), API (delete endpoint). 197 green.
 7. [x] Build, browser-verify against the production bundle.
-8. [ ] **CURRENT** — Ops (staged, shown, wait for yes): `HOME_VIEW: shelves`,
-       pin bump.
+8. [x] Ops `5da1d2e`: `HOME_VIEW: shelves`, pin `869d2e1`. Deployed and
+       verified 2026-09-20 — the live landing reports `homeView:shelves`.
 
 ## Findings / gotchas
 
