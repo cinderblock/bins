@@ -25,11 +25,13 @@ import { locationLabel } from "@shared/locations";
 import type { BinState, LocationState } from "@shared/reducer";
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
+import { InlineCreate } from "~/components/InlineCreate";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { setBinLocation } from "~/lib/actions";
 import { boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import {
   childrenOf,
+  createPlace,
   hasChildren,
   isGrid,
   placeSlots,
@@ -145,9 +147,34 @@ export function LocationSheet({
 
         {children.length === 0 && !here && (
           <Text size="sm" c="dimmed">
-            No places set up yet — an admin adds shelves under Admin › Places.
+            No places set up yet. Make one below, or lay out a whole bay under
+            Admin › Places.
           </Text>
         )}
+
+        {/* The right shelf often doesn't exist yet when someone is standing
+            in front of it. Making one here puts it INSIDE whatever level the
+            sheet is showing, and puts the box on it — the shape of a shelf
+            (its grid) can be filled in later in the builder. */}
+        <Group gap="xs" mt="xs">
+          <InlineCreate
+            size="lg"
+            label={
+              at ? `New place in ${byId.get(at)?.name ?? "here"}` : "New place"
+            }
+            placeholder="e.g. D6"
+            onCreate={async (name) => {
+              const made = await createPlace(byId, name, at);
+              // A brand-new place has no grid, so the box lands ON it rather
+              // than in a slot — the shape can be filled in later.
+              await place({
+                locationId: made.id,
+                slot: null,
+                label: made.name,
+              });
+            }}
+          />
+        </Group>
 
         <Group gap="xs" mt="xs">
           <TextInput

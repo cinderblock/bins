@@ -50,6 +50,7 @@ import { useLocation, useNavigate } from "react-router";
 import { AdminUnlock } from "~/components/AdminUnlock";
 import { BinDetailPane } from "~/components/BinDetailPane";
 import { FillLevelBadge, FillLevelInput } from "~/components/FillLevel";
+import { InlineCreate } from "~/components/InlineCreate";
 import { LabelChips } from "~/components/LabelChips";
 import { PhotoImg } from "~/components/PhotoImg";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
@@ -63,7 +64,7 @@ import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
 import { relativeTime } from "~/lib/format";
 import { formatWeight, labelColor } from "~/lib/labels";
-import { describeBinLocation, usePlaceMap } from "~/lib/places";
+import { createPlace, describeBinLocation, usePlaceMap } from "~/lib/places";
 import { type SearchDoc, buildSearchIndex } from "~/lib/search";
 import { SizeIcon } from "~/lib/sizeIcons";
 import { syncNow } from "~/lib/sync";
@@ -825,6 +826,21 @@ function MoveSheet({
             {locationLabel(byId, place.id) || place.name}
           </Button>
         ))}
+        {/* A real place, not a typed-in name: it shows up on the shelf
+            view, in every other picker, and can be given a grid later. The
+            freeform field below stays for the genuinely one-off ("Sam's
+            truck"), which is a different thing. */}
+        <Group gap="xs" mt="xs">
+          <InlineCreate
+            size="lg"
+            label="New place"
+            placeholder="e.g. Aisle H"
+            onCreate={async (name) => {
+              const made = await createPlace(byId, name, null);
+              pick({ locationId: made.id, name: made.name });
+            }}
+          />
+        </Group>
         <Group gap="xs" mt="xs">
           <TextInput
             placeholder="somewhere else…"

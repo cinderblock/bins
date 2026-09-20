@@ -644,7 +644,12 @@ export function LabelStudio({
       )}
 
       <Divider label="About the box" labelPosition="center" />
-      <SizePicker sizes={sizes} value={sizeId} onChange={setSizeId} />
+      <SizePicker
+        sizes={sizes}
+        value={sizeId}
+        onChange={setSizeId}
+        adminPassword={adminPassword}
+      />
       <div>
         <Text size="sm" fw={500} mb={4}>
           Categories

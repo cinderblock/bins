@@ -185,11 +185,16 @@ export function EditBoxSheet({
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
         />
-        {sizes.length > 0 ? (
+        {sizes.length > 0 || adminPassword !== null ? (
           // Group-defined box types (admin-managed), with their icons.
           // Tapping the chosen one again clears it: "no size recorded" is a
           // real answer and not the same as guessing one.
-          <SizePicker sizes={sizes} value={sizeId} onChange={setSizeId} />
+          <SizePicker
+            sizes={sizes}
+            value={sizeId}
+            onChange={setSizeId}
+            adminPassword={adminPassword}
+          />
         ) : (
           <div>
             <Text size="sm" fw={500} mb={4}>

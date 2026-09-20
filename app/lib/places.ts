@@ -10,6 +10,7 @@
 import { locationLabel, slotNames } from "@shared/locations";
 import type { BinState, LocationState } from "@shared/reducer";
 import { useLiveQuery } from "dexie-react-hooks";
+import { upsertLocation } from "./actions";
 import { db } from "./db";
 import { placeCodeKey } from "./format";
 
@@ -148,6 +149,35 @@ export function codeOwners(byId: PlaceMap): Map<string, LocationState[]> {
     map.set(key, list);
   }
   return map;
+}
+
+/**
+ * Create a place from a picker, and hand back the row so the caller can
+ * select it immediately.
+ *
+ * Places are ordinary client ops (shared/ops.ts), so any member can make
+ * one — unlike box sizes, whose vocabulary is the admin's. A new place made
+ * this way is plain: no grid, no span, no sticker. It is somewhere to put a
+ * box right now, and a shelf's shape can be filled in later in the builder.
+ */
+export async function createPlace(
+  byId: PlaceMap,
+  name: string,
+  parentId: string | null = null,
+): Promise<{ id: string; name: string }> {
+  const trimmed = name.trim();
+  // Reuse a sibling with the same name rather than making a second one: two
+  // shelves called "D3" under one bay is a data-entry mistake, not a choice.
+  for (const place of byId.values()) {
+    if (place.archived) continue;
+    if (place.parentId !== parentId) continue;
+    if (place.name.trim().toLowerCase() === trimmed.toLowerCase())
+      return { id: place.id, name: place.name };
+  }
+  const id = crypto.randomUUID();
+  const sortOrder = byId.size;
+  await upsertLocation(id, trimmed, sortOrder, { parentId });
+  return { id, name: trimmed };
 }
 
 /** Slot names of a place, or [] when it has no grid. */

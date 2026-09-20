@@ -14,10 +14,11 @@ import { locationLabel } from "@shared/locations";
 import type { LocationState } from "@shared/reducer";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { useState } from "react";
+import { InlineCreate } from "~/components/InlineCreate";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { upsertLocation } from "~/lib/actions";
 import { placeCodeKey } from "~/lib/format";
-import { type PlaceMap, codeOwners } from "~/lib/places";
+import { type PlaceMap, codeOwners, createPlace } from "~/lib/places";
 
 export function BindStickerSheet({
   code,
@@ -113,6 +114,16 @@ export function BindStickerSheet({
           value={placeId}
           onChange={setPlaceId}
           searchable
+        />
+        {/* Binding a sticker usually happens on the first walk down an
+            aisle, which is exactly when a shelf may have no row yet. */}
+        <InlineCreate
+          label="New shelf"
+          placeholder="e.g. H4"
+          onCreate={async (name) => {
+            const made = await createPlace(byId, name, null);
+            setPlaceId(made.id);
+          }}
         />
         <Button
           size="md"

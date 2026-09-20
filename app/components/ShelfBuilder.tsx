@@ -45,8 +45,10 @@ import {
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { Link } from "react-router";
+import { InlineCreate } from "~/components/InlineCreate";
 import { archiveLocation, upsertLocation } from "~/lib/actions";
 import { db } from "~/lib/db";
+import { createPlace } from "~/lib/places";
 import { childrenOf } from "~/lib/places";
 
 type Draft = {
@@ -207,15 +209,29 @@ export function ShelfBuilder() {
               setDraft((d) => ({ ...d, name: e.currentTarget.value }))
             }
           />
-          <Select
-            label="Inside"
-            placeholder="Nowhere in particular"
-            data={parentOptions}
-            value={draft.parentId}
-            onChange={(v) => setDraft((d) => ({ ...d, parentId: v }))}
-            clearable
-            searchable
-          />
+          <Group gap="xs" align="flex-end" wrap="nowrap">
+            <Select
+              label="Inside"
+              placeholder="Nowhere in particular"
+              data={parentOptions}
+              value={draft.parentId}
+              onChange={(v) => setDraft((d) => ({ ...d, parentId: v }))}
+              clearable
+              searchable
+              style={{ flex: 1, minWidth: 0 }}
+            />
+            {/* Building a bay bottom-up: the aisle it belongs in often
+                doesn't exist until you need to say so. */}
+            <InlineCreate
+              size="sm"
+              label="New"
+              placeholder="e.g. Aisle H"
+              onCreate={async (name) => {
+                const made = await createPlace(byId, name, null);
+                setDraft((d) => ({ ...d, parentId: made.id }));
+              }}
+            />
+          </Group>
           <Switch
             checked={draft.grid}
             onChange={(e) =>

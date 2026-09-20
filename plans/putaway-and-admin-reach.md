@@ -77,6 +77,11 @@ instance for real:
 
 ## Findings / gotchas
 
+- A union of object shapes does NOT protect a callback's argument: passing
+  `{ locationId, name }` where `LocationSheet.place()` wanted
+  `{ locationId, slot, label }` type-checked, because TypeScript allows an
+  excess property that exists on SOME member of the union. It shipped a
+  toast reading "Location: undefined". Caught in the browser, not by tsc.
 - `useScanner` only reported values that parsed as a box. Put-away needs the
   RAW value, so the hook now reports every code it reads (with the parsed
   box target when there is one) and the caller decides. The duplicate
@@ -105,6 +110,27 @@ instance for real:
   half is covered by unit tests (parsing, lookup, duplicates, archived) and
   the box half was driven through the manual bin-number input, which goes
   through the same `onScan`.
+
+- 2026-09-20 (follow-up): **every picker over a group vocabulary can now add
+  to it inline.** The operator: "any dropdown that requires pre-made
+  categories should have an inline way of quickly adding a new category."
+  Category labels already had this; nothing else did. Now:
+  - `SizePicker` ends with a "+ New size" card wherever admin is unlocked
+    (the studio, the box page's edit sheet) — name, glyph, created and
+    selected on the spot. Sizes are server-authored, so without an admin
+    password the picker still only offers what exists, as before. Real
+    dimensions stay in the admin manager, where there is room to be careful.
+  - The place pickers — the box page's location sheet, the bulk-move sheet,
+    the shelf builder's "Inside" parent, and the unknown-sticker sheet — all
+    grew a "+ New place/shelf" through one shared `InlineCreate`. Places are
+    ordinary client ops, so any member can make one; it lands at whatever
+    level the sheet is showing, and is selected immediately.
+  - `createPlace` (app/lib/places.ts) reuses a same-named sibling instead of
+    making a second, for the same reason the label composer does.
+  Verified against a production build: a new size created and selected from
+  the box page; a new place created from the location sheet with the box
+  landing on it; a new parent created and selected in the shelf builder; a
+  new place created from bulk move with "Moved 1 box to Cold storage".
 
 ## Things not to do
 
