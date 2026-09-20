@@ -17,6 +17,7 @@ import {
   Stack,
   Text,
   TextInput,
+  UnstyledButton,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import type { BoxSizeState } from "@shared/reducer";
@@ -24,6 +25,7 @@ import { IconArchive, IconPencil, IconPlus } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { apiJson } from "~/lib/api";
 import { formatDimensions } from "~/lib/boxSizes";
+import { SIZE_ICONS, SizeIcon } from "~/lib/sizeIcons";
 import { syncNow } from "~/lib/sync";
 
 type Unit = "in" | "cm";
@@ -43,12 +45,35 @@ function fromMm(mm: number | null, unit: Unit): number | "" {
 type Draft = {
   sizeId?: string;
   name: string;
+  icon: string | null;
   length: number | "";
   width: number | "";
   height: number | "";
 };
 
-const EMPTY: Draft = { name: "", length: "", width: "", height: "" };
+const EMPTY: Draft = {
+  name: "",
+  icon: null,
+  length: "",
+  width: "",
+  height: "",
+};
+
+/**
+ * A starting vocabulary for a group with none: three common sizes with
+ * typical dimensions, all editable afterwards. Offered rather than seeded
+ * automatically, because a group that uses milk crates should not wake up
+ * owning a banker's box.
+ */
+const STARTER_SIZES: {
+  name: string;
+  icon: string;
+  inches: [number, number, number];
+}[] = [
+  { name: "S", icon: "pencil-case", inches: [9, 4, 2.5] },
+  { name: "M", icon: "paper-stack", inches: [11, 8.5, 4.5] },
+  { name: "L", icon: "bankers-box", inches: [15, 12, 10] },
+];
 
 export function BoxSizeManager({ adminPassword }: { adminPassword: string }) {
   const [sizes, setSizes] = useState<BoxSizeState[]>([]);
@@ -78,6 +103,7 @@ export function BoxSizeManager({ adminPassword }: { adminPassword: string }) {
           adminPassword,
           sizeId: draft.sizeId,
           name: draft.name.trim(),
+          icon: draft.icon,
           lengthMm: toMm(draft.length === "" ? null : draft.length, unit),
           widthMm: toMm(draft.width === "" ? null : draft.width, unit),
           heightMm: toMm(draft.height === "" ? null : draft.height, unit),
@@ -90,6 +116,32 @@ export function BoxSizeManager({ adminPassword }: { adminPassword: string }) {
       await syncNow();
     } catch (err) {
       notifications.show({ message: `Could not save: ${err}`, color: "red" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function seedStarters() {
+    setBusy(true);
+    try {
+      for (const starter of STARTER_SIZES) {
+        const [l, w, h] = starter.inches;
+        await apiJson("/api/admin/sizes/upsert", {
+          method: "POST",
+          body: JSON.stringify({
+            adminPassword,
+            name: starter.name,
+            icon: starter.icon,
+            lengthMm: toMm(l, "in"),
+            widthMm: toMm(w, "in"),
+            heightMm: toMm(h, "in"),
+          }),
+        });
+      }
+      await refresh();
+      await syncNow();
+    } catch (err) {
+      notifications.show({ message: `Could not add: ${err}`, color: "red" });
     } finally {
       setBusy(false);
     }
@@ -129,19 +181,22 @@ export function BoxSizeManager({ adminPassword }: { adminPassword: string }) {
             const dims = formatDimensions(size, unit);
             return (
               <Group key={size.id} justify="space-between" wrap="nowrap">
-                <div style={{ minWidth: 0 }}>
-                  <Text
-                    size="sm"
-                    td={size.archived ? "line-through" : undefined}
-                  >
-                    {size.name}
-                  </Text>
-                  {dims && (
-                    <Text size="xs" c="dimmed">
-                      {dims}
+                <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+                  <SizeIcon icon={size.icon} size={24} />
+                  <div style={{ minWidth: 0 }}>
+                    <Text
+                      size="sm"
+                      td={size.archived ? "line-through" : undefined}
+                    >
+                      {size.name}
                     </Text>
-                  )}
-                </div>
+                    {dims && (
+                      <Text size="xs" c="dimmed">
+                        {dims}
+                      </Text>
+                    )}
+                  </div>
+                </Group>
                 {/* Labelled, not icon-only: an unlabelled pencil next to an
                     unlabelled box means guessing, and a hover tooltip is
                     invisible on a touch screen. */}
@@ -154,6 +209,7 @@ export function BoxSizeManager({ adminPassword }: { adminPassword: string }) {
                       setDraft({
                         sizeId: size.id,
                         name: size.name,
+                        icon: size.icon,
                         length: fromMm(size.lengthMm, unit),
                         width: fromMm(size.widthMm, unit),
                         height: fromMm(size.heightMm, unit),
@@ -176,9 +232,19 @@ export function BoxSizeManager({ adminPassword }: { adminPassword: string }) {
             );
           })}
           {sizes.length === 0 && (
-            <Text size="sm" c="dimmed">
-              No sizes defined yet.
-            </Text>
+            <Group gap="sm">
+              <Text size="sm" c="dimmed">
+                No sizes defined yet.
+              </Text>
+              <Button
+                size="compact-sm"
+                variant="light"
+                loading={busy}
+                onClick={() => void seedStarters()}
+              >
+                Start with S / M / L
+              </Button>
+            </Group>
           )}
         </Stack>
 
@@ -197,6 +263,45 @@ export function BoxSizeManager({ adminPassword }: { adminPassword: string }) {
           value={draft.name}
           onChange={(e) => setDraft({ ...draft, name: e.currentTarget.value })}
         />
+        <div>
+          <Text size="sm" fw={500} mb={4}>
+            Icon
+          </Text>
+          <Group gap={6}>
+            {SIZE_ICONS.map((option) => {
+              const selected = draft.icon === option.key;
+              return (
+                <UnstyledButton
+                  key={option.key}
+                  onClick={() =>
+                    setDraft({ ...draft, icon: selected ? null : option.key })
+                  }
+                  aria-pressed={selected}
+                  aria-label={option.label}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 2,
+                    width: 64,
+                    padding: "6px 0",
+                    borderRadius: 8,
+                    border: `2px solid ${
+                      selected
+                        ? "var(--mantine-primary-color-filled)"
+                        : "var(--mantine-color-default-border)"
+                    }`,
+                  }}
+                >
+                  <SizeIcon icon={option.key} size={24} />
+                  <Text size="xs" c="dimmed" ta="center" lh={1.1}>
+                    {option.label}
+                  </Text>
+                </UnstyledButton>
+              );
+            })}
+          </Group>
+        </div>
         <Group grow>
           <NumberInput
             label={`Length (${unit})`}

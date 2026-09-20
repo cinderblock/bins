@@ -15,7 +15,6 @@ import {
   Button,
   Group,
   SegmentedControl,
-  Select,
   Stack,
   Text,
   TextInput,
@@ -27,9 +26,10 @@ import type { BinState } from "@shared/reducer";
 import { IconInfoCircle } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
+import { SizePicker } from "~/components/SizePicker";
 import { setBinFields, suggestBinEdit } from "~/lib/actions";
 import { boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
-import { describeSize, useBoxSizes } from "~/lib/boxSizes";
+import { useBoxSizes } from "~/lib/boxSizes";
 import { usePendingSuggestions } from "~/lib/suggestions";
 
 /**
@@ -151,18 +151,10 @@ export function EditBoxSheet({
           onChange={(e) => setName(e.currentTarget.value)}
         />
         {sizes.length > 0 ? (
-          // Group-defined box types (admin-managed). Clearable, because "no
-          // size recorded" is a real answer and not the same as guessing one.
-          <Select
-            label="Size"
-            placeholder="Not set"
-            size="md"
-            clearable
-            searchable={sizes.length > 8}
-            data={sizes.map((s) => ({ value: s.id, label: describeSize(s) }))}
-            value={sizeId}
-            onChange={setSizeId}
-          />
+          // Group-defined box types (admin-managed), with their icons.
+          // Tapping the chosen one again clears it: "no size recorded" is a
+          // real answer and not the same as guessing one.
+          <SizePicker sizes={sizes} value={sizeId} onChange={setSizeId} />
         ) : (
           <div>
             <Text size="sm" fw={500} mb={4}>

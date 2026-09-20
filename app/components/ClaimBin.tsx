@@ -3,28 +3,21 @@
  * URL and this renders in place; on claim the same route re-renders as a
  * normal bin. Works offline: unclaimed bins are already in the replica.
  */
-import {
-  Button,
-  Paper,
-  SegmentedControl,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-} from "@mantine/core";
+import { Button, Paper, Stack, Text, TextInput, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useState } from "react";
 import { FillLevelInput } from "~/components/FillLevel";
 import { LabelChips } from "~/components/LabelChips";
+import { SizePicker } from "~/components/SizePicker";
 import { WeightInput } from "~/components/WeightInput";
 import { claimBin, setBinLabel } from "~/lib/actions";
 import { useBoxNumbersInternal } from "~/lib/boxRef";
-
-const SIZE_CLASSES = ["S", "M", "L", "XL"];
+import { useBoxSizes } from "~/lib/boxSizes";
 
 export function ClaimBin({ binId }: { binId: number }) {
   const [name, setName] = useState("");
-  const [sizeClass, setSizeClass] = useState("M");
+  const sizes = useBoxSizes();
+  const [sizeId, setSizeId] = useState<string | null>(null);
   const [weightGrams, setWeightGrams] = useState<number | null>(null);
   const [fillLevel, setFillLevel] = useState<number | null>(null);
   const [labels, setLabels] = useState<Set<string>>(new Set());
@@ -44,7 +37,7 @@ export function ClaimBin({ binId }: { binId: number }) {
     setBusy(true);
     await claimBin(binId, {
       name: name.trim() || null,
-      sizeClass,
+      sizeId,
       weightGrams,
       fillLevel,
     });
@@ -74,18 +67,7 @@ export function ClaimBin({ binId }: { binId: number }) {
           onChange={(e) => setName(e.currentTarget.value)}
           autoFocus
         />
-        <div>
-          <Text size="sm" fw={500} mb={4}>
-            Size
-          </Text>
-          <SegmentedControl
-            fullWidth
-            size="lg"
-            data={SIZE_CLASSES}
-            value={sizeClass}
-            onChange={setSizeClass}
-          />
-        </div>
+        <SizePicker sizes={sizes} value={sizeId} onChange={setSizeId} />
         <div>
           <Text size="sm" fw={500} mb={4}>
             Categories

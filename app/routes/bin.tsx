@@ -52,10 +52,12 @@ import { PhotoLightbox } from "~/components/PhotoLightbox";
 import { useAdminPassword } from "~/lib/admin";
 import { useAuthors } from "~/lib/authors";
 import { HANDLE_RE, boxTitle, normalizeHandle } from "~/lib/boxRef";
+import { useBoxSizes } from "~/lib/boxSizes";
 import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
 import { relativeTime } from "~/lib/format";
 import { formatWeight, labelColor } from "~/lib/labels";
+import { SizeIcon } from "~/lib/sizeIcons";
 import { usePendingSuggestions } from "~/lib/suggestions";
 import { syncNow } from "~/lib/sync";
 import { ACTION_BAR_HEIGHT, PAGE_MAXW } from "~/lib/ui";
@@ -102,6 +104,7 @@ export default function BinPage() {
     [],
   );
   const authors = useAuthors();
+  const sizes = useBoxSizes();
 
   // The group's label rows, to render a bin's labelIds as named, colored chips.
   const labelById = useLiveQuery(
@@ -208,7 +211,26 @@ export default function BinPage() {
               <Title order={3}>
                 {numbersInternal ? boxTitle(bin, true) : `#${bin.id}`}
               </Title>
-              {bin.sizeClass && <Badge variant="light">{bin.sizeClass}</Badge>}
+              {(() => {
+                // A defined size (with its icon) wins; legacy free text is
+                // the fallback for boxes never migrated or set.
+                const size = sizes.find((s) => s.id === bin.sizeId);
+                if (size)
+                  return (
+                    <Badge
+                      variant="light"
+                      leftSection={<SizeIcon icon={size.icon} size={14} />}
+                      style={{ textTransform: "none" }}
+                    >
+                      {size.name}
+                    </Badge>
+                  );
+                return (
+                  bin.sizeClass && (
+                    <Badge variant="light">{bin.sizeClass}</Badge>
+                  )
+                );
+              })()}
               {bin.weightGrams != null && (
                 <Badge variant="light" color="gray">
                   {formatWeight(bin.weightGrams)}

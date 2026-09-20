@@ -58,10 +58,12 @@ import {
 } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
+import { useBoxSizes } from "~/lib/boxSizes";
 import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
 import { formatWeight, labelColor } from "~/lib/labels";
 import { type SearchDoc, buildSearchIndex } from "~/lib/search";
+import { SizeIcon } from "~/lib/sizeIcons";
 import { syncNow } from "~/lib/sync";
 import { PAGE_MAXW } from "~/lib/ui";
 
@@ -104,6 +106,8 @@ export default function Bins() {
   const [creating, setCreating] = useState(false);
   const numbersInternal = useDeployment()?.boxNumbers === "internal";
   const labelById = useLabelMap();
+  const sizes = useBoxSizes();
+  const sizeById = new Map(sizes.map((s) => [s.id, s]));
 
   // Search-intent entries (the scanner's magnifier icon, the /search
   // redirect) land with this state so the keyboard pops immediately.
@@ -536,6 +540,23 @@ export default function Bins() {
                         )}
                       </Group>
                       <Group gap={6}>
+                        {(() => {
+                          const size = bin.sizeId
+                            ? sizeById.get(bin.sizeId)
+                            : undefined;
+                          return size ? (
+                            <Badge
+                              variant="light"
+                              color="gray"
+                              leftSection={
+                                <SizeIcon icon={size.icon} size={12} />
+                              }
+                              style={{ textTransform: "none" }}
+                            >
+                              {size.name}
+                            </Badge>
+                          ) : null;
+                        })()}
                         {bin.locationName && (
                           <Badge
                             variant="light"
