@@ -254,8 +254,12 @@ The new-box flow becomes one screen modelled on the label generator:
       D5…D0 top-down with the box in its slot and the unplaced list.
       NOT driven in a browser: art generation (needs a provider key; covered
       by the API test with a stubbed provider) and printing (no printer).
-- [ ] Step 6: deployment env (ops, waits for the operator) and the print
-      server's `POST image/png` endpoint (that repo's agent).
+- [x] Step 6, deployed 2026-09-20 (ops `43bd06d`, run 35481069522): the
+      warehouse stack runs `b34f07d`, verified live (`/_version`, landing
+      `boxNumbers:internal`, LAN 200, edge 403, socket present after the
+      recreate). Art env is wired with the key left empty (drawings off until
+      the secret is set); `LABEL_PRINT_URL` still waits on the print server's
+      `POST image/png` endpoint (that repo's agent).
 
 ## Things not to do
 
