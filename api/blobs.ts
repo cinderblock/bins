@@ -21,6 +21,64 @@ function blobPath(hash: string): string {
 
 const HASH_RE = /^[0-9a-f]{64}$/;
 
+/**
+ * Put bytes the SERVER produced (label art) into the group's store, exactly
+ * as a device upload would: content-addressed, visible to the group, served
+ * by GET like any photo. Returns the hash.
+ */
+export async function storeBlob(
+  ctx: Ctx,
+  bytes: Uint8Array | Buffer,
+  mime: string,
+): Promise<string> {
+  const hash = sha256Hex(bytes);
+  await writeBlobFile(hash, bytes);
+  await db
+    .insert(schema.photoBlob)
+    .values({
+      groupId: ctx.groupId,
+      hash,
+      mime,
+      size: bytes.length,
+      deviceId: ctx.deviceId,
+    })
+    .onConflictDoNothing();
+  return hash;
+}
+
+/** Bytes of a blob the group can see, or null when unknown / not uploaded. */
+export async function readBlob(
+  groupId: string,
+  hash: string,
+): Promise<Buffer | null> {
+  if (!HASH_RE.test(hash)) return null;
+  const row = await db.query.photoBlob.findFirst({
+    where: and(
+      eq(schema.photoBlob.groupId, groupId),
+      eq(schema.photoBlob.hash, hash),
+    ),
+  });
+  if (!row) return null;
+  const file = Bun.file(blobPath(hash));
+  if (!(await file.exists())) return null;
+  return Buffer.from(await file.arrayBuffer());
+}
+
+async function writeBlobFile(hash: string, bytes: Uint8Array): Promise<void> {
+  const path = blobPath(hash);
+  if (existsSync(path)) return;
+  await mkdir(dirname(path), { recursive: true });
+  // Write to a temp name then rename — readers never see partial files.
+  const tmp = `${path}.tmp-${crypto.randomUUID()}`;
+  await Bun.write(tmp, bytes);
+  try {
+    await rename(tmp, path);
+  } catch (err) {
+    await unlink(tmp).catch(() => {});
+    if (!existsSync(path)) throw err;
+  }
+}
+
 export async function handleBlob(
   req: Request,
   ctx: Ctx,
@@ -42,18 +100,7 @@ export async function handleBlob(
     if (bytes.length > MAX_BLOB_BYTES) return error(413, "blob too large");
     if (sha256Hex(bytes) !== hash) return error(400, "hash mismatch");
 
-    const path = blobPath(hash);
-    await mkdir(dirname(path), { recursive: true });
-    // Write to a temp name then rename — readers never see partial files.
-    const tmp = `${path}.tmp-${crypto.randomUUID()}`;
-    await Bun.write(tmp, bytes);
-    try {
-      await rename(tmp, path);
-    } catch (err) {
-      await unlink(tmp).catch(() => {});
-      if (!existsSync(path)) throw err;
-    }
-
+    await writeBlobFile(hash, bytes);
     await db
       .insert(schema.photoBlob)
       .values({

@@ -13,6 +13,7 @@ import { DrizzleStateStore } from "../db/store.server";
 import { type CanonicalOp, secretCodeSchema } from "../shared/ops";
 import { applyOp } from "../shared/reducer";
 import { allocateBins, allocateSchema } from "./allocate";
+import { artRequestSchema, handleArt, handleArtStatus } from "./art";
 import { normalizeAccessCode } from "./auth";
 import { BUILD_SHA } from "./build";
 import { publicOrigin } from "./config";
@@ -356,6 +357,13 @@ export async function handleAdmin(
       ? handleLabelPreview(ctx, parsed.data, origin)
       : handleLabelPrint(ctx, parsed.data, origin);
   }
+
+  if (path === "/api/admin/bins/art") {
+    const parsed = artRequestSchema.safeParse(body);
+    if (!parsed.success) return error(400, "invalid art request");
+    return handleArt(ctx, parsed.data);
+  }
+  if (path === "/api/admin/art/status") return handleArtStatus();
 
   if (path === "/api/admin/bins/allocate") {
     const parsed = allocateSchema.safeParse(body);

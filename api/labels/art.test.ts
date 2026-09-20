@@ -21,12 +21,15 @@ const TINY_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 let calls = 0;
+let lastBody: unknown = null;
 const realFetch = globalThis.fetch;
 
 function stubProvider(responder?: () => Response) {
   calls = 0;
-  globalThis.fetch = (async () => {
+  lastBody = null;
+  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
     calls++;
+    lastBody = init?.body ? JSON.parse(String(init.body)) : null;
     if (responder) return responder();
     return new Response(
       JSON.stringify({
@@ -89,6 +92,19 @@ describe("prompt", () => {
   test("an unnamed box still yields a usable subject", () => {
     expect(buildPrompt({ title: "   " })).toContain("a storage box");
   });
+
+  test("typed instructions and reference pictures shape the prompt", () => {
+    const plain = buildPrompt({ title: "Cables" });
+    expect(plain).not.toContain("style references");
+    const guided = buildPrompt({
+      title: "Cables",
+      instructions: "show a coiled cable",
+      references: [{ mime: "image/jpeg", data: "AAAA" }],
+    });
+    expect(guided).toContain("Additional details: show a coiled cable");
+    // Only said when there ARE references — an empty promise confuses models.
+    expect(guided).toContain("style references only");
+  });
 });
 
 describe("generation", () => {
@@ -108,6 +124,40 @@ describe("generation", () => {
     // Re-previewing or reprinting a box must not bill twice for one picture.
     expect(calls).toBe(1);
     expect(spentThisMonth()).toBeCloseTo(0.039, 5);
+  });
+
+  test("a nonce asks for another picture; the same nonce is free again", async () => {
+    stubProvider();
+    await generateArt({ title: "Nuts" });
+    await generateArt({ title: "Nuts", nonce: "second" });
+    expect(calls).toBe(2);
+    await generateArt({ title: "Nuts", nonce: "second" });
+    expect(calls).toBe(2);
+  });
+
+  test("reference pictures are sent inline, after the prompt", async () => {
+    stubProvider();
+    await generateArt({
+      title: "Nuts",
+      references: [{ mime: "image/jpeg", data: "QUJD" }],
+    });
+    const body = lastBody as {
+      contents: { parts: Record<string, unknown>[] }[];
+    };
+    const parts = body.contents[0]?.parts ?? [];
+    expect(parts[0]).toHaveProperty("text");
+    expect(parts[1]).toEqual({
+      inlineData: { mimeType: "image/jpeg", data: "QUJD" },
+    });
+  });
+
+  test("a requested model is billed at its own price; unknown ones fall back", async () => {
+    stubProvider();
+    await generateArt({ title: "Nuts", model: "gemini-3-pro-image" });
+    expect(spentThisMonth()).toBeCloseTo(0.134, 5);
+    await generateArt({ title: "Bolts", model: "not-a-model" });
+    // Fell back to the env default ($0.039).
+    expect(spentThisMonth()).toBeCloseTo(0.173, 5);
   });
 
   test("a different box generates separately", async () => {

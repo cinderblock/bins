@@ -27,16 +27,24 @@ export function LabelPrintSheet({
   binId,
   adminPassword,
   artAvailable,
+  hasArt = false,
   opened,
   onClose,
 }: {
   binId: number;
   adminPassword: string;
+  /** An image provider is configured, so a drawing could be generated. */
   artAvailable: boolean;
+  /** The box already has a chosen drawing (free to print). */
+  hasArt?: boolean;
   opened: boolean;
   onClose: () => void;
 }) {
-  const [art, setArt] = useState(false);
+  // A box with a chosen drawing prints it by default; one without asks.
+  const [art, setArt] = useState(hasArt);
+  useEffect(() => {
+    if (opened) setArt(hasArt);
+  }, [opened, hasArt]);
   const [copies, setCopies] = useState<number | string>(1);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -127,12 +135,16 @@ export function LabelPrintSheet({
           ) : null}
         </Center>
 
-        {artAvailable && (
+        {(artAvailable || hasArt) && (
           <Switch
             checked={art}
             onChange={(e) => setArt(e.currentTarget.checked)}
-            label="Add generated artwork"
-            description="Costs a per-image fee. The same box reuses its picture rather than paying twice."
+            label={hasArt ? "Print the box's drawing" : "Add a drawing"}
+            description={
+              hasArt
+                ? "Already made — printing it costs nothing."
+                : "Generates one from the title. Costs a per-image fee; the same box reuses its picture rather than paying twice."
+            }
           />
         )}
 

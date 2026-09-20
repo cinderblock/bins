@@ -22,7 +22,8 @@ where.
 - **Offline-first**: full local replica (IndexedDB), append-only op-log sync
   with last-writer-wins merges, photos captured offline upload later. Built
   for storage units, basements, and other dead zones.
-- **"Which box is X in"** search over names, labels, and notes — offline,
+- **"Which box is X in"** search over names, subtext, shelves, labels and
+  notes — offline,
   fuzzy ("sharpee" finds the Sharpies).
 - **No accounts**: scanning any sticker once IS the login — pick a display
   name and you're in. Signed-out visitors on any other URL get a branded
@@ -35,9 +36,24 @@ where.
   password) that also joins them as the first member. A password-gated admin
   page handles branding edits, importing pre-printed stickers (`id,code`
   lines), and device revocation.
+- **Label-first box setup**: for an admin, a new box opens on a label
+  studio — title, subtext, a generated black-and-white line drawing (guided
+  by a sentence and up to five reference pictures, with a Lite/Flash/Pro
+  model choice and the cost shown), a free live preview, size, categories,
+  fill level — then prints the sticker to any endpoint that accepts a PNG.
+  The chosen drawing lives on the box, so a reprint is free and identical.
+- **Box numbers are optional**: `BOX_NUMBERS=internal` hides the number
+  everywhere and puts an opaque handle (`/b/<uuid>`) on stickers instead;
+  ids stay integers underneath and every old `/<number>` link keeps working.
+- **Sizes with icons** (admin-defined, a one-tap S/M/L starter set) and a
+  **fill level** (empty … full) on every box.
+- **Shelves**: describe a bay of numbered shelves in one go, put a box in a
+  numbered slot from the location sheet (it shows what's already there),
+  and see the whole wall at `/shelves` — every bay, shelf and slot with the
+  box in it. Freeform places ("Sam's truck") still work.
 - **Suggested edits**: anyone can change what's *in* a box — photos, notes,
-  location, categories, weight — and it applies instantly. A box's identity
-  (name, size, external label) is how the whole group finds it again, so
+  location, categories, fill level, weight — and it applies instantly. A
+  box's identity (name, size, subtext) is how the whole group finds it, so
   those changes queue for an admin instead: one sheet, which saves directly
   if you've unlocked admin and otherwise sends a proposal with an optional
   "why". Works offline like everything else; approving competes on the normal

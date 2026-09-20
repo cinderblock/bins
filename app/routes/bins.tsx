@@ -545,6 +545,21 @@ export default function Bins() {
                           flexShrink: 0,
                         }}
                       />
+                    ) : bin.labelArtHash ? (
+                      // No contents photo yet — the label's drawing is the
+                      // next best way to recognise the box at a glance.
+                      <PhotoImg
+                        hash={bin.labelArtHash}
+                        alt=""
+                        style={{
+                          width: 56,
+                          height: 56,
+                          borderRadius: 8,
+                          background: "#fff",
+                          objectFit: "contain",
+                          flexShrink: 0,
+                        }}
+                      />
                     ) : (
                       <div
                         style={{

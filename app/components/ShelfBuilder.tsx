@@ -94,7 +94,19 @@ export function ShelfBuilder() {
   const [showArchived, setShowArchived] = useState(false);
 
   const byId = new Map(locations.map((l) => [l.id, l]));
-  const visible = locations.filter((l) => showArchived || !l.archived);
+  // Listed by breadcrumb, numerically ("D2" before "D10"), so a bay's shelves
+  // sit under it in order rather than interleaving by raw sort order.
+  const visible = locations
+    .filter((l) => showArchived || !l.archived)
+    .sort((a, b) =>
+      locationLabel(byId, a.id).localeCompare(
+        locationLabel(byId, b.id),
+        undefined,
+        {
+          numeric: true,
+        },
+      ),
+    );
 
   async function save() {
     const name = draft.name.trim();

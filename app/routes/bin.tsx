@@ -36,7 +36,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { CaptureOverlay } from "~/components/CaptureOverlay";
 import { ClaimBin } from "~/components/ClaimBin";
@@ -44,11 +44,12 @@ import { DeletedEntries } from "~/components/DeletedEntries";
 import { EditBoxSheet } from "~/components/EditBoxSheet";
 import { FillLevelBadge } from "~/components/FillLevel";
 import { LabelSheet } from "~/components/LabelSheet";
-import { LabelPrintSheet } from "~/components/LabelSheet.print";
+import { LabelStudio } from "~/components/LabelStudio";
 import { LocationSheet } from "~/components/LocationSheet";
 import { NoteSheet } from "~/components/NoteSheet";
 import { PhotoImg } from "~/components/PhotoImg";
 import { PhotoLightbox } from "~/components/PhotoLightbox";
+import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { useAdminPassword } from "~/lib/admin";
 import { useAuthors } from "~/lib/authors";
 import { HANDLE_RE, boxTitle, normalizeHandle } from "~/lib/boxRef";
@@ -121,11 +122,18 @@ export default function BinPage() {
   const deployment = useDeployment();
   const numbersInternal = deployment?.boxNumbers === "internal";
   const adminPassword = useAdminPassword();
-  // Printing burns label stock and the endpoint is admin-gated like
-  // allocation, so the button only appears once admin is unlocked.
-  const canPrintLabel =
-    deployment?.labelPrinting === true && typeof adminPassword === "string";
+  // The label studio (drawing, preview, print) spends money and stock, and
+  // its endpoints are admin-gated like allocation, so it only appears once
+  // admin is unlocked. It works without a printer: preview and art still do.
+  const canEditLabel = typeof adminPassword === "string";
   const [labelOpen, setLabelOpen] = useState(false);
+  // A fresh box, for an admin, opens on the label-first setup and STAYS there
+  // through its first save (which claims it, flipping its status) until the
+  // person is done — otherwise the page would swap out from under them.
+  const [newFlow, setNewFlow] = useState(false);
+  useEffect(() => {
+    if (bin?.status === "unclaimed" && canEditLabel) setNewFlow(true);
+  }, [bin?.status, canEditLabel]);
 
   const [noteOpen, setNoteOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
@@ -208,6 +216,22 @@ export default function BinPage() {
               appears — an unnamed box says so in words rather than falling
               back to "#193", which is exactly the thing not to show. Public-
               number deployments keep the number as the headline. */}
+          {/* The box's label drawing, when it has one — the same picture as
+              on the sticker, so a box is recognised by its label in-app too. */}
+          {bin.labelArtHash && (
+            <PhotoImg
+              hash={bin.labelArtHash}
+              alt="Label drawing"
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 8,
+                background: "#fff",
+                objectFit: "contain",
+                flexShrink: 0,
+              }}
+            />
+          )}
           <div>
             <Group gap={8}>
               <Title order={3}>
@@ -266,11 +290,8 @@ export default function BinPage() {
           )}
         </Group>
         <Group gap="xs">
-          {/* Only where a printer is configured AND admin is unlocked (label
-              printing consumes stock and the endpoint is admin-gated like
-              allocation). Print AFTER naming the box — the title is the
-              headline, so an unnamed box prints "Box 193". */}
-          {canPrintLabel && bin.status !== "unclaimed" && (
+          {/* The label studio: title, subtext, a drawing, preview, print. */}
+          {canEditLabel && bin.status !== "unclaimed" && !newFlow && (
             <Button
               size="xs"
               variant="light"
@@ -306,7 +327,17 @@ export default function BinPage() {
         </Box>
       )}
 
-      {bin.status === "unclaimed" ? (
+      {newFlow && typeof adminPassword === "string" ? (
+        <Box maw={PAGE_MAXW} mx="auto" px="md" pb="xl">
+          <LabelStudio
+            key={bin.id}
+            bin={bin}
+            mode="new"
+            adminPassword={adminPassword}
+            onDone={() => setNewFlow(false)}
+          />
+        </Box>
+      ) : bin.status === "unclaimed" ? (
         <Box maw={PAGE_MAXW} mx="auto">
           <ClaimBin binId={bin.id} />
         </Box>
@@ -483,7 +514,7 @@ export default function BinPage() {
       )}
 
       {/* Bottom ActionBar — the whole point of the page */}
-      {bin.status !== "unclaimed" && (
+      {bin.status !== "unclaimed" && !newFlow && (
         <Paper
           radius={0}
           p="sm"
@@ -556,14 +587,23 @@ export default function BinPage() {
         opened={locationOpen}
         onClose={() => setLocationOpen(false)}
       />
-      {canPrintLabel && typeof adminPassword === "string" && (
-        <LabelPrintSheet
-          binId={bin.id}
-          adminPassword={adminPassword}
-          artAvailable={deployment?.labelArt === true}
+      {typeof adminPassword === "string" && (
+        <ResponsiveSheet
           opened={labelOpen}
           onClose={() => setLabelOpen(false)}
-        />
+          title="Label"
+          dismissLabel={null}
+        >
+          {labelOpen && (
+            <LabelStudio
+              key={bin.id}
+              bin={bin}
+              mode="edit"
+              adminPassword={adminPassword}
+              onDone={() => setLabelOpen(false)}
+            />
+          )}
+        </ResponsiveSheet>
       )}
 
       <LabelSheet

@@ -15,6 +15,7 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "../db/client.server";
+import { readBlob } from "./blobs";
 import {
   boxNumbers,
   labelPrintToken,
@@ -35,7 +36,11 @@ export const labelSchema = z.object({
   binId: z.number().int().positive(),
   /** `qr` identifies the box by scanning; `art` is a decorative sticker. */
   template: z.enum(["qr", "art"]).optional(),
-  /** Ask for generated line art. Ignored when no provider is configured. */
+  /**
+   * Put artwork on the label. The box's chosen picture (labelArtHash) when it
+   * has one; otherwise generate one from what the box says (needs a
+   * provider). Omitted = yes when the box has a picture, no when it doesn't.
+   */
   art: z.boolean().optional(),
   copies: z.number().int().min(1).max(20).optional(),
   includeDetails: z.boolean().optional(),
@@ -106,16 +111,31 @@ async function buildLabel(
     lines: lines.length > 0 ? lines : undefined,
   };
 
-  if (input.art) {
+  // The picture the box already chose comes first — it is what the person
+  // approved, and it costs nothing. Only a box with no picture, asked for one
+  // explicitly, generates on the way to the printer.
+  const wantArt = input.art ?? bin.labelArtHash !== null;
+  if (wantArt && bin.labelArtHash) {
+    const png = await readBlob(ctx.groupId, bin.labelArtHash);
+    if (png)
+      content.artDataUrl = `data:image/png;base64,${png.toString("base64")}`;
+  }
+  if (wantArt && !content.artDataUrl) {
     if (!artAvailable()) return error(501, "no image provider configured");
     try {
+      const chosen = new Set(bin.labelIds ?? []);
       const labelNames = await db.query.label.findMany({
         where: eq(schema.label.groupId, ctx.groupId),
-        columns: { name: true },
+        columns: { id: true, name: true },
       });
       content.artDataUrl = await generateArt({
         title,
-        labels: labelNames.map((l) => l.name).slice(0, 6),
+        labels: labelNames
+          .filter((l) => chosen.has(l.id))
+          .map((l) => l.name)
+          .slice(0, 6),
+        items: lines,
+        instructions: bin.artPrompt,
       });
     } catch (err) {
       // Budget and availability are the operator's business, not a crash.

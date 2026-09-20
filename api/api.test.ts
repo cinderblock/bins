@@ -1463,6 +1463,114 @@ describe("open access", () => {
     }
   });
 
+  test("label art: generated for a box, stored as a group blob, printed for free after", async () => {
+    // No provider: the studio is told so, not handed a 500.
+    const off = await call("POST", "/api/admin/bins/art", {
+      token: tokenA,
+      body: { adminPassword: "admin-pw", binId },
+    });
+    expect(off.status).toBe(501);
+
+    const TINY_PNG =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    let providerCalls = 0;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      providerCalls++;
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            { content: { parts: [{ inlineData: { data: TINY_PNG } }] } },
+          ],
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+    process.env.LABEL_ART_API_KEY = "test-key";
+    process.env.LABEL_ART_PATH = join(TEST_DIR, "art");
+    try {
+      const status = await call("POST", "/api/admin/art/status", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw" },
+      });
+      const statusBody = (await status.json()) as {
+        available: boolean;
+        models: { id: string; usd: number }[];
+      };
+      expect(statusBody.available).toBe(true);
+      expect(statusBody.models.length).toBeGreaterThanOrEqual(3);
+
+      const made = await call("POST", "/api/admin/bins/art", {
+        token: tokenA,
+        body: {
+          adminPassword: "admin-pw",
+          binId,
+          instructions: "a coiled cable",
+          references: [{ mime: "image/jpeg", data: "QUJD" }],
+          nonce: "n1",
+        },
+      });
+      expect(made.status).toBe(200);
+      const art = (await made.json()) as { hash: string; dataUrl: string };
+      expect(art.hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(art.dataUrl.startsWith("data:image/png;base64,")).toBe(true);
+      expect(providerCalls).toBe(1);
+
+      // The picture is an ordinary group blob: fetchable by any member.
+      const blob = await call("GET", `/api/blobs/${art.hash}`, {
+        token: tokenB,
+      });
+      expect(blob.status).toBe(200);
+      expect(blob.headers.get("content-type")).toBe("image/png");
+
+      // Choosing it is a plain field write, like any other.
+      const push = await call("POST", "/api/sync/push", {
+        token: tokenA,
+        body: {
+          ops: [
+            {
+              opId: uuid(),
+              type: "bin.setFields",
+              binId,
+              payload: { labelArtHash: art.hash },
+              clientTime: Date.now(),
+            },
+          ],
+        },
+      });
+      expect(push.status).toBe(200);
+
+      // A label for a box with a chosen drawing uses it and calls nobody.
+      const preview = await call("POST", "/api/admin/bins/label/preview", {
+        token: tokenA,
+        body: { adminPassword: "admin-pw", binId },
+      });
+      expect(preview.status).toBe(200);
+      expect(providerCalls).toBe(1);
+    } finally {
+      globalThis.fetch = realFetch;
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.LABEL_ART_API_KEY;
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.LABEL_ART_PATH;
+      // Leave the box as the later tests expect it: no drawing.
+      await call("POST", "/api/sync/push", {
+        token: tokenA,
+        body: {
+          ops: [
+            {
+              opId: uuid(),
+              type: "bin.setFields",
+              binId,
+              payload: { labelArtHash: null },
+              clientTime: Date.now(),
+            },
+          ],
+        },
+      });
+    }
+  });
+
   test("asking for art without a provider refuses instead of printing plain", async () => {
     process.env.LABEL_PRINT_URL = "http://labelpi.test/print";
     try {
