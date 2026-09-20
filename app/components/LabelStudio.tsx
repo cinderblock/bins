@@ -639,16 +639,12 @@ export function LabelStudio({
       <FillLevelInput value={fillLevel} onChange={setFillLevel} />
       <WeightInput grams={weightGrams} onChange={setWeightGrams} />
 
-      <Group grow>
-        <Button
-          size="lg"
-          variant={canPrint ? "light" : "filled"}
-          loading={saving}
-          onClick={() => void save("done")}
-        >
-          {mode === "new" ? "Save box" : "Save"}
-        </Button>
-        {canPrint && (
+      {/* One action, because making a box IS printing its label: save, then
+          the print sheet with the exact render. Saving without a sticker is
+          the exception (a reprint not needed, a quick edit), so it sits
+          underneath, quiet. Without a printer there is only the save. */}
+      <Stack gap={4}>
+        {canPrint ? (
           <Button
             size="lg"
             leftSection={<IconPrinter size={18} />}
@@ -656,10 +652,25 @@ export function LabelStudio({
             disabled={!name.trim()}
             onClick={() => void save("print")}
           >
-            Print label
+            Save &amp; print label
+          </Button>
+        ) : (
+          <Button size="lg" loading={saving} onClick={() => void save("done")}>
+            {mode === "new" ? "Save box" : "Save"}
           </Button>
         )}
-      </Group>
+        {canPrint && (
+          <Button
+            variant="subtle"
+            color="gray"
+            size="sm"
+            disabled={saving}
+            onClick={() => void save("done")}
+          >
+            Save without printing
+          </Button>
+        )}
+      </Stack>
 
       {box && (
         <LabelPrintSheet
