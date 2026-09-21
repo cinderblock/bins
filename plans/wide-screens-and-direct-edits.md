@@ -145,3 +145,13 @@ comes to you rather than you navigating to a settings page that owns it.
     times out in this environment, so the narrow case was checked by
     constraining the grid to 380px (collapses to one column) and reading the
     parsed media query, not by driving a phone-sized window.
+
+- 2026-09-21 (deployed): `7a075db`, image digest `sha256:e8b36b15…d564431b`.
+  This repo's CI only publishes a candidate; both deployments were then moved
+  onto it by pin in the ops repo, and both `/_version` endpoints now report
+  `7a075db` and serve the new hover stylesheet in their prerendered
+  index.html. One of the two had been many commits behind and took the whole
+  accumulated run in one hop — migrations 0015-0019 are additive (ADD COLUMN,
+  two new tables, and one unique index on a freshly-added nullable column),
+  and the AI features are inert where no key is configured. Rollback for
+  either is reverting its pin. Host-specific detail: `plans/local.md`.
