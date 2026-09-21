@@ -99,6 +99,20 @@ would not open there — a harness flake hit repeatedly in this session), so
 that one is the same verified hook feeding a `disabled` prop, not an
 independently observed behaviour.
 
+## Deployed
+
+- **2026-09-21, ops `8460045`, pin `5e482e5`.** The outage is over:
+  `/_version` reports `5e482e5`, the shell is 200 on both paths, and the
+  landing answers on the LAN (`remote:false`, `openAccess:true`,
+  `homeView:shelves`) and through the edge (`remote:true`,
+  `openAccess:false`). A join sent through the edge while claiming
+  `X-Bins-Perimeter: lan` is still refused with `passkey required`, so the
+  perimeter guard survived the redeploy. `passkeys:true` — a passkey has been
+  enrolled, so remote admin is actually usable now.
+- Total outage: roughly six hours, from the `888eaeb` deploy at 00:47Z to
+  the pin landing. Nothing was lost; the server never accepted a write it
+  then dropped, because it never started.
+
 ## Things not to do
 
 - Don't use `navigator.onLine` to decide whether a server-backed feature can
