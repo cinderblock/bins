@@ -247,6 +247,26 @@ Worth knowing before the next branch that sits this long:
   migrating whatever database was configured. Reader now lives in
   `catalog.db.ts` and is passed in.
 
+## The outage this caused, 2026-09-21
+
+**The first deploy of the assistant crash-looped the warehouse instance and
+served 502 for hours**, with every check green. `api/ai/ask.ts` and
+`catalog.ts` imported through the `@shared/*` alias, which Bun resolves from
+`tsconfig.json` — and the runtime stage of the Dockerfile copies `api/`,
+`shared/`, `db/` and `server.ts`, but **not** `tsconfig.json`. So it
+type-checked, linted, tested, built and shipped, and then could not start:
+
+    error: Cannot find module '@shared/locations'
+
+Fixed on master (`59fd649`) by converting server code to relative imports,
+with `api/runtime-imports.test.ts` to keep it converted. Server code imports
+by RELATIVE PATH; `app/` is bundled by Vite and is unaffected.
+
+The lesson worth carrying: every gate in this repo runs where the aliases
+resolve. Nothing before a container start could have caught it, which is why
+the guard had to be a test that reads the source rather than another check
+that runs the code.
+
 ## The classifier (Jev / TypeSafe AI) — added 2026-09-21
 
 A second, unrelated vendor, deliberately kept at arm's length in `api/jev/`.
@@ -295,6 +315,28 @@ declined; "something to drill a hole in brick" found the masonry bits.
 
 **Not for captioning.** Jev is text-only — no images — so photo descriptions
 stay on Gemini. That is a property of the model, not a preference.
+
+## Deployed — the classifier, 2026-09-21
+
+Live on `bins-tsl` (steamboat, `store.tomsawyerlabs.com`). bins `aadee8b` →
+digest `sha256:537a46d0…`, ops `55c18e8`. Rollback is reverting that pin.
+
+`STEAMBOAT_TYPESAFE_AI_API_KEY` set as a GitHub environment secret on
+`cinderblock/ops` (env `steamboat`); `env.json` declares
+`TYPESAFE_AI_API_KEY` with a `""` default so an unset secret leaves the three
+features off rather than breaking the deploy. Spend rides the existing
+`AI_BUDGET_USD: '10'`.
+
+**Confirmed:** deploy workflow green, `last-deployed/deploy` moved, container
+reports the expected digest, no `Cannot find module` or restart in the log,
+and `api/runtime-imports.test.ts` passes — the guard for the failure mode
+above.
+
+**Not confirmed:** nobody has watched a real answer come back. The sandbox
+this was deployed from cannot reach the site (it cannot reach github.com
+either), so the container-up line in the deploy log is the furthest
+verification available from here. `GET /api/ai/status` reports provider,
+model, spend and `jev.available` without spending anything.
 
 ## Progress log
 
