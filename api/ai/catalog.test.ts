@@ -74,6 +74,7 @@ function data(): CatalogData {
         parentId: "p-aisle",
         cols: 4,
         rows: 3,
+        code: "H4",
         archived: false,
       },
     ],
@@ -122,6 +123,8 @@ describe("catalog layering", () => {
     expect(vocabulary.text).toContain("4×3 grid");
     expect(vocabulary.text).toContain("10 of 12 free");
     expect(vocabulary.text).toContain("Aisle H › H4");
+    // The shelf's own printed sticker: how a person finds it in the room.
+    expect(vocabulary.text).toContain("[sticker H4]");
     // A place with no shape reports occupancy instead of a capacity.
     expect(vocabulary.text).toContain("no fixed capacity");
 
@@ -236,6 +239,18 @@ describe("catalog layering", () => {
     // The snapshot still lists #10, so the tail has to be unambiguous about
     // it — otherwise the assistant sends someone to a retired box.
     expect(layer(layers, 2).text).toContain("#10 RETIRED");
+  });
+
+  test("a deleted box is called gone, not left to the default rendering", async () => {
+    forgetSnapshot(GROUP);
+    const source = sourceWith();
+    await buildCatalogLayers(GROUP, source);
+    source.append({ binId: 10, type: "bin.delete", payload: {} });
+    const { layers } = await buildCatalogLayers(GROUP, source);
+    // The snapshot still lists #10; "#10 bin.delete" is true but reads as
+    // noise, and sending someone to a box that no longer exists is the one
+    // answer worse than no answer.
+    expect(layer(layers, 2).text).toContain("#10 DELETED");
   });
 
   test("an unrecognised op type still reports that something happened", async () => {

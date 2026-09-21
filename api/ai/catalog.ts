@@ -19,10 +19,10 @@
  * rewrite the layer on every op and destroy the exact thing this exists to
  * protect. See plans/ai-assist.md.
  *
- * Everything that decides what the model READS is a pure function of plain
- * data, and the database only appears in `dbCatalogSource` at the bottom.
- * That split is what lets the byte-stability property above be tested for
- * real, rather than approximated against a live schema.
+ * Everything here is a pure function of plain data. The database reader lives
+ * in catalog.db.ts and is passed in, which is what lets the byte-stability
+ * property above be tested for real rather than approximated against a live
+ * schema — and keeps the test from opening SQLite at all.
  */
 import {
   type LocationNode,
@@ -30,8 +30,6 @@ import {
   locationLabel,
 } from "@shared/locations";
 import { describedItems } from "@shared/reducer";
-import { and, asc, desc, eq, gt } from "drizzle-orm";
-import { db, schema } from "../../db/client.server";
 import type { AiLayer } from "./types";
 
 /**
@@ -188,7 +186,12 @@ export function renderVocabulary(data: CatalogData): string {
     } else {
       detail.push(`${used} boxes, no fixed capacity`);
     }
-    lines.push(`- ${locationLabel(byId, place.id)} — ${detail.join(", ")}`);
+    // The printed code is how a person finds the shelf in the room, which
+    // is the whole point of naming a place in an answer.
+    const sticker = place.code ? ` [sticker ${place.code}]` : "";
+    lines.push(
+      `- ${locationLabel(byId, place.id)}${sticker} — ${detail.join(", ")}`,
+    );
   }
   return lines.join("\n");
 }
@@ -245,6 +248,8 @@ export function describeOp(op: CatalogOp): string {
     }
     case "bin.retire":
       return `${at} RETIRED — no longer in use`;
+    case "bin.delete":
+      return `${at} DELETED — gone; never offer this box`;
     case "bin.restore":
       return `${at} restored to active`;
     case "bin.claim":
@@ -271,7 +276,7 @@ export function describeOp(op: CatalogOp): string {
  */
 export async function buildCatalogLayers(
   groupId: string,
-  source: CatalogSource = dbCatalogSource,
+  source: CatalogSource,
 ): Promise<{ layers: AiLayer[]; bins: number; tailOps: number }> {
   // Loaded once: the vocabulary layer needs it on every call, and a rebuild
   // would otherwise read the same rows a second time.
@@ -317,57 +322,3 @@ export async function buildCatalogLayers(
   }
   return { layers, bins: current.bins, tailOps: tail.length };
 }
-
-/** The real source: the group's materialized tables and its op log. */
-export const dbCatalogSource: CatalogSource = {
-  async latestSeq(groupId) {
-    const [latest] = await db
-      .select({ seq: schema.op.seq })
-      .from(schema.op)
-      .where(eq(schema.op.groupId, groupId))
-      .orderBy(desc(schema.op.seq))
-      .limit(1);
-    return latest?.seq ?? 0;
-  },
-
-  async load(groupId) {
-    const [bins, entries, labels, sizes, places] = await Promise.all([
-      db.query.bin.findMany({ where: eq(schema.bin.groupId, groupId) }),
-      db.query.binEntry.findMany({
-        where: eq(schema.binEntry.groupId, groupId),
-      }),
-      db.query.label.findMany({ where: eq(schema.label.groupId, groupId) }),
-      db.query.boxSize.findMany({ where: eq(schema.boxSize.groupId, groupId) }),
-      db.query.location.findMany({
-        where: eq(schema.location.groupId, groupId),
-      }),
-    ]);
-
-    const notesByBin = new Map<number, string[]>();
-    const describedByBin = new Map<number, string[]>();
-    for (const entry of entries) {
-      if (entry.deletedByOpId) continue;
-      if (entry.kind === "note" && entry.text) {
-        const list = notesByBin.get(entry.binId) ?? [];
-        list.push(entry.text);
-        notesByBin.set(entry.binId, list);
-        continue;
-      }
-      const described = describedItems(entry);
-      if (described.length) {
-        const list = describedByBin.get(entry.binId) ?? [];
-        list.push(...described);
-        describedByBin.set(entry.binId, list);
-      }
-    }
-    return { bins, notesByBin, describedByBin, labels, sizes, places };
-  },
-
-  async opsAfter(groupId, seq, limit) {
-    return await db.query.op.findMany({
-      where: and(eq(schema.op.groupId, groupId), gt(schema.op.seq, seq)),
-      orderBy: asc(schema.op.seq),
-      limit,
-    });
-  },
-};

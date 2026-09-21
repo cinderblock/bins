@@ -16,6 +16,7 @@ import { z } from "zod";
 import { db, schema } from "../../db/client.server";
 import { type Ctx, error, json } from "../context";
 import { buildCatalogLayers } from "./catalog";
+import { dbCatalogSource } from "./catalog.db";
 import { askAi } from "./provider";
 import type { AiLayer, JsonSchema } from "./types";
 
@@ -242,7 +243,7 @@ export async function handleAsk(
       text: `HOW THIS GROUP SORTS THINGS (follow this over your own instincts)\n${group.sortingNotes.trim()}`,
     });
   }
-  const catalog = await buildCatalogLayers(ctx.groupId);
+  const catalog = await buildCatalogLayers(ctx.groupId, dbCatalogSource);
   layers.push(...catalog.layers);
 
   const result = await askAi("ask", {

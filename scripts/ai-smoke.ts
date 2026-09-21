@@ -17,6 +17,7 @@
 import { handleAsk } from "../api/ai/ask";
 import { captionPending, captionStatus } from "../api/ai/caption";
 import { buildCatalogLayers } from "../api/ai/catalog";
+import { dbCatalogSource } from "../api/ai/catalog.db";
 import { aiStatus } from "../api/ai/provider";
 import type { Ctx } from "../api/context";
 import { db } from "../db/client.server";
@@ -62,7 +63,7 @@ console.log(`\ngroup:    ${group.name} (${group.id})`);
 if (!group.sortingNotes?.trim())
   console.log("          (no sorting conventions set — /admin can add them)");
 
-const catalog = await buildCatalogLayers(group.id);
+const catalog = await buildCatalogLayers(group.id, dbCatalogSource);
 const chars = catalog.layers.reduce((n, l) => n + l.text.length, 0);
 console.log(
   `catalog:  ${catalog.bins} boxes, ${catalog.tailOps} tail ops, ~${Math.round(chars / 4)} tokens`,

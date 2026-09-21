@@ -21,6 +21,8 @@ export type LocationNode = {
   rows?: number | null;
   /** Drawn height in shelf units; null/absent = 1. Rendering only. */
   span?: number | null;
+  /** What the place's own printed sticker says; null/absent = it has none. */
+  code?: string | null;
 };
 
 /**
