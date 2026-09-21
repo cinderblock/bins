@@ -37,6 +37,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { AdminUnlock } from "~/components/AdminUnlock";
 import { BoxSizeManager } from "~/components/BoxSizeManager";
+import { CardGrid, CardGridWide } from "~/components/CardGrid";
 import { ErrorLog } from "~/components/ErrorLog";
 import { PasskeyManager } from "~/components/PasskeyManager";
 import { PhotoDescriptions } from "~/components/PhotoDescriptions";
@@ -48,6 +49,7 @@ import { apiJson } from "~/lib/api";
 import { relativeTime, shortBuild } from "~/lib/format";
 import { rememberAccessCode } from "~/lib/invite";
 import { syncNow } from "~/lib/sync";
+import { WIDE_MAXW } from "~/lib/ui";
 
 type Config = {
   name: string;
@@ -326,7 +328,7 @@ export default function Admin() {
     <Stack
       p="md"
       pt="max(var(--mantine-spacing-md), calc(env(safe-area-inset-top) + var(--bins-banner-h, 0px)))"
-      maw={520}
+      maw={WIDE_MAXW}
       mx="auto"
     >
       <Group justify="space-between">
@@ -367,261 +369,332 @@ export default function Admin() {
         </Paper>
       ) : (
         <>
-          {/* First: the only section with someone waiting on the other end. */}
-          <SuggestionQueue adminPassword={password} authors={authors} />
+          {/* Every section is independent, so on a wide window they flow
+              into columns instead of a 520px ribbon down the middle of an
+              empty page. Order still matters — the masonry fills the first
+              column first, so the queue stays top-left. */}
+          <CardGrid minColumnWidth={440}>
+            {/* First: the only section with someone waiting on the other end. */}
+            <SuggestionQueue adminPassword={password} authors={authors} />
 
-          {/* Right under the queue it feeds: the reason to want a
+            {/* Right under the queue it feeds: the reason to want a
               notification is visible immediately above the switch. */}
-          <PushToggle adminPassword={password} />
+            <PushToggle adminPassword={password} />
 
-          {/* Passkeys: the way to never type the password on a phone. Also
+            {/* Passkeys: the way to never type the password on a phone. Also
               at /admin/passkey, the URL to open on a new device. */}
-          <PasskeyManager adminPassword={password} />
+            <PasskeyManager adminPassword={password} />
 
-          {config && (
+            {config && (
+              <Paper p="md" radius="lg" withBorder>
+                <Stack gap="sm">
+                  <Text fw={600}>Group & landing page</Text>
+                  <TextInput
+                    label="Group name"
+                    value={config.name}
+                    onChange={(e) =>
+                      setConfig({ ...config, name: e.currentTarget.value })
+                    }
+                  />
+                  <TextInput
+                    label="Landing title"
+                    placeholder={`${config.name} Inventory Management System`}
+                    description="Empty = the default shown in the placeholder."
+                    value={config.landingTitle ?? ""}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        landingTitle: e.currentTarget.value,
+                      })
+                    }
+                  />
+                  <TextInput
+                    label="Landing subtitle"
+                    placeholder="Scan a Box to Start"
+                    value={config.landingSubtitle ?? ""}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        landingSubtitle: e.currentTarget.value,
+                      })
+                    }
+                  />
+                  <Textarea
+                    label="How this group sorts things"
+                    description="Plain words. The AI assistant follows these over its own instincts when suggesting where a box goes — it can see your categories and shelves, but not your habits."
+                    placeholder={[
+                      "Booze and soda go together.",
+                      "Nothing heavy above shoulder height.",
+                      "Seasonal stuff lives in the trailer.",
+                    ].join("\n")}
+                    autosize
+                    minRows={3}
+                    maxRows={8}
+                    value={config.sortingNotes ?? ""}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        sortingNotes: e.currentTarget.value,
+                      })
+                    }
+                  />
+                  <PasswordInput
+                    label="New member access code"
+                    description="Leave empty to keep the current one."
+                    value={newAccessCode}
+                    onChange={(e) => setNewAccessCode(e.currentTarget.value)}
+                  />
+                  <PasswordInput
+                    label="New admin password"
+                    description="Leave empty to keep the current one."
+                    value={newAdminPassword}
+                    onChange={(e) => setNewAdminPassword(e.currentTarget.value)}
+                  />
+                  <Button onClick={() => void saveConfig()} loading={busy}>
+                    Save
+                  </Button>
+                </Stack>
+              </Paper>
+            )}
+
+            {/* The one section that wants the whole width: a wall is a
+              wide thing, and the bay table has five columns. */}
+            <CardGridWide>
+              <Paper p="md" radius="lg" withBorder>
+                <ShelfBuilder />
+              </Paper>
+            </CardGridWide>
+
+            <BoxSizeManager adminPassword={password} />
+
+            <PhotoDescriptions adminPassword={password} />
+
+            <ErrorLog adminPassword={password} />
+
             <Paper p="md" radius="lg" withBorder>
               <Stack gap="sm">
-                <Text fw={600}>Group & landing page</Text>
-                <TextInput
-                  label="Group name"
-                  value={config.name}
-                  onChange={(e) =>
-                    setConfig({ ...config, name: e.currentTarget.value })
-                  }
-                />
-                <TextInput
-                  label="Landing title"
-                  placeholder={`${config.name} Inventory Management System`}
-                  description="Empty = the default shown in the placeholder."
-                  value={config.landingTitle ?? ""}
-                  onChange={(e) =>
-                    setConfig({
-                      ...config,
-                      landingTitle: e.currentTarget.value,
-                    })
-                  }
-                />
-                <TextInput
-                  label="Landing subtitle"
-                  placeholder="Scan a Box to Start"
-                  value={config.landingSubtitle ?? ""}
-                  onChange={(e) =>
-                    setConfig({
-                      ...config,
-                      landingSubtitle: e.currentTarget.value,
-                    })
-                  }
-                />
-                <Textarea
-                  label="How this group sorts things"
-                  description="Plain words. The AI assistant follows these over its own instincts when suggesting where a box goes — it can see your categories and shelves, but not your habits."
-                  placeholder={[
-                    "Booze and soda go together.",
-                    "Nothing heavy above shoulder height.",
-                    "Seasonal stuff lives in the trailer.",
-                  ].join("\n")}
-                  autosize
-                  minRows={3}
-                  maxRows={8}
-                  value={config.sortingNotes ?? ""}
-                  onChange={(e) =>
-                    setConfig({
-                      ...config,
-                      sortingNotes: e.currentTarget.value,
-                    })
-                  }
-                />
-                <PasswordInput
-                  label="New member access code"
-                  description="Leave empty to keep the current one."
-                  value={newAccessCode}
-                  onChange={(e) => setNewAccessCode(e.currentTarget.value)}
-                />
-                <PasswordInput
-                  label="New admin password"
-                  description="Leave empty to keep the current one."
-                  value={newAdminPassword}
-                  onChange={(e) => setNewAdminPassword(e.currentTarget.value)}
-                />
-                <Button onClick={() => void saveConfig()} loading={busy}>
-                  Save
+                <Text fw={600}>Sticker codes</Text>
+                <Text size="xs" c="dimmed">
+                  Allocate new bin numbers + secret codes and export them for
+                  your sticker template.
+                </Text>
+                <Button
+                  leftSection={<IconPrinter size={16} />}
+                  onClick={() => navigate("/print")}
+                >
+                  Open sticker codes
                 </Button>
               </Stack>
             </Paper>
-          )}
 
-          <Paper p="md" radius="lg" withBorder>
-            <ShelfBuilder />
-          </Paper>
+            <Paper p="md" radius="lg" withBorder>
+              <Stack gap="sm">
+                <Text fw={600}>Import existing stickers</Text>
+                <Text size="xs" c="dimmed">
+                  One bin per line: <code>id,code</code> (e.g.{" "}
+                  <code>123,7HX6</code>). For stickers that were printed before
+                  this deploy. Future allocations continue above the highest
+                  imported number.
+                </Text>
+                <Textarea
+                  placeholder={"101,7HX6\n102,QK4M"}
+                  autosize
+                  minRows={4}
+                  maxRows={12}
+                  value={importText}
+                  onChange={(e) => setImportText(e.currentTarget.value)}
+                  styles={{ input: { fontFamily: "monospace" } }}
+                />
+                <Button
+                  onClick={() => void runImport()}
+                  loading={busy}
+                  disabled={!importText.trim()}
+                >
+                  Import
+                </Button>
+              </Stack>
+            </Paper>
 
-          <BoxSizeManager adminPassword={password} />
+            <Paper p="md" radius="lg" withBorder>
+              <Stack gap="sm">
+                <Text fw={600}>Integrations / API tokens</Text>
+                <Text size="xs" c="dimmed">
+                  Mint a token for another app to read (and, with write scope,
+                  author changes via the API). Read-only tokens are safe to
+                  embed in a front-end; keep write tokens server-side.
+                </Text>
 
-          <PhotoDescriptions adminPassword={password} />
-
-          <ErrorLog adminPassword={password} />
-
-          <Paper p="md" radius="lg" withBorder>
-            <Stack gap="sm">
-              <Text fw={600}>Sticker codes</Text>
-              <Text size="xs" c="dimmed">
-                Allocate new bin numbers + secret codes and export them for your
-                sticker template.
-              </Text>
-              <Button
-                leftSection={<IconPrinter size={16} />}
-                onClick={() => navigate("/print")}
-              >
-                Open sticker codes
-              </Button>
-            </Stack>
-          </Paper>
-
-          <Paper p="md" radius="lg" withBorder>
-            <Stack gap="sm">
-              <Text fw={600}>Import existing stickers</Text>
-              <Text size="xs" c="dimmed">
-                One bin per line: <code>id,code</code> (e.g.{" "}
-                <code>123,7HX6</code>). For stickers that were printed before
-                this deploy. Future allocations continue above the highest
-                imported number.
-              </Text>
-              <Textarea
-                placeholder={"101,7HX6\n102,QK4M"}
-                autosize
-                minRows={4}
-                maxRows={12}
-                value={importText}
-                onChange={(e) => setImportText(e.currentTarget.value)}
-                styles={{ input: { fontFamily: "monospace" } }}
-              />
-              <Button
-                onClick={() => void runImport()}
-                loading={busy}
-                disabled={!importText.trim()}
-              >
-                Import
-              </Button>
-            </Stack>
-          </Paper>
-
-          <Paper p="md" radius="lg" withBorder>
-            <Stack gap="sm">
-              <Text fw={600}>Integrations / API tokens</Text>
-              <Text size="xs" c="dimmed">
-                Mint a token for another app to read (and, with write scope,
-                author changes via the API). Read-only tokens are safe to embed
-                in a front-end; keep write tokens server-side.
-              </Text>
-
-              {freshToken && (
-                <Alert color="green" variant="light" title="New token">
-                  <Stack gap="xs">
-                    <Text size="xs">
-                      Copy it now — it's shown only once and never stored in
-                      full.
-                    </Text>
-                    <Group gap="xs" wrap="nowrap">
-                      <Code
-                        style={{
-                          overflowWrap: "anywhere",
-                          flex: 1,
-                          fontSize: 12,
-                        }}
+                {freshToken && (
+                  <Alert color="green" variant="light" title="New token">
+                    <Stack gap="xs">
+                      <Text size="xs">
+                        Copy it now — it's shown only once and never stored in
+                        full.
+                      </Text>
+                      <Group gap="xs" wrap="nowrap">
+                        <Code
+                          style={{
+                            overflowWrap: "anywhere",
+                            flex: 1,
+                            fontSize: 12,
+                          }}
+                        >
+                          {freshToken}
+                        </Code>
+                        <CopyButton value={freshToken}>
+                          {({ copied, copy }) => (
+                            <ActionIcon
+                              variant="light"
+                              color={copied ? "teal" : "gray"}
+                              onClick={copy}
+                              aria-label="Copy token"
+                            >
+                              {copied ? (
+                                <IconCheck size={16} />
+                              ) : (
+                                <IconCopy size={16} />
+                              )}
+                            </ActionIcon>
+                          )}
+                        </CopyButton>
+                      </Group>
+                      <Button
+                        size="xs"
+                        variant="subtle"
+                        onClick={() => setFreshToken(null)}
                       >
-                        {freshToken}
-                      </Code>
-                      <CopyButton value={freshToken}>
-                        {({ copied, copy }) => (
-                          <ActionIcon
-                            variant="light"
-                            color={copied ? "teal" : "gray"}
-                            onClick={copy}
-                            aria-label="Copy token"
-                          >
-                            {copied ? (
-                              <IconCheck size={16} />
-                            ) : (
-                              <IconCopy size={16} />
-                            )}
-                          </ActionIcon>
-                        )}
-                      </CopyButton>
-                    </Group>
-                    <Button
-                      size="xs"
-                      variant="subtle"
-                      onClick={() => setFreshToken(null)}
-                    >
-                      Done
-                    </Button>
-                  </Stack>
-                </Alert>
-              )}
+                        Done
+                      </Button>
+                    </Stack>
+                  </Alert>
+                )}
 
-              <TextInput
-                label="Label"
-                placeholder="Warehouse dashboard"
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.currentTarget.value)}
-              />
-              <Select
-                label="Scope"
-                data={[
-                  { value: "read", label: "Read only" },
-                  { value: "write", label: "Read + write" },
-                ]}
-                value={newScope}
-                onChange={(v) => setNewScope(v === "write" ? "write" : "read")}
-                allowDeselect={false}
-              />
-              <TextInput
-                label="Allowed browser origins"
-                description="Optional, for tokens called from a browser. Space/comma separated, e.g. https://app.example.com."
-                placeholder="https://app.example.com"
-                value={newOrigins}
-                onChange={(e) => setNewOrigins(e.currentTarget.value)}
-              />
-              <Button
-                onClick={() => void createIntegration()}
-                loading={busy}
-                disabled={!newLabel.trim()}
-              >
-                Create token
-              </Button>
+                <TextInput
+                  label="Label"
+                  placeholder="Warehouse dashboard"
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.currentTarget.value)}
+                />
+                <Select
+                  label="Scope"
+                  data={[
+                    { value: "read", label: "Read only" },
+                    { value: "write", label: "Read + write" },
+                  ]}
+                  value={newScope}
+                  onChange={(v) =>
+                    setNewScope(v === "write" ? "write" : "read")
+                  }
+                  allowDeselect={false}
+                />
+                <TextInput
+                  label="Allowed browser origins"
+                  description="Optional, for tokens called from a browser. Space/comma separated, e.g. https://app.example.com."
+                  placeholder="https://app.example.com"
+                  value={newOrigins}
+                  onChange={(e) => setNewOrigins(e.currentTarget.value)}
+                />
+                <Button
+                  onClick={() => void createIntegration()}
+                  loading={busy}
+                  disabled={!newLabel.trim()}
+                >
+                  Create token
+                </Button>
 
-              {integrations.length > 0 && (
+                {integrations.length > 0 && (
+                  <Table>
+                    <Table.Tbody>
+                      {integrations.map((row) => (
+                        <Table.Tr key={row.id}>
+                          <Table.Td>
+                            {row.label}
+                            <Text size="xs" c="dimmed" ff="monospace">
+                              {row.tokenPrefix
+                                ? `bins_${row.tokenPrefix}_…`
+                                : "—"}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge
+                              size="sm"
+                              variant="light"
+                              color={row.scope === "write" ? "orange" : "blue"}
+                            >
+                              {row.scope}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td c="dimmed">
+                            {row.lastSeenAt
+                              ? relativeTime(row.lastSeenAt)
+                              : "never used"}
+                          </Table.Td>
+                          <Table.Td>
+                            <ActionIcon
+                              variant="subtle"
+                              color="red"
+                              onClick={() => void revokeIntegration(row)}
+                              aria-label={`Revoke ${row.label}`}
+                            >
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                )}
+              </Stack>
+            </Paper>
+
+            <Paper p="md" radius="lg" withBorder>
+              <Stack gap="sm">
+                <Text fw={600}>Devices</Text>
+                <Text size="xs" c="dimmed">
+                  Revoking signs a device out; its unsynced work survives
+                  locally and flows after it signs back in (Settings).
+                </Text>
+                {serverBuild && (
+                  <Text size="xs" c="dimmed">
+                    Server is serving <strong>{shortBuild(serverBuild)}</strong>
+                    . A device marked “old build” hasn’t picked it up yet — it
+                    updates itself the next time it’s open and idle.
+                  </Text>
+                )}
                 <Table>
                   <Table.Tbody>
-                    {integrations.map((row) => (
-                      <Table.Tr key={row.id}>
+                    {devices.map((device) => (
+                      <Table.Tr key={device.id}>
                         <Table.Td>
-                          {row.label}
-                          <Text size="xs" c="dimmed" ff="monospace">
-                            {row.tokenPrefix
-                              ? `bins_${row.tokenPrefix}_…`
-                              : "—"}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Badge
-                            size="sm"
-                            variant="light"
-                            color={row.scope === "write" ? "orange" : "blue"}
-                          >
-                            {row.scope}
-                          </Badge>
+                          {device.displayName}
+                          {device.self ? " (this device)" : ""}
                         </Table.Td>
                         <Table.Td c="dimmed">
-                          {row.lastSeenAt
-                            ? relativeTime(row.lastSeenAt)
-                            : "never used"}
+                          {device.lastSeenAt
+                            ? relativeTime(device.lastSeenAt)
+                            : "never"}
+                        </Table.Td>
+                        <Table.Td>
+                          {device.buildSha == null ? (
+                            <Text size="xs" c="dimmed">
+                              unknown
+                            </Text>
+                          ) : serverBuild && device.buildSha !== serverBuild ? (
+                            <Badge color="yellow" variant="light" size="sm">
+                              old build · {shortBuild(device.buildSha)}
+                            </Badge>
+                          ) : (
+                            <Badge color="green" variant="light" size="sm">
+                              current
+                            </Badge>
+                          )}
                         </Table.Td>
                         <Table.Td>
                           <ActionIcon
                             variant="subtle"
                             color="red"
-                            onClick={() => void revokeIntegration(row)}
-                            aria-label={`Revoke ${row.label}`}
+                            onClick={() => void revoke(device)}
+                            aria-label={`Revoke ${device.displayName}`}
                           >
                             <IconTrash size={16} />
                           </ActionIcon>
@@ -630,68 +703,9 @@ export default function Admin() {
                     ))}
                   </Table.Tbody>
                 </Table>
-              )}
-            </Stack>
-          </Paper>
-
-          <Paper p="md" radius="lg" withBorder>
-            <Stack gap="sm">
-              <Text fw={600}>Devices</Text>
-              <Text size="xs" c="dimmed">
-                Revoking signs a device out; its unsynced work survives locally
-                and flows after it signs back in (Settings).
-              </Text>
-              {serverBuild && (
-                <Text size="xs" c="dimmed">
-                  Server is serving <strong>{shortBuild(serverBuild)}</strong>.
-                  A device marked “old build” hasn’t picked it up yet — it
-                  updates itself the next time it’s open and idle.
-                </Text>
-              )}
-              <Table>
-                <Table.Tbody>
-                  {devices.map((device) => (
-                    <Table.Tr key={device.id}>
-                      <Table.Td>
-                        {device.displayName}
-                        {device.self ? " (this device)" : ""}
-                      </Table.Td>
-                      <Table.Td c="dimmed">
-                        {device.lastSeenAt
-                          ? relativeTime(device.lastSeenAt)
-                          : "never"}
-                      </Table.Td>
-                      <Table.Td>
-                        {device.buildSha == null ? (
-                          <Text size="xs" c="dimmed">
-                            unknown
-                          </Text>
-                        ) : serverBuild && device.buildSha !== serverBuild ? (
-                          <Badge color="yellow" variant="light" size="sm">
-                            old build · {shortBuild(device.buildSha)}
-                          </Badge>
-                        ) : (
-                          <Badge color="green" variant="light" size="sm">
-                            current
-                          </Badge>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        <ActionIcon
-                          variant="subtle"
-                          color="red"
-                          onClick={() => void revoke(device)}
-                          aria-label={`Revoke ${device.displayName}`}
-                        >
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Stack>
-          </Paper>
+              </Stack>
+            </Paper>
+          </CardGrid>
 
           <Alert color="gray" variant="light">
             Admin stays unlocked on this device until you Lock it (or the

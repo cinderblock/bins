@@ -45,3 +45,60 @@ export const ACTION_BAR_HEIGHT = 88;
  * leaves ~18px) — re-measure rather than eyeball it if this regresses.
  */
 export const TOAST_BOTTOM = `calc(${ACTION_BAR_HEIGHT}px + env(safe-area-inset-bottom) + var(--mantine-spacing-xl))`;
+
+/**
+ * Wide pages (settings, admin) stop growing here. Their cards are laid out
+ * in columns by `CardGrid`, so this is a readable-line-length ceiling on the
+ * whole board rather than on one column.
+ */
+export const WIDE_MAXW = 1240;
+
+/**
+ * Narrowest a card column may get before `CardGrid` drops to fewer columns.
+ * Sized so a Mantine input with a label and a description still reads.
+ */
+export const CARD_MINW = 400;
+
+/** Put on a container whose HOVER_ACTIONS/HOVER_ONLY children reveal on hover. */
+export const HOVER_PARENT = "bins-hoverable";
+
+/**
+ * Controls that fade in when their HOVER_PARENT is hovered — and are simply
+ * always there on a touch device, which has no hover to discover them with.
+ * For rows and headers with room to spare for a permanent icon.
+ */
+export const HOVER_ACTIONS = "bins-hover-actions";
+
+/**
+ * Like HOVER_ACTIONS, but GONE on touch rather than always-on. For controls
+ * that overlay their content — a box cell in a shelf grid is ~58px wide, and
+ * a permanent icon cluster would cover the box's name on every phone. Touch
+ * reaches the same edits by tapping through to the box itself, so these are
+ * strictly a pointer-device shortcut.
+ */
+export const HOVER_ONLY = "bins-hover-only";
+
+/**
+ * The app's only stylesheet, injected by root.tsx next to the early
+ * color-scheme rules. Everything else is Mantine props or inline styles;
+ * these rules are here because a `:hover` on a PARENT and an `:empty`
+ * sibling cannot be written inline.
+ *
+ * Reveal is opacity, never display: the icons occupy their space at all
+ * times, so nothing reflows under the pointer on the way to a click.
+ */
+export const UI_CSS = `
+.${HOVER_ACTIONS}, .${HOVER_ONLY} { transition: opacity 120ms ease; }
+.${HOVER_ONLY} { display: none; }
+@media ${DESKTOP_MEDIA} {
+  .${HOVER_ONLY} { display: flex; }
+  .${HOVER_PARENT} .${HOVER_ACTIONS},
+  .${HOVER_PARENT} .${HOVER_ONLY} { opacity: 0; }
+  .${HOVER_PARENT}:hover .${HOVER_ACTIONS},
+  .${HOVER_PARENT}:focus-within .${HOVER_ACTIONS},
+  .${HOVER_PARENT}:hover .${HOVER_ONLY},
+  .${HOVER_PARENT}:focus-within .${HOVER_ONLY} { opacity: 1; }
+}
+/* A card whose component rendered nothing must not leave its gap behind. */
+.bins-card-grid > div:empty { display: none; }
+`;

@@ -16,6 +16,9 @@ Companion plan: `plans/mobile-ux-and-suggestions.md` — field reports from a
 live deployment: the touch revamp of the category picker + sheets, the
 landing's new way in, and the (unbuilt) member-suggests / admin-approves
 edit flow.
+Companion plan: `plans/wide-screens-and-direct-edits.md` — the wide-screen
+card layout for Settings/Admin, and the hover-to-edit affordances that put
+a shelf's editor on the shelf instead of in a settings page.
 
 ## Goal
 
@@ -557,6 +560,18 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   deliberately NOT bumping the bin's updatedAt. Opt-in automatic
   (`AI_CAPTION_PHOTOS`); admin panel shows the backlog and estimated cost.
   Reasoning in `plans/ai-assist.md`.
+- [x] **Wide screens + direct edits** (2026-09-21, user request: "the uis,
+  especially the settings pages, need to have responsive layouts that work
+  better with wide screens … i don't want to be chasing things in
+  settings"). Settings/Admin flow their cards into as many columns as the
+  window has room for (`CardGrid`, CSS multi-column masonry); the shelf wall
+  grew hover edit/move controls on bays, shelves and box cells, and empty
+  slots became "put a box here" targets. The place editor (`PlaceEditSheet`)
+  and the box quick-edit (`BoxQuickEdit`) were extracted so the same editor
+  opens from the wall, the box list and Settings. Categories can finally be
+  renamed and recoloured; places and categories can be un-archived from
+  Settings. Details, including the two traps, in
+  `plans/wide-screens-and-direct-edits.md`.
 - [ ] On-device testing (iPhone + Android): camera lifecycle in installed PWA,
   scan-to-bin latency, airplane-mode round-trip on two devices.
 

@@ -29,7 +29,7 @@ declare global {
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
 import { RECOVER_URL, StaleBuildBanner } from "./components/StaleBuildBanner";
 import { reportError } from "./lib/errors";
-import { TOAST_BOTTOM } from "./lib/ui";
+import { TOAST_BOTTOM, UI_CSS } from "./lib/ui";
 
 // Paint the right background on the very first frame (before JS/CSS), so a
 // dark-mode phone never flashes white. Dark is the app default — this tool
@@ -131,6 +131,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
         <ColorSchemeScript defaultColorScheme="dark" />
         <style>{earlyColorSchemeCss}</style>
+        {/* The three rules that can't be inline styles — see lib/ui.ts. */}
+        <style>{UI_CSS}</style>
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: a build-time
             constant, and it must run without the app — see bootWatchdogJs. */}
         <script dangerouslySetInnerHTML={{ __html: bootWatchdogJs }} />

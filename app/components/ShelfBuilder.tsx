@@ -12,6 +12,11 @@
  * or a whole BAY: a column of numbered shelves, each with its own grid, in a
  * few taps — because a real wall is twelve bays of six shelves and nobody
  * should type seventy-two rows.
+ *
+ * The single-place editor itself is `PlaceEditSheet`, shared with the shelf
+ * wall and the Settings › Places card. It used to be a form pinned to the top
+ * of this card, which meant editing the fortieth row scrolled the form you
+ * were typing into off the screen.
  */
 import {
   ActionIcon,
@@ -29,12 +34,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import {
-  locationLabel,
-  slotCapacity,
-  slotNames,
-  wouldCycle,
-} from "@shared/locations";
+import { locationLabel, slotCapacity } from "@shared/locations";
 import type { LocationState } from "@shared/reducer";
 import {
   IconArchive,
@@ -45,34 +45,10 @@ import {
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { Link } from "react-router";
-import { InlineCreate } from "~/components/InlineCreate";
+import { PlaceEditSheet } from "~/components/PlaceEditSheet";
 import { archiveLocation, upsertLocation } from "~/lib/actions";
 import { db } from "~/lib/db";
-import { createPlace } from "~/lib/places";
 import { childrenOf } from "~/lib/places";
-
-type Draft = {
-  id: string | null;
-  name: string;
-  parentId: string | null;
-  grid: boolean;
-  cols: number;
-  rows: number;
-  span: number;
-  /** What this shelf's own printed sticker says; "" = none. */
-  code: string;
-};
-
-const EMPTY: Draft = {
-  id: null,
-  name: "",
-  parentId: null,
-  grid: false,
-  cols: 3,
-  rows: 2,
-  span: 1,
-  code: "",
-};
 
 export function ShelfBuilder() {
   const locations = useLiveQuery(
@@ -95,7 +71,8 @@ export function ShelfBuilder() {
     new Map<string, number>(),
   );
 
-  const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [editing, setEditing] = useState<LocationState | null>(null);
+  const [adding, setAdding] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
 
   const byId = new Map(locations.map((l) => [l.id, l]));
@@ -113,70 +90,6 @@ export function ShelfBuilder() {
       ),
     );
 
-  // Two shelves answering to one sticker is ambiguous, and the reducer
-  // can't refuse it without becoming order-dependent (shared/ops.ts), so
-  // the builder is where a person finds out.
-  const codeClash = (() => {
-    const key = draft.code.trim().toLowerCase();
-    if (!key) return null;
-    const others = locations.filter(
-      (l) =>
-        l.id !== draft.id &&
-        !l.archived &&
-        (l.code ?? "").trim().toLowerCase() === key,
-    );
-    return others.length > 0
-      ? `${others.map((l) => l.name).join(", ")} already claims this sticker`
-      : null;
-  })();
-
-  async function save() {
-    const name = draft.name.trim();
-    if (!name) return;
-    const id = draft.id ?? crypto.randomUUID();
-    // Refuse a loop before writing. The walk helpers survive one either way,
-    // but a builder that lets you create one is just handing you broken data.
-    if (draft.id && wouldCycle(byId, draft.id, draft.parentId)) {
-      notifications.show({
-        message: "That would put a place inside itself",
-        color: "red",
-      });
-      return;
-    }
-    const sortOrder = draft.id
-      ? (byId.get(draft.id)?.sortOrder ?? 0)
-      : locations.length;
-    await upsertLocation(id, name, sortOrder, {
-      parentId: draft.parentId,
-      cols: draft.grid ? draft.cols : null,
-      rows: draft.grid ? draft.rows : null,
-      span: draft.span > 1 ? draft.span : null,
-      code: draft.code,
-    });
-    setDraft(EMPTY);
-  }
-
-  function edit(location: LocationState) {
-    setDraft({
-      id: location.id,
-      name: location.name,
-      parentId: location.parentId,
-      grid: location.cols != null && location.rows != null,
-      cols: location.cols ?? 3,
-      rows: location.rows ?? 2,
-      span: location.span ?? 1,
-      code: location.code ?? "",
-    });
-  }
-
-  // A place can't be its own parent, and can't sit under its own descendant.
-  const parentOptions = locations
-    .filter((l) => !l.archived)
-    .filter((l) => !draft.id || !wouldCycle(byId, draft.id, l.id))
-    .map((l) => ({ value: l.id, label: locationLabel(byId, l.id) || l.name }));
-
-  const draftCapacity = draft.grid ? draft.cols * draft.rows : null;
-
   return (
     <Stack gap="sm">
       <Group justify="space-between">
@@ -184,129 +97,30 @@ export function ShelfBuilder() {
           <IconLayoutGrid size={18} />
           <Text fw={600}>Places &amp; shelves</Text>
         </Group>
-        <Button
-          component={Link}
-          to="/shelves"
-          size="compact-sm"
-          variant="light"
-        >
-          View the shelves
-        </Button>
+        <Group gap="xs">
+          <Button
+            size="compact-sm"
+            variant="light"
+            leftSection={<IconPlus size={14} />}
+            onClick={() => setAdding(true)}
+          >
+            Add a place
+          </Button>
+          <Button
+            component={Link}
+            to="/shelves"
+            size="compact-sm"
+            variant="light"
+          >
+            View the shelves
+          </Button>
+        </Group>
       </Group>
       <Text size="xs" c="dimmed">
         Where boxes live. Give a shelf a grid and it gets numbered slots you can
         put boxes into; leave it off for a plain place like a room or a trailer.
         Nest shelves inside a bay and the shelf view draws the whole wall.
       </Text>
-
-      <Paper p="sm" radius="md" withBorder>
-        <Stack gap="xs">
-          <TextInput
-            label={draft.id ? "Rename place" : "New place"}
-            placeholder="e.g. H4"
-            value={draft.name}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, name: e.currentTarget.value }))
-            }
-          />
-          <Group gap="xs" align="flex-end" wrap="nowrap">
-            <Select
-              label="Inside"
-              placeholder="Nowhere in particular"
-              data={parentOptions}
-              value={draft.parentId}
-              onChange={(v) => setDraft((d) => ({ ...d, parentId: v }))}
-              clearable
-              searchable
-              style={{ flex: 1, minWidth: 0 }}
-            />
-            {/* Building a bay bottom-up: the aisle it belongs in often
-                doesn't exist until you need to say so. */}
-            <InlineCreate
-              size="sm"
-              label="New"
-              placeholder="e.g. Aisle H"
-              onCreate={async (name) => {
-                const made = await createPlace(byId, name, null);
-                setDraft((d) => ({ ...d, parentId: made.id }));
-              }}
-            />
-          </Group>
-          <Switch
-            checked={draft.grid}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, grid: e.currentTarget.checked }))
-            }
-            label="This shelf holds boxes in numbered slots"
-          />
-          {draft.grid && (
-            <>
-              <Group grow>
-                <NumberInput
-                  label="Across"
-                  min={1}
-                  max={64}
-                  value={draft.cols}
-                  onChange={(v) =>
-                    setDraft((d) => ({ ...d, cols: Number(v) || 1 }))
-                  }
-                />
-                <NumberInput
-                  label="Stacked"
-                  min={1}
-                  max={64}
-                  value={draft.rows}
-                  onChange={(v) =>
-                    setDraft((d) => ({ ...d, rows: Number(v) || 1 }))
-                  }
-                />
-              </Group>
-              <Text size="xs" c="dimmed">
-                {draftCapacity} slots, numbered 1–{draftCapacity} left to right,
-                top to bottom.
-              </Text>
-              <SlotPreview cols={draft.cols} rows={draft.rows} />
-            </>
-          )}
-          <NumberInput
-            label="Height, in shelf units"
-            description="Only affects how the shelf view draws it — a double-tall bottom shelf is 2."
-            min={1}
-            max={8}
-            value={draft.span}
-            onChange={(v) => setDraft((d) => ({ ...d, span: Number(v) || 1 }))}
-          />
-          {/* Normally learned by scanning: put-away offers to bind an
-              unknown sticker to a shelf with the camera already on it. This
-              is for fixing one up, or reading back what a shelf claims. */}
-          <TextInput
-            label="Sticker code"
-            description="Whatever is printed on this shelf's own sticker. Scanning it in Put away files boxes here."
-            placeholder="usually set by scanning"
-            value={draft.code}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, code: e.currentTarget.value }))
-            }
-            error={codeClash}
-          />
-          <Group justify="space-between">
-            {draft.id ? (
-              <Button variant="subtle" onClick={() => setDraft(EMPTY)}>
-                Cancel
-              </Button>
-            ) : (
-              <span />
-            )}
-            <Button
-              leftSection={draft.id ? undefined : <IconPlus size={16} />}
-              onClick={() => void save()}
-              disabled={!draft.name.trim()}
-            >
-              {draft.id ? "Save" : "Add place"}
-            </Button>
-          </Group>
-        </Stack>
-      </Paper>
 
       <BayBuilder locations={locations} byId={byId} />
 
@@ -369,7 +183,7 @@ export function ShelfBuilder() {
                   <Button
                     size="compact-xs"
                     variant="subtle"
-                    onClick={() => edit(location)}
+                    onClick={() => setEditing(location)}
                   >
                     Edit
                   </Button>
@@ -393,6 +207,17 @@ export function ShelfBuilder() {
           );
         })}
       </Stack>
+
+      <PlaceEditSheet
+        place={editing}
+        opened={editing !== null}
+        onClose={() => setEditing(null)}
+      />
+      <PlaceEditSheet
+        place={null}
+        opened={adding}
+        onClose={() => setAdding(false)}
+      />
     </Stack>
   );
 }
@@ -679,37 +504,5 @@ function BayBuilder({
         </Group>
       </Stack>
     </Paper>
-  );
-}
-
-/** A to-scale sketch of the grid, so the numbers mean something before saving. */
-function SlotPreview({ cols, rows }: { cols: number; rows: number }) {
-  const names = slotNames({ id: "", name: "", parentId: null, cols, rows });
-  // Beyond this the cells are too small to read and the point is lost.
-  if (names.length > 64) return null;
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(${cols}, 1fr)`,
-        gap: 4,
-      }}
-    >
-      {names.map((name) => (
-        <div
-          key={name}
-          style={{
-            border: "1px solid var(--mantine-color-dimmed)",
-            borderRadius: 4,
-            padding: "6px 0",
-            textAlign: "center",
-            fontSize: 12,
-            opacity: 0.75,
-          }}
-        >
-          {name}
-        </div>
-      ))}
-    </div>
   );
 }

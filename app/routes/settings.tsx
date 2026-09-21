@@ -23,12 +23,16 @@ import {
 } from "@mantine/core";
 import { useDocumentTitle } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
+import { locationLabel } from "@shared/locations";
+import type { LabelState, LocationState } from "@shared/reducer";
 import {
   IconArchive,
+  IconArchiveOff,
   IconArrowLeft,
   IconCheck,
   IconCopy,
   IconDeviceMobilePlus,
+  IconPencil,
   IconPlugConnected,
   IconPlugConnectedX,
   IconPlus,
@@ -37,6 +41,8 @@ import {
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { CardGrid } from "~/components/CardGrid";
+import { PlaceEditSheet } from "~/components/PlaceEditSheet";
 import {
   archiveLabel,
   archiveLocation,
@@ -78,6 +84,7 @@ import {
 } from "~/lib/photos";
 import { estimateStorage, formatBytes } from "~/lib/storage";
 import { syncNow } from "~/lib/sync";
+import { HOVER_ACTIONS, HOVER_PARENT, WIDE_MAXW } from "~/lib/ui";
 import { useBackendHealth } from "~/lib/useOnline";
 
 export default function Settings() {
@@ -96,24 +103,21 @@ export default function Settings() {
     [],
     0,
   );
-  const places = useLiveQuery(
-    () =>
-      db.locations
-        .orderBy("sortOrder")
-        .filter((l) => !l.archived)
-        .toArray(),
+  // Archived rows come back too: archiving was a one-way door here, with
+  // restore living only in the admin shelf builder.
+  const allPlaces = useLiveQuery(
+    () => db.locations.orderBy("sortOrder").toArray(),
     [],
-    [],
+    [] as LocationState[],
   );
-  const labels = useLiveQuery(
-    () =>
-      db.labels
-        .orderBy("sortOrder")
-        .filter((l) => !l.archived)
-        .toArray(),
+  const allLabels = useLiveQuery(
+    () => db.labels.orderBy("sortOrder").toArray(),
     [],
-    [],
+    [] as LabelState[],
   );
+  const places = allPlaces.filter((l) => !l.archived);
+  const labels = allLabels.filter((l) => !l.archived);
+  const placeById = new Map(allPlaces.map((l) => [l.id, l]));
 
   const serverHealth = useBackendHealth();
   const authDead = useLiveQuery(
@@ -127,6 +131,12 @@ export default function Settings() {
   const [newPlace, setNewPlace] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [newLabelColor, setNewLabelColor] = useState<string | null>(null);
+  const [editPlace, setEditPlace] = useState<LocationState | null>(null);
+  const [showArchivedPlaces, setShowArchivedPlaces] = useState(false);
+  const [editLabel, setEditLabel] = useState<LabelState | null>(null);
+  const [labelDraft, setLabelDraft] = useState("");
+  const [labelDraftColor, setLabelDraftColor] = useState<string | null>(null);
+  const [showArchivedLabels, setShowArchivedLabels] = useState(false);
   const [storage, setStorage] = useState("");
   /** 0–1 of the device quota, when the browser will say. */
   const [storageFull, setStorageFull] = useState<number | null>(null);
@@ -232,6 +242,24 @@ export default function Settings() {
     setNewPlace("");
   }
 
+  /**
+   * Rename or recolour an existing category. There was no way to do this at
+   * all: a typo in a category name was permanent, and archive-and-recreate
+   * does not bring the boxes along.
+   */
+  async function saveLabel() {
+    if (!editLabel) return;
+    const trimmed = labelDraft.trim();
+    if (!trimmed) return;
+    await upsertLabel(
+      editLabel.id,
+      trimmed,
+      labelDraftColor ?? editLabel.color,
+      editLabel.sortOrder,
+    );
+    setEditLabel(null);
+  }
+
   async function addLabel() {
     const trimmed = newLabel.trim();
     if (!trimmed) return;
@@ -254,7 +282,7 @@ export default function Settings() {
     <Stack
       p="md"
       pt="max(var(--mantine-spacing-md), calc(env(safe-area-inset-top) + var(--bins-banner-h, 0px)))"
-      maw={480}
+      maw={WIDE_MAXW}
       mx="auto"
     >
       <Group gap="sm">
@@ -302,371 +330,510 @@ export default function Settings() {
         </Alert>
       )}
 
-      <Paper p="md" radius="lg" withBorder>
-        <Stack gap="sm">
-          <Text fw={600}>{identity?.groupName}</Text>
-          <Group align="flex-end" gap="xs">
-            <TextInput
-              label="Your name"
-              value={name}
-              onChange={(e) => setName(e.currentTarget.value)}
-              style={{ flex: 1 }}
-            />
-            <Button variant="default" onClick={() => void rename()}>
-              Save
-            </Button>
-          </Group>
-          <Switch
-            checked={geoOk}
-            onChange={(e) => {
-              setGeoOk(e.currentTarget.checked);
-              void setGeoOptIn(e.currentTarget.checked);
-            }}
-            label="Record location on photos and notes"
-          />
-          {/* The way back out of desk mode. Turning it ON lives next to
-              "Start camera" where the choice actually comes up; without this
-              it would be a one-way door. */}
-          <Switch
-            checked={deskMode === true}
-            onChange={(e) => void setDeskMode(e.currentTarget.checked)}
-            label="Desk mode — no camera, open on browse and search"
-            description="For a laptop used to sort and verify rather than scan."
-          />
-        </Stack>
-      </Paper>
-
-      <Paper p="md" radius="lg" withBorder>
-        <Stack gap="xs">
-          <Text fw={600}>Places</Text>
-          <Text size="xs" c="dimmed">
-            The quick options in the location picker.
-          </Text>
-          {places.map((place) => (
-            <Group key={place.id} justify="space-between">
-              <Text>{place.name}</Text>
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                onClick={() => void archiveLocation(place.id, true)}
-                aria-label={`Archive ${place.name}`}
-              >
-                <IconArchive size={16} />
-              </ActionIcon>
-            </Group>
-          ))}
-          <Group gap="xs">
-            <TextInput
-              placeholder="e.g. shelf A2"
-              value={newPlace}
-              onChange={(e) => setNewPlace(e.currentTarget.value)}
-              style={{ flex: 1 }}
-              onKeyDown={(e) => e.key === "Enter" && void addPlace()}
-            />
-            <ActionIcon
-              size="lg"
-              variant="default"
-              onClick={() => void addPlace()}
-              aria-label="Add place"
-            >
-              <IconPlus size={16} />
-            </ActionIcon>
-          </Group>
-        </Stack>
-      </Paper>
-
-      <Paper p="md" radius="lg" withBorder>
-        <Stack gap="xs">
-          <Text fw={600}>Categories</Text>
-          <Text size="xs" c="dimmed">
-            Group boxes together — booze, soda, kitchen, shade… A box can have
-            several. Manage the colored labels that appear on every box.
-          </Text>
-          {labels.map((label) => (
-            <Group key={label.id} justify="space-between">
-              <Group gap="xs">
-                <ColorSwatch
-                  color={`var(--mantine-color-${labelColor(label.color)}-6)`}
-                  size={16}
-                />
-                <Text>{label.name}</Text>
-              </Group>
-              <ActionIcon
-                variant="subtle"
-                color="gray"
-                onClick={() => void archiveLabel(label.id, true)}
-                aria-label={`Archive ${label.name}`}
-              >
-                <IconArchive size={16} />
-              </ActionIcon>
-            </Group>
-          ))}
-          <Group gap="xs">
-            <TextInput
-              placeholder="e.g. booze"
-              value={newLabel}
-              onChange={(e) => setNewLabel(e.currentTarget.value)}
-              style={{ flex: 1 }}
-              onKeyDown={(e) => e.key === "Enter" && void addLabel()}
-            />
-            <ActionIcon
-              size="lg"
-              variant="default"
-              onClick={() => void addLabel()}
-              aria-label="Add category"
-            >
-              <IconPlus size={16} />
-            </ActionIcon>
-          </Group>
-          {/* Optional color for the next category; defaults to the next in the palette. */}
-          <Group gap={6}>
-            {LABEL_COLORS.map((color) => (
-              <UnstyledButton
-                key={color}
-                onClick={() =>
-                  setNewLabelColor((c) => (c === color ? null : color))
-                }
-                aria-label={`Use ${color}`}
-              >
-                <ColorSwatch
-                  color={`var(--mantine-color-${color}-6)`}
-                  size={22}
-                  withShadow={newLabelColor === color}
-                  style={{
-                    outline:
-                      newLabelColor === color
-                        ? "2px solid var(--mantine-color-white)"
-                        : undefined,
-                  }}
-                />
-              </UnstyledButton>
-            ))}
-          </Group>
-        </Stack>
-      </Paper>
-
-      <Paper p="md" radius="lg" withBorder>
-        <Stack gap="xs">
-          <Text fw={600}>Sync</Text>
-          <Text size="sm" c="dimmed">
-            {pendingOps} ops and {pendingBlobs} photos waiting to upload.
-            {storage && ` ${storage}.`}
-          </Text>
-          {storageFull !== null && storageFull > 0.85 && (
-            <Alert color="orange" title="This device is nearly full">
-              New photos may fail to save. Syncing is what frees space — photos
-              are only removed from this device once the server has them.
-              Shortening “Keep photos offline” below reclaims more.
-            </Alert>
-          )}
-          <Button variant="default" onClick={() => void syncNow()}>
-            Sync now
-          </Button>
-          <div>
-            <Text size="sm" fw={500} mb={4}>
-              Keep photos offline
-            </Text>
-            <SegmentedControl
-              fullWidth
-              value={retention}
-              onChange={(value) => {
-                setRetention(value as PhotoRetention);
-                void setPhotoRetention(value as PhotoRetention);
-              }}
-              data={[
-                { label: "1 week", value: "week" },
-                { label: "1 month", value: "month" },
-                { label: "Forever", value: "forever" },
-              ]}
-            />
-            <Text size="xs" c="dimmed" mt={4}>
-              How long full-size photos stay on this device after you view them.
-              Thumbnails and each box's latest photo are always kept; anything
-              evicted re-downloads when you next open it online. Pick "Forever"
-              for event weeks spent off-grid.
-            </Text>
-          </div>
-          <Button
-            variant="default"
-            onClick={() => void downloadAll()}
-            loading={prefetch !== null}
-          >
-            {prefetch && prefetch.total > 0
-              ? `Downloading ${prefetch.done + prefetch.failed} / ${prefetch.total}…`
-              : "Download all photos now"}
-          </Button>
-          <Text size="xs" c="dimmed" mt={-8}>
-            Grabs every photo you don't have yet, so the whole library works
-            offline — run this on good wifi before heading off-grid (best with
-            "Forever" above).
-          </Text>
-        </Stack>
-      </Paper>
-
-      {/* Pointless on a perimeter-protected deployment: there is no code to
-          share, and "invite" is just sending someone the URL. Showing the
-          section would invite people to hunt for a code that does nothing. */}
-      {!openAccess && (
+      {/* One column on a phone, as many as fit on a desk monitor. The
+          sections are independent, so there is no reason to make anyone
+          scroll past nine of them to reach the tenth. */}
+      <CardGrid>
         <Paper p="md" radius="lg" withBorder>
           <Stack gap="sm">
-            <Group gap="xs">
-              <IconDeviceMobilePlus size={18} />
-              <Text fw={600}>Invite a device</Text>
-            </Group>
-            <Text size="xs" c="dimmed">
-              Share this link to sign in another phone or laptop — it opens the
-              join page with the group code filled in, so they just add their
-              name. The code rides the link's #fragment and never reaches the
-              server.
-            </Text>
-            {typeof cachedCode === "string" ? (
-              <>
-                <Code block style={{ wordBreak: "break-all" }}>
-                  {inviteLink(cachedCode)}
-                </Code>
-                <CopyButton value={inviteLink(cachedCode)}>
-                  {({ copied, copy }) => (
-                    <Button
-                      variant={copied ? "light" : "default"}
-                      color={copied ? "green" : undefined}
-                      leftSection={
-                        copied ? (
-                          <IconCheck size={16} />
-                        ) : (
-                          <IconCopy size={16} />
-                        )
-                      }
-                      onClick={copy}
-                    >
-                      {copied ? "Copied" : "Copy invite link"}
-                    </Button>
-                  )}
-                </CopyButton>
-              </>
-            ) : (
-              <Text size="sm" c="dimmed">
-                This device doesn't have the group code (you joined by scanning
-                a sticker). Enter it below to make an invite link.
-              </Text>
-            )}
+            <Text fw={600}>{identity?.groupName}</Text>
             <Group align="flex-end" gap="xs">
-              <PasswordInput
-                label={cachedCode ? "Update the code" : "Group access code"}
-                value={codeInput}
-                onChange={(e) => setCodeInput(e.currentTarget.value)}
+              <TextInput
+                label="Your name"
+                value={name}
+                onChange={(e) => setName(e.currentTarget.value)}
                 style={{ flex: 1 }}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && codeInput.trim() && void saveInviteCode()
-                }
               />
+              <Button variant="default" onClick={() => void rename()}>
+                Save
+              </Button>
+            </Group>
+            <Switch
+              checked={geoOk}
+              onChange={(e) => {
+                setGeoOk(e.currentTarget.checked);
+                void setGeoOptIn(e.currentTarget.checked);
+              }}
+              label="Record location on photos and notes"
+            />
+            {/* The way back out of desk mode. Turning it ON lives next to
+              "Start camera" where the choice actually comes up; without this
+              it would be a one-way door. */}
+            <Switch
+              checked={deskMode === true}
+              onChange={(e) => void setDeskMode(e.currentTarget.checked)}
+              label="Desk mode — no camera, open on browse and search"
+              description="For a laptop used to sort and verify rather than scan."
+            />
+          </Stack>
+        </Paper>
+
+        <Paper p="md" radius="lg" withBorder>
+          <Stack gap="xs">
+            <Text fw={600}>Places</Text>
+            <Text size="xs" c="dimmed">
+              The quick options in the location picker.
+            </Text>
+            {(showArchivedPlaces ? allPlaces : places).map((place) => (
+              <Group
+                key={place.id}
+                justify="space-between"
+                wrap="nowrap"
+                className={HOVER_PARENT}
+              >
+                <Text truncate c={place.archived ? "dimmed" : undefined}>
+                  {locationLabel(placeById, place.id) || place.name}
+                </Text>
+                <Group gap={2} wrap="nowrap" className={HOVER_ACTIONS}>
+                  {/* The whole shelf editor, right here — renaming a place
+                    used to mean going to Admin and finding it again. */}
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    onClick={() => setEditPlace(place)}
+                    aria-label={`Edit ${place.name}`}
+                  >
+                    <IconPencil size={16} />
+                  </ActionIcon>
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    onClick={() =>
+                      void archiveLocation(place.id, !place.archived)
+                    }
+                    aria-label={`${place.archived ? "Restore" : "Archive"} ${place.name}`}
+                  >
+                    {place.archived ? (
+                      <IconArchiveOff size={16} />
+                    ) : (
+                      <IconArchive size={16} />
+                    )}
+                  </ActionIcon>
+                </Group>
+              </Group>
+            ))}
+            <Group gap="xs">
+              <TextInput
+                placeholder="e.g. shelf A2"
+                value={newPlace}
+                onChange={(e) => setNewPlace(e.currentTarget.value)}
+                style={{ flex: 1 }}
+                onKeyDown={(e) => e.key === "Enter" && void addPlace()}
+              />
+              <ActionIcon
+                size="lg"
+                variant="default"
+                onClick={() => void addPlace()}
+                aria-label="Add place"
+              >
+                <IconPlus size={16} />
+              </ActionIcon>
+            </Group>
+            {allPlaces.some((l) => l.archived) && (
+              <Switch
+                size="xs"
+                checked={showArchivedPlaces}
+                onChange={(e) => setShowArchivedPlaces(e.currentTarget.checked)}
+                label="Show archived"
+              />
+            )}
+          </Stack>
+        </Paper>
+
+        <Paper p="md" radius="lg" withBorder>
+          <Stack gap="xs">
+            <Text fw={600}>Categories</Text>
+            <Text size="xs" c="dimmed">
+              Group boxes together — booze, soda, kitchen, shade… A box can have
+              several. Manage the colored labels that appear on every box.
+            </Text>
+            {(showArchivedLabels ? allLabels : labels).map((label) =>
+              editLabel?.id === label.id ? (
+                <Stack key={label.id} gap={6}>
+                  <Group gap="xs" wrap="nowrap">
+                    <TextInput
+                      value={labelDraft}
+                      onChange={(e) => setLabelDraft(e.currentTarget.value)}
+                      style={{ flex: 1 }}
+                      aria-label={`Rename ${label.name}`}
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void saveLabel();
+                        if (e.key === "Escape") setEditLabel(null);
+                      }}
+                    />
+                    <Button
+                      size="compact-sm"
+                      disabled={!labelDraft.trim()}
+                      onClick={() => void saveLabel()}
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      size="compact-sm"
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => setEditLabel(null)}
+                    >
+                      Cancel
+                    </Button>
+                  </Group>
+                  <Group gap={6}>
+                    {LABEL_COLORS.map((color) => (
+                      <UnstyledButton
+                        key={color}
+                        onClick={() => setLabelDraftColor(color)}
+                        aria-label={`Recolour ${label.name} ${color}`}
+                      >
+                        <ColorSwatch
+                          color={`var(--mantine-color-${color}-6)`}
+                          size={22}
+                          withShadow={
+                            (labelDraftColor ?? label.color) === color
+                          }
+                          style={{
+                            outline:
+                              (labelDraftColor ?? label.color) === color
+                                ? "2px solid var(--mantine-color-white)"
+                                : undefined,
+                          }}
+                        />
+                      </UnstyledButton>
+                    ))}
+                  </Group>
+                </Stack>
+              ) : (
+                <Group
+                  key={label.id}
+                  justify="space-between"
+                  wrap="nowrap"
+                  className={HOVER_PARENT}
+                >
+                  <Group gap="xs" wrap="nowrap">
+                    <ColorSwatch
+                      color={`var(--mantine-color-${labelColor(label.color)}-6)`}
+                      size={16}
+                    />
+                    <Text truncate c={label.archived ? "dimmed" : undefined}>
+                      {label.name}
+                    </Text>
+                  </Group>
+                  <Group gap={2} wrap="nowrap" className={HOVER_ACTIONS}>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => {
+                        setEditLabel(label);
+                        setLabelDraft(label.name);
+                        setLabelDraftColor(label.color);
+                      }}
+                      aria-label={`Edit ${label.name}`}
+                    >
+                      <IconPencil size={16} />
+                    </ActionIcon>
+                    <ActionIcon
+                      variant="subtle"
+                      color="gray"
+                      onClick={() =>
+                        void archiveLabel(label.id, !label.archived)
+                      }
+                      aria-label={`${label.archived ? "Restore" : "Archive"} ${label.name}`}
+                    >
+                      {label.archived ? (
+                        <IconArchiveOff size={16} />
+                      ) : (
+                        <IconArchive size={16} />
+                      )}
+                    </ActionIcon>
+                  </Group>
+                </Group>
+              ),
+            )}
+            <Group gap="xs">
+              <TextInput
+                placeholder="e.g. booze"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.currentTarget.value)}
+                style={{ flex: 1 }}
+                onKeyDown={(e) => e.key === "Enter" && void addLabel()}
+              />
+              <ActionIcon
+                size="lg"
+                variant="default"
+                onClick={() => void addLabel()}
+                aria-label="Add category"
+              >
+                <IconPlus size={16} />
+              </ActionIcon>
+            </Group>
+            {allLabels.some((l) => l.archived) && (
+              <Switch
+                size="xs"
+                checked={showArchivedLabels}
+                onChange={(e) => setShowArchivedLabels(e.currentTarget.checked)}
+                label="Show archived"
+              />
+            )}
+            {/* Optional color for the next category; defaults to the next in the palette. */}
+            <Group gap={6}>
+              {LABEL_COLORS.map((color) => (
+                <UnstyledButton
+                  key={color}
+                  onClick={() =>
+                    setNewLabelColor((c) => (c === color ? null : color))
+                  }
+                  aria-label={`Use ${color}`}
+                >
+                  <ColorSwatch
+                    color={`var(--mantine-color-${color}-6)`}
+                    size={22}
+                    withShadow={newLabelColor === color}
+                    style={{
+                      outline:
+                        newLabelColor === color
+                          ? "2px solid var(--mantine-color-white)"
+                          : undefined,
+                    }}
+                  />
+                </UnstyledButton>
+              ))}
+            </Group>
+          </Stack>
+        </Paper>
+
+        <Paper p="md" radius="lg" withBorder>
+          <Stack gap="xs">
+            <Text fw={600}>Sync</Text>
+            <Text size="sm" c="dimmed">
+              {pendingOps} ops and {pendingBlobs} photos waiting to upload.
+              {storage && ` ${storage}.`}
+            </Text>
+            {storageFull !== null && storageFull > 0.85 && (
+              <Alert color="orange" title="This device is nearly full">
+                New photos may fail to save. Syncing is what frees space —
+                photos are only removed from this device once the server has
+                them. Shortening “Keep photos offline” below reclaims more.
+              </Alert>
+            )}
+            <Button variant="default" onClick={() => void syncNow()}>
+              Sync now
+            </Button>
+            <div>
+              <Text size="sm" fw={500} mb={4}>
+                Keep photos offline
+              </Text>
+              <SegmentedControl
+                fullWidth
+                value={retention}
+                onChange={(value) => {
+                  setRetention(value as PhotoRetention);
+                  void setPhotoRetention(value as PhotoRetention);
+                }}
+                data={[
+                  { label: "1 week", value: "week" },
+                  { label: "1 month", value: "month" },
+                  { label: "Forever", value: "forever" },
+                ]}
+              />
+              <Text size="xs" c="dimmed" mt={4}>
+                How long full-size photos stay on this device after you view
+                them. Thumbnails and each box's latest photo are always kept;
+                anything evicted re-downloads when you next open it online. Pick
+                "Forever" for event weeks spent off-grid.
+              </Text>
+            </div>
+            <Button
+              variant="default"
+              onClick={() => void downloadAll()}
+              loading={prefetch !== null}
+            >
+              {prefetch && prefetch.total > 0
+                ? `Downloading ${prefetch.done + prefetch.failed} / ${prefetch.total}…`
+                : "Download all photos now"}
+            </Button>
+            <Text size="xs" c="dimmed" mt={-8}>
+              Grabs every photo you don't have yet, so the whole library works
+              offline — run this on good wifi before heading off-grid (best with
+              "Forever" above).
+            </Text>
+          </Stack>
+        </Paper>
+
+        {/* Pointless on a perimeter-protected deployment: there is no code to
+          share, and "invite" is just sending someone the URL. Showing the
+          section would invite people to hunt for a code that does nothing. */}
+        {!openAccess && (
+          <Paper p="md" radius="lg" withBorder>
+            <Stack gap="sm">
+              <Group gap="xs">
+                <IconDeviceMobilePlus size={18} />
+                <Text fw={600}>Invite a device</Text>
+              </Group>
+              <Text size="xs" c="dimmed">
+                Share this link to sign in another phone or laptop — it opens
+                the join page with the group code filled in, so they just add
+                their name. The code rides the link's #fragment and never
+                reaches the server.
+              </Text>
+              {typeof cachedCode === "string" ? (
+                <>
+                  <Code block style={{ wordBreak: "break-all" }}>
+                    {inviteLink(cachedCode)}
+                  </Code>
+                  <CopyButton value={inviteLink(cachedCode)}>
+                    {({ copied, copy }) => (
+                      <Button
+                        variant={copied ? "light" : "default"}
+                        color={copied ? "green" : undefined}
+                        leftSection={
+                          copied ? (
+                            <IconCheck size={16} />
+                          ) : (
+                            <IconCopy size={16} />
+                          )
+                        }
+                        onClick={copy}
+                      >
+                        {copied ? "Copied" : "Copy invite link"}
+                      </Button>
+                    )}
+                  </CopyButton>
+                </>
+              ) : (
+                <Text size="sm" c="dimmed">
+                  This device doesn't have the group code (you joined by
+                  scanning a sticker). Enter it below to make an invite link.
+                </Text>
+              )}
+              <Group align="flex-end" gap="xs">
+                <PasswordInput
+                  label={cachedCode ? "Update the code" : "Group access code"}
+                  value={codeInput}
+                  onChange={(e) => setCodeInput(e.currentTarget.value)}
+                  style={{ flex: 1 }}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" &&
+                    codeInput.trim() &&
+                    void saveInviteCode()
+                  }
+                />
+                <Button
+                  variant="default"
+                  disabled={!codeInput.trim()}
+                  onClick={() => void saveInviteCode()}
+                >
+                  Save
+                </Button>
+              </Group>
+            </Stack>
+          </Paper>
+        )}
+
+        {/* Where to look when the app feels wrong. A replica renders fine with
+          the server face down, so "is it me or is it the server" has to be
+          answerable somewhere that isn't a banner you might have dismissed
+          in your head. */}
+        <Paper p="md" radius="lg" withBorder>
+          <Stack gap="xs">
+            <Group gap="xs">
+              {serverHealth.reachable === false ? (
+                <IconPlugConnectedX
+                  size={18}
+                  color="var(--mantine-color-red-6)"
+                />
+              ) : (
+                <IconPlugConnected
+                  size={18}
+                  color="var(--mantine-color-green-6)"
+                />
+              )}
+              <Text fw={600}>Server connection</Text>
+            </Group>
+            <Text size="sm">
+              {serverHealth.reachable === false
+                ? "Can't be reached. Anything that needs the server — printing, new boxes, admin — is unavailable until it's back. What's already on this device still works."
+                : serverHealth.reachable === true
+                  ? "Connected."
+                  : "Not checked yet."}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {serverHealth.lastOkAt
+                ? `Last answered ${relativeTime(serverHealth.lastOkAt)}.`
+                : "It has not answered this device yet."}
+              {serverHealth.reason
+                ? ` Last error: ${serverHealth.reason}.`
+                : ""}
+            </Text>
+            <Group gap="xs">
               <Button
                 variant="default"
-                disabled={!codeInput.trim()}
-                onClick={() => void saveInviteCode()}
+                loading={serverHealth.probing}
+                onClick={() => {
+                  void probeBackend().then(async (ok) => {
+                    notifications.show({
+                      message: ok
+                        ? "The server answered."
+                        : "Still can't reach the server.",
+                      color: ok ? "green" : "red",
+                    });
+                    if (ok) await syncNow();
+                  });
+                }}
               >
-                Save
+                Check now
               </Button>
             </Group>
           </Stack>
         </Paper>
-      )}
 
-      {/* Where to look when the app feels wrong. A replica renders fine with
-          the server face down, so "is it me or is it the server" has to be
-          answerable somewhere that isn't a banner you might have dismissed
-          in your head. */}
-      <Paper p="md" radius="lg" withBorder>
-        <Stack gap="xs">
-          <Group gap="xs">
-            {serverHealth.reachable === false ? (
-              <IconPlugConnectedX
-                size={18}
-                color="var(--mantine-color-red-6)"
-              />
-            ) : (
-              <IconPlugConnected
-                size={18}
-                color="var(--mantine-color-green-6)"
-              />
-            )}
-            <Text fw={600}>Server connection</Text>
-          </Group>
-          <Text size="sm">
-            {serverHealth.reachable === false
-              ? "Can't be reached. Anything that needs the server — printing, new boxes, admin — is unavailable until it's back. What's already on this device still works."
-              : serverHealth.reachable === true
-                ? "Connected."
-                : "Not checked yet."}
-          </Text>
-          <Text size="xs" c="dimmed">
-            {serverHealth.lastOkAt
-              ? `Last answered ${relativeTime(serverHealth.lastOkAt)}.`
-              : "It has not answered this device yet."}
-            {serverHealth.reason ? ` Last error: ${serverHealth.reason}.` : ""}
-          </Text>
-          <Group gap="xs">
-            <Button
-              variant="default"
-              loading={serverHealth.probing}
-              onClick={() => {
-                void probeBackend().then(async (ok) => {
-                  notifications.show({
-                    message: ok
-                      ? "The server answered."
-                      : "Still can't reach the server.",
-                    color: ok ? "green" : "red",
-                  });
-                  if (ok) await syncNow();
-                });
-              }}
-            >
-              Check now
-            </Button>
-          </Group>
-        </Stack>
-      </Paper>
-
-      <Paper p="md" radius="lg" withBorder>
-        <Stack gap="xs">
-          <Text fw={600}>Administration</Text>
-          <Text size="xs" c="dimmed">
-            Landing page text, importing pre-printed stickers, device
-            revocation. Needs the group's admin password.
-          </Text>
-          <Button
-            variant="default"
-            leftSection={<IconShieldLock size={16} />}
-            onClick={() => navigate("/admin")}
-          >
-            Open admin
-          </Button>
-        </Stack>
-      </Paper>
-
-      {!isStandalone() && (
         <Paper p="md" radius="lg" withBorder>
           <Stack gap="xs">
-            <Group gap="xs">
-              <IconDeviceMobilePlus size={18} />
-              <Text fw={600}>Install on your home screen</Text>
-            </Group>
-            <Text size="sm" c="dimmed">
-              Installed, the app starts instantly offline and the browser treats
-              your local photos and pending changes as much safer from storage
-              cleanup.
+            <Text fw={600}>Administration</Text>
+            <Text size="xs" c="dimmed">
+              Landing page text, importing pre-printed stickers, device
+              revocation. Needs the group's admin password.
             </Text>
-            {canPromptInstall() ? (
-              <Button onClick={() => void promptInstall()}>Install</Button>
-            ) : (
-              <Text size="sm">
-                {isIos()
-                  ? "In Safari: tap the Share button, then “Add to Home Screen”."
-                  : "In your browser menu, choose “Install app” or “Add to Home Screen”."}
-              </Text>
-            )}
+            <Button
+              variant="default"
+              leftSection={<IconShieldLock size={16} />}
+              onClick={() => navigate("/admin")}
+            >
+              Open admin
+            </Button>
           </Stack>
         </Paper>
-      )}
+
+        {!isStandalone() && (
+          <Paper p="md" radius="lg" withBorder>
+            <Stack gap="xs">
+              <Group gap="xs">
+                <IconDeviceMobilePlus size={18} />
+                <Text fw={600}>Install on your home screen</Text>
+              </Group>
+              <Text size="sm" c="dimmed">
+                Installed, the app starts instantly offline and the browser
+                treats your local photos and pending changes as much safer from
+                storage cleanup.
+              </Text>
+              {canPromptInstall() ? (
+                <Button onClick={() => void promptInstall()}>Install</Button>
+              ) : (
+                <Text size="sm">
+                  {isIos()
+                    ? "In Safari: tap the Share button, then “Add to Home Screen”."
+                    : "In your browser menu, choose “Install app” or “Add to Home Screen”."}
+                </Text>
+              )}
+            </Stack>
+          </Paper>
+        )}
+      </CardGrid>
+
+      <PlaceEditSheet
+        place={editPlace}
+        opened={editPlace !== null}
+        onClose={() => setEditPlace(null)}
+      />
 
       <Divider />
       <Button

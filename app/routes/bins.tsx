@@ -20,7 +20,6 @@ import {
   Stack,
   Text,
   TextInput,
-  Textarea,
   Title,
   UnstyledButton,
 } from "@mantine/core";
@@ -51,18 +50,18 @@ import { useLocation, useNavigate } from "react-router";
 import { AdminUnlock } from "~/components/AdminUnlock";
 import { AskAiSheet } from "~/components/AskAiSheet";
 import { BinDetailPane } from "~/components/BinDetailPane";
-import { FillLevelBadge, FillLevelInput } from "~/components/FillLevel";
+import { BoxQuickEdit } from "~/components/BoxQuickEdit";
+import { FillLevelBadge } from "~/components/FillLevel";
 import { InlineCreate } from "~/components/InlineCreate";
-import { LabelChips } from "~/components/LabelChips";
+import { LocationSheet } from "~/components/LocationSheet";
 import { useServerDown } from "~/components/NeedsServer";
 import { PhotoImg } from "~/components/PhotoImg";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
-import { WeightInput } from "~/components/WeightInput";
-import { setBinFields, setBinLabel, setBinLocation } from "~/lib/actions";
+import { setBinLocation } from "~/lib/actions";
 import { forgetAdmin, useAdminPassword } from "~/lib/admin";
 import { type AskKind, useAssistant } from "~/lib/ai";
 import { apiJson } from "~/lib/api";
-import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
+import { boxPath, boxTitle } from "~/lib/boxRef";
 import { useBoxSizes } from "~/lib/boxSizes";
 import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
@@ -175,6 +174,7 @@ export default function Bins() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [moveOpen, setMoveOpen] = useState(false);
   const [editing, setEditing] = useState<BinState | null>(null);
+  const [moving, setMoving] = useState<BinState | null>(null);
 
   /**
    * Retired boxes are OUT of the normal list, including an admin's.
@@ -741,6 +741,17 @@ export default function Bins() {
                 </UnstyledButton>
                 {unlocked && !selecting && (
                   <Group gap={4} wrap="nowrap">
+                    {/* The commonest thing an admin does to a box from a
+                        list, straight off the row — no sheet in between. */}
+                    {!retired && (
+                      <ActionIcon
+                        variant="subtle"
+                        aria-label={`Move ${boxTitle(bin, numbersInternal)}`}
+                        onClick={() => setMoving(bin)}
+                      >
+                        <IconMapPin size={18} />
+                      </ActionIcon>
+                    )}
                     <ActionIcon
                       variant="subtle"
                       aria-label={`Edit ${boxTitle(bin, numbersInternal)}`}
@@ -818,7 +829,13 @@ export default function Bins() {
         onPick={moveSelected}
       />
 
-      {editing && <EditSheet bin={editing} onClose={() => setEditing(null)} />}
+      {editing && (
+        <BoxQuickEdit bin={editing} onClose={() => setEditing(null)} />
+      )}
+
+      {moving && (
+        <LocationSheet bin={moving} opened onClose={() => setMoving(null)} />
+      )}
     </Stack>
   );
 
@@ -928,86 +945,6 @@ function MoveSheet({
           onClick={() => pick(null)}
         >
           Clear location
-        </Button>
-      </Stack>
-    </ResponsiveSheet>
-  );
-}
-
-function EditSheet({ bin, onClose }: { bin: BinState; onClose: () => void }) {
-  const numbersInternal = useBoxNumbersInternal();
-  const [name, setName] = useState(bin.name ?? "");
-  const [description, setDescription] = useState(bin.description ?? "");
-  const [locationName, setLocationName] = useState(bin.locationName ?? "");
-  const [weightGrams, setWeightGrams] = useState<number | null>(
-    bin.weightGrams,
-  );
-  const [fillLevel, setFillLevel] = useState<number | null>(bin.fillLevel);
-  const [busy, setBusy] = useState(false);
-
-  async function save() {
-    setBusy(true);
-    try {
-      await setBinFields(bin.id, {
-        name: name.trim() || null,
-        description: description.trim() || null,
-        weightGrams,
-        fillLevel,
-      });
-      if ((locationName.trim() || null) !== (bin.locationName ?? null)) {
-        await setBinLocation(bin.id, locationName.trim() || null);
-      }
-      notifications.show({ message: "Saved", color: "green" });
-      onClose();
-    } catch (err) {
-      fail(err);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <ResponsiveSheet
-      opened
-      onClose={onClose}
-      title={`Edit ${boxTitle(bin, numbersInternal)}`}
-    >
-      <Stack gap="sm" pb="env(safe-area-inset-bottom)">
-        <TextInput
-          label="Name"
-          value={name}
-          onChange={(e) => setName(e.currentTarget.value)}
-        />
-        <Textarea
-          label="Subtext"
-          description="A few short lines under the title — printed on the label."
-          autosize
-          minRows={2}
-          maxRows={4}
-          value={description}
-          onChange={(e) => setDescription(e.currentTarget.value)}
-        />
-        <TextInput
-          label="Location"
-          value={locationName}
-          onChange={(e) => setLocationName(e.currentTarget.value)}
-        />
-        <FillLevelInput value={fillLevel} onChange={setFillLevel} />
-        <WeightInput grams={weightGrams} onChange={setWeightGrams} />
-        <div>
-          <Text size="sm" fw={500} mb={4}>
-            Categories
-          </Text>
-          {/* Membership applies immediately (the bin already exists). */}
-          <LabelChips
-            selected={new Set(bin.labelIds)}
-            onToggle={(labelId, present) =>
-              void setBinLabel(bin.id, labelId, present)
-            }
-          />
-        </div>
-        <Button onClick={() => void save()} loading={busy}>
-          Save
         </Button>
       </Stack>
     </ResponsiveSheet>

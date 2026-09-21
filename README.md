@@ -98,6 +98,16 @@ where.
   numbered slot from the location sheet (it shows what's already there),
   and see the whole wall at `/shelves` — every bay, shelf and slot with the
   box in it. Freeform places ("Sam's truck") still work.
+- **Edit what you're looking at**: on the wall, an unlocked admin gets edit
+  and move controls on hover — on a bay, on a shelf, on a box in a slot —
+  and an empty slot is a "put a box here" target. The same place editor is
+  reachable from Settings › Places and the admin shelf builder, so fixing a
+  mislabelled shelf never means going to find it somewhere else. Categories
+  can be renamed and recoloured, and both places and categories can be
+  un-archived, from Settings.
+- **Wide screens**: Settings and Admin flow their sections into as many
+  columns as the window has room for, instead of one narrow ribbon; the box
+  list already pairs with a detail pane past 75em.
 - **Suggested edits**: anyone can change what's *in* a box — photos, notes,
   location, categories, fill level, weight — and it applies instantly. A
   box's identity (name, size, subtext) is how the whole group finds it, so
