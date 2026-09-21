@@ -217,6 +217,36 @@ api/ai/
 - Don't reuse the label-art spend ledger file; the budgets are separate line
   items so a captioning backfill can't drain the query budget.
 
+## Deployed
+
+**2026-09-21 — live on the TSL warehouse instance** (`bins-tsl` on steamboat,
+`store.tomsawyerlabs.com`). bins `888eaeb` → image digest
+`sha256:038524b1…`, ops `7bc716f`. Rollback is reverting that pin.
+
+The stack already carried `GEMINI_API_KEY` for label drawings, so this added
+no new account and no new secret. `AI_BUDGET_USD: '10'` was added in the same
+change — its own ceiling rather than sharing `LABEL_ART_BUDGET_USD`, so a
+photo backfill cannot eat the label printer's budget. Asking is open to every
+member (the site is LAN-only); reading photos stays manual from `/admin`.
+
+**Still unobserved:** no provider call has been seen to succeed. If Gemini
+rejects the answer schema it surfaces as a 502 on the ask sheet with the box
+list underneath still working. `GET /api/ai/status` reports provider, model
+and spend without spending anything.
+
+### Landing on master cost three collisions
+
+Worth knowing before the next branch that sits this long:
+
+- Dexie v12 was taken by master's shelf-code index; ours became **v13**.
+- Three migrations collided with master's 0018 — dropped and regenerated as a
+  single **0019**. Regenerating is exact; hand-editing drizzle's snapshot
+  chain is not.
+- `catalog.ts` had a default `CatalogSource` that imported the database, so
+  importing the renderer opened SQLite. It surfaced as the catalog test
+  migrating whatever database was configured. Reader now lives in
+  `catalog.db.ts` and is passed in.
+
 ## Progress log
 
 - [x] Design settled (2026-09-20): providers, layering, geometry descriptor,
