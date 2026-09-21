@@ -21,6 +21,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle, IconPrinter } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
+import { NeedsServer, useServerDown } from "~/components/NeedsServer";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { apiFetch, apiJson } from "~/lib/api";
 
@@ -66,6 +67,7 @@ export function LabelPrintSheet({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
+  const serverDown = useServerDown();
 
   // Re-render whenever an option changes, so the preview never lags the
   // settings it claims to show. The subtext is compared by VALUE: the studio
@@ -168,6 +170,7 @@ export function LabelPrintSheet({
   return (
     <ResponsiveSheet opened={opened} onClose={onClose} title="Print label">
       <Stack>
+        <NeedsServer what="The preview and printing" />
         <Center mih={220}>
           {loading ? (
             <Loader />
@@ -227,11 +230,11 @@ export function LabelPrintSheet({
             flex={1}
             size="md"
             loading={printing}
-            disabled={!preview || loading}
+            disabled={!preview || loading || serverDown}
             leftSection={<IconPrinter size={18} />}
             onClick={() => void print()}
           >
-            Print
+            {serverDown ? "Server down" : "Print"}
           </Button>
         </Group>
       </Stack>

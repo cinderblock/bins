@@ -54,6 +54,7 @@ import { BinDetailPane } from "~/components/BinDetailPane";
 import { FillLevelBadge, FillLevelInput } from "~/components/FillLevel";
 import { InlineCreate } from "~/components/InlineCreate";
 import { LabelChips } from "~/components/LabelChips";
+import { useServerDown } from "~/components/NeedsServer";
 import { PhotoImg } from "~/components/PhotoImg";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { WeightInput } from "~/components/WeightInput";
@@ -167,6 +168,7 @@ export default function Bins() {
   const remembered = useAdminPassword();
   const unlocked = typeof remembered === "string";
   const adminPassword = remembered ?? "";
+  const serverDown = useServerDown();
   const [unlockOpen, setUnlockOpen] = useState(false);
 
   const [selecting, setSelecting] = useState(false);
@@ -375,8 +377,12 @@ export default function Bins() {
               variant="light"
               leftSection={<IconPlus size={18} />}
               onClick={createBox}
+              // Box ids come from one global sequence on the server, so a new
+              // box is not something this device can invent while offline.
+              // Disabled and labelled rather than hidden — see NeedsServer.
+              disabled={serverDown}
             >
-              New box
+              {serverDown ? "New box (server down)" : "New box"}
             </Button>
           )}
           {!selecting && placeById.size > 0 && (

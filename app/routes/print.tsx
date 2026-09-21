@@ -24,6 +24,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { AdminUnlock } from "~/components/AdminUnlock";
+import { NeedsServer, useServerDown } from "~/components/NeedsServer";
 import { useAdminPassword } from "~/lib/admin";
 import { apiJson } from "~/lib/api";
 import { boxPath } from "~/lib/boxRef";
@@ -39,6 +40,7 @@ export default function Print() {
   const [count, setCount] = useState<number | string>(20);
   const [idDigits, setIdDigits] = useState<number | string>(2);
   const [busy, setBusy] = useState(false);
+  const serverDown = useServerDown();
 
   // Sticker codes are admin-only: allocation hands out the global bin-ID
   // sequence. The admin unlock is remembered per device (lib/admin.ts); on a
@@ -182,6 +184,8 @@ export default function Print() {
         <Title order={3}>Sticker codes</Title>
       </Group>
 
+      <NeedsServer what="Allocating sticker codes" />
+
       <Paper p="md" radius="lg" withBorder>
         <Group align="flex-end" gap="sm">
           <NumberInput
@@ -192,7 +196,11 @@ export default function Print() {
             onChange={setCount}
             style={{ flex: 1 }}
           />
-          <Button onClick={() => void allocate()} loading={busy}>
+          <Button
+            onClick={() => void allocate()}
+            loading={busy}
+            disabled={serverDown}
+          >
             Allocate
           </Button>
         </Group>

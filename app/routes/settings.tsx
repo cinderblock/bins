@@ -29,6 +29,8 @@ import {
   IconCheck,
   IconCopy,
   IconDeviceMobilePlus,
+  IconPlugConnected,
+  IconPlugConnectedX,
   IconPlus,
   IconShieldLock,
 } from "@tabler/icons-react";
@@ -54,7 +56,9 @@ import {
 } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";
 import { setDeskMode, useDeskMode } from "~/lib/deskMode";
+import { relativeTime } from "~/lib/format";
 import { GEO_OPT_IN_KEY, setGeoOptIn } from "~/lib/geo";
+import { probeBackend } from "~/lib/health";
 import {
   canPromptInstall,
   isIos,
@@ -74,6 +78,7 @@ import {
 } from "~/lib/photos";
 import { estimateStorage, formatBytes } from "~/lib/storage";
 import { syncNow } from "~/lib/sync";
+import { useBackendHealth } from "~/lib/useOnline";
 
 export default function Settings() {
   useDocumentTitle("Settings · bins");
@@ -110,6 +115,7 @@ export default function Settings() {
     [],
   );
 
+  const serverHealth = useBackendHealth();
   const authDead = useLiveQuery(
     async () => (await db.meta.get(AUTH_DEAD_KEY))?.value === true,
     [],
@@ -564,6 +570,61 @@ export default function Settings() {
           </Stack>
         </Paper>
       )}
+
+      {/* Where to look when the app feels wrong. A replica renders fine with
+          the server face down, so "is it me or is it the server" has to be
+          answerable somewhere that isn't a banner you might have dismissed
+          in your head. */}
+      <Paper p="md" radius="lg" withBorder>
+        <Stack gap="xs">
+          <Group gap="xs">
+            {serverHealth.reachable === false ? (
+              <IconPlugConnectedX
+                size={18}
+                color="var(--mantine-color-red-6)"
+              />
+            ) : (
+              <IconPlugConnected
+                size={18}
+                color="var(--mantine-color-green-6)"
+              />
+            )}
+            <Text fw={600}>Server connection</Text>
+          </Group>
+          <Text size="sm">
+            {serverHealth.reachable === false
+              ? "Can't be reached. Anything that needs the server — printing, new boxes, admin — is unavailable until it's back. What's already on this device still works."
+              : serverHealth.reachable === true
+                ? "Connected."
+                : "Not checked yet."}
+          </Text>
+          <Text size="xs" c="dimmed">
+            {serverHealth.lastOkAt
+              ? `Last answered ${relativeTime(serverHealth.lastOkAt)}.`
+              : "It has not answered this device yet."}
+            {serverHealth.reason ? ` Last error: ${serverHealth.reason}.` : ""}
+          </Text>
+          <Group gap="xs">
+            <Button
+              variant="default"
+              loading={serverHealth.probing}
+              onClick={() => {
+                void probeBackend().then(async (ok) => {
+                  notifications.show({
+                    message: ok
+                      ? "The server answered."
+                      : "Still can't reach the server.",
+                    color: ok ? "green" : "red",
+                  });
+                  if (ok) await syncNow();
+                });
+              }}
+            >
+              Check now
+            </Button>
+          </Group>
+        </Stack>
+      </Paper>
 
       <Paper p="md" radius="lg" withBorder>
         <Stack gap="xs">

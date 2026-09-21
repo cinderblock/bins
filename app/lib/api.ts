@@ -4,6 +4,11 @@
  * module state after the first read.
  */
 import { REMOTE_LOCKED_KEY, getIdentity, setMeta } from "./db";
+import {
+  isServerDownStatus,
+  reportServerOk,
+  reportServerUnreachable,
+} from "./health";
 
 /**
  * The server's one refusal for a device off the deployment's network without
@@ -53,7 +58,26 @@ export async function apiFetch(
   // code invisibly — that is precisely what went unnoticed for weeks — so the
   // server records it per device and /admin shows who is behind.
   headers.set("X-Bins-Build", BUILD_SHA);
-  const res = await fetch(path, { ...init, headers });
+
+  // Every call doubles as a reachability measurement (lib/health.ts). The
+  // app renders happily from its replica while the server is face down, so
+  // the only honest signal is what real traffic is getting back.
+  let res: Response;
+  try {
+    res = await fetch(path, { ...init, headers });
+  } catch (err) {
+    reportServerUnreachable(err instanceof Error ? err.message : String(err));
+    throw err;
+  }
+  if (isServerDownStatus(res.status)) {
+    // A 5xx means something answered — a reverse proxy, typically — but the
+    // app behind it did not. From here that is indistinguishable from down,
+    // and treating it as a normal error is exactly how an outage stays
+    // invisible for hours.
+    reportServerUnreachable(`server returned ${res.status}`);
+  } else {
+    reportServerOk();
+  }
   if (!res.ok) {
     let message = res.statusText;
     try {

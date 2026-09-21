@@ -1,29 +1,40 @@
 /**
- * A banner across the top whenever this device is holding work the server
- * hasn't got.
+ * A banner across the top whenever this device is not in the state it looks
+ * like it is in.
  *
- * The old signal was a small "N unsynced" pill, and only on two screens. That
- * is far too quiet for what it means: photos and notes living on ONE phone.
- * Everything here is offline-first by design, so unsynced is a normal state —
- * but it is a normal state you must be able to see, because the failure mode
- * is someone closing a browser, losing a phone, or wiping site data with the
- * only copy of an afternoon's work on it.
+ * Two different problems, and the difference matters:
  *
- * Only shows when there is something to say — pending work, or a dead token.
- * A plain "offline" banner would be permanent noise in a storage unit, which
- * is exactly where this app is supposed to feel normal.
+ * - **The server is unreachable.** Shown WHENEVER it is, with or without
+ *   pending work, because this is the one the app is worst at admitting. A
+ *   replica renders boxes, photos and shelves perfectly while the backend is
+ *   face down, so the app looks entirely healthy while half of what it offers
+ *   — printing, new boxes, anything admin — cannot possibly work. On
+ *   2026-09-21 the warehouse instance crash-looped behind a proxy returning
+ *   502 and the app said nothing at all.
+ * - **Unsynced work.** Photos and notes living on ONE phone. Everything here
+ *   is offline-first by design, so unsynced is a normal state — but a normal
+ *   state you must be able to see, because the failure mode is someone
+ *   closing a browser, losing a phone, or wiping site data with the only copy
+ *   of an afternoon's work on it.
  *
  * It publishes its height as `--bins-banner-h` so everything anchored to the
  * top of the screen moves down instead of hiding behind it.
  */
 import { Box, Button, Group, Text } from "@mantine/core";
-import { IconCloudOff, IconCloudUpload, IconLock } from "@tabler/icons-react";
+import {
+  IconCloudOff,
+  IconCloudUpload,
+  IconLock,
+  IconPlugConnectedX,
+} from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useLayoutEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { AUTH_DEAD_KEY, db } from "~/lib/db";
+import { relativeTime } from "~/lib/format";
+import { probeBackend } from "~/lib/health";
 import { syncNow } from "~/lib/sync";
-import { useOnline } from "~/lib/useOnline";
+import { useBackendHealth, useOnline } from "~/lib/useOnline";
 
 /** Above page chrome, below Mantine's modals (200) and notifications (400). */
 const BANNER_Z = 150;
@@ -31,6 +42,7 @@ const BANNER_Z = 150;
 export function SyncBanner() {
   const navigate = useNavigate();
   const online = useOnline();
+  const health = useBackendHealth();
   const ref = useRef<HTMLDivElement>(null);
 
   const pendingOps = useLiveQuery(async () => db.pendingOps.count(), [], 0);
@@ -46,7 +58,8 @@ export function SyncBanner() {
   );
 
   const pending = pendingOps + pendingPhotos;
-  const show = authDead || pending > 0;
+  const unreachable = health.reachable === false;
+  const show = unreachable || authDead || pending > 0;
 
   // Publish the height so top-anchored layouts can clear it. Cleared when
   // hidden so nothing keeps a phantom gap.
@@ -72,23 +85,48 @@ export function SyncBanner() {
 
   if (!show) return null;
 
-  // A dead token is the one case retrying can't fix, so it outranks the rest.
-  const kind = authDead ? "signedOut" : online ? "syncing" : "offline";
+  // Order is deliberate. A server nobody can reach outranks everything: it
+  // explains the dead token and the growing pile at once, and it is the only
+  // one that says "what you are looking at may be stale".
+  const kind = unreachable
+    ? "unreachable"
+    : authDead
+      ? "signedOut"
+      : online
+        ? "syncing"
+        : "offline";
+
+  const changes = `${pending} change${pending === 1 ? "" : "s"}`;
   const { color, icon, message } = {
+    unreachable: {
+      color: "red",
+      icon: <IconPlugConnectedX size={16} />,
+      message: online
+        ? `Can't reach the server${
+            health.lastOkAt
+              ? ` — last answered ${relativeTime(health.lastOkAt)}`
+              : ""
+          }. What you see may be out of date${
+            pending > 0 ? `, and ${changes} can't be saved` : ""
+          }.`
+        : `This device is offline. What you see may be out of date${
+            pending > 0 ? `, and ${changes} can't be saved` : ""
+          }.`,
+    },
     signedOut: {
       color: "red",
       icon: <IconLock size={16} />,
-      message: `Signed out — ${pending} change${pending === 1 ? "" : "s"} can't be saved to the server`,
+      message: `Signed out — ${changes} can't be saved to the server`,
     },
     offline: {
       color: "orange",
       icon: <IconCloudOff size={16} />,
-      message: `Offline — ${pending} change${pending === 1 ? "" : "s"} saved on this device only`,
+      message: `Offline — ${changes} saved on this device only`,
     },
     syncing: {
       color: "blue",
       icon: <IconCloudUpload size={16} />,
-      message: `${pending} change${pending === 1 ? "" : "s"} not yet on the server`,
+      message: `${changes} not yet on the server`,
     },
   }[kind];
 
@@ -110,7 +148,21 @@ export function SyncBanner() {
         <Text size="sm" fw={500} style={{ minWidth: 0 }}>
           {message}
         </Text>
-        {kind === "signedOut" ? (
+        {kind === "unreachable" ? (
+          <Button
+            size="compact-xs"
+            variant="white"
+            loading={health.probing}
+            onClick={() => {
+              // A successful probe means queued work can flow again.
+              void probeBackend().then(async (ok) => {
+                if (ok) await syncNow();
+              });
+            }}
+          >
+            Retry
+          </Button>
+        ) : kind === "signedOut" ? (
           <Button
             size="compact-xs"
             variant="white"

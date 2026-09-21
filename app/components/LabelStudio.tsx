@@ -56,6 +56,7 @@ import { FillLevelInput } from "~/components/FillLevel";
 import { LabelChips } from "~/components/LabelChips";
 import { LabelPreview } from "~/components/LabelPreview";
 import { LabelPrintSheet } from "~/components/LabelSheet.print";
+import { NeedsServer, useServerDown } from "~/components/NeedsServer";
 import { SizePicker } from "~/components/SizePicker";
 import { WeightInput } from "~/components/WeightInput";
 import { claimBin, setBinFields, setBinLabel } from "~/lib/actions";
@@ -141,6 +142,7 @@ export function LabelStudio({
   );
   const [chosenUrl, setChosenUrl] = useState<string | null>(null);
 
+  const serverDown = useServerDown();
   const [saving, setSaving] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
 
@@ -443,6 +445,8 @@ export function LabelStudio({
         onChange={(e) => setDescription(e.currentTarget.value)}
       />
 
+      <NeedsServer what="Drawings and printing" />
+
       <Center>
         <LabelPreview
           title={name}
@@ -560,7 +564,7 @@ export function LabelStudio({
                   ) : undefined
                 }
                 onClick={() => void generate()}
-                disabled={!name.trim()}
+                disabled={!name.trim() || serverDown}
               >
                 {candidates.length === 0 ? "Generate" : "Another one"}
               </Button>
@@ -669,13 +673,20 @@ export function LabelStudio({
             size="lg"
             leftSection={<IconPrinter size={18} />}
             loading={saving}
-            disabled={!name.trim()}
+            // The printer lives on the server's network and a new box needs
+            // an id from it, so neither half of this works from here.
+            disabled={!name.trim() || serverDown}
             onClick={() => void save("print")}
           >
-            Save &amp; print label
+            {serverDown ? "Can't print — server down" : "Save & print label"}
           </Button>
         ) : (
-          <Button size="lg" loading={saving} onClick={() => void save("done")}>
+          <Button
+            size="lg"
+            loading={saving}
+            disabled={serverDown && box === null}
+            onClick={() => void save("done")}
+          >
             {mode === "new" ? "Save box" : "Save"}
           </Button>
         )}
@@ -684,7 +695,10 @@ export function LabelStudio({
             variant="subtle"
             color="gray"
             size="sm"
-            disabled={saving}
+            // An EXISTING box can still be edited offline — the op queues
+            // like any other. Only a box that doesn't exist yet is blocked,
+            // because allocating its id needs the server.
+            disabled={saving || (serverDown && box === null)}
             onClick={() => void save("done")}
           >
             Save without printing

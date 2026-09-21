@@ -17,6 +17,7 @@ import { refreshDeployment, useDeployment } from "~/lib/deployment";
 import { installErrorReporting } from "~/lib/errors";
 import { binIdFromScan } from "~/lib/format";
 import { startGeo } from "~/lib/geo";
+import { watchBackend } from "~/lib/health";
 import { lockPortrait } from "~/lib/orientation";
 import { warnIfStorageTight } from "~/lib/storage";
 // Imported for its side effect too: captures `beforeinstallprompt` early.
@@ -46,6 +47,11 @@ export default function Shell() {
       void startGeo();
     }
   }, [identity]);
+
+  // Notice when the server comes back without anyone tapping anything.
+  useEffect(() => {
+    watchBackend();
+  }, []);
 
   // Refresh the deploy-time flags on EVERY boot, not just while signed out.
   // They decide which gate and which home surface render, and an already-

@@ -6,7 +6,17 @@
  * phone, which is too important for a pill in a corner, and it needs to be
  * visible on every screen rather than two.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { type BackendHealth, getHealth, subscribeHealth } from "./health";
+
+/**
+ * Whether the SERVER is reachable — a different question from whether this
+ * device has a network, and the one that actually matters for anything that
+ * needs the backend. See lib/health.ts.
+ */
+export function useBackendHealth(): BackendHealth {
+  return useSyncExternalStore(subscribeHealth, getHealth, getHealth);
+}
 
 export function useOnline(): boolean {
   const [online, setOnline] = useState(true);

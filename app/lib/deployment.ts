@@ -12,6 +12,11 @@
  */
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, getMeta, setMeta } from "./db";
+import {
+  isServerDownStatus,
+  reportServerOk,
+  reportServerUnreachable,
+} from "./health";
 
 export const DEPLOYMENT_KEY = "deployment";
 
@@ -87,6 +92,13 @@ export type LandingResponse = {
 export async function refreshDeployment(): Promise<LandingResponse | null> {
   try {
     const response = await fetch("/api/landing");
+    // This runs on every boot, so it is often the FIRST thing to notice a
+    // dead server — before any authenticated call has been made.
+    if (isServerDownStatus(response.status)) {
+      reportServerUnreachable(`server returned ${response.status}`);
+      return null;
+    }
+    reportServerOk();
     if (!response.ok) return null;
     const body = (await response.json()) as LandingResponse;
     await setMeta(DEPLOYMENT_KEY, {
@@ -107,7 +119,8 @@ export async function refreshDeployment(): Promise<LandingResponse | null> {
           : null,
     } satisfies Deployment);
     return body;
-  } catch {
+  } catch (err) {
+    reportServerUnreachable(err instanceof Error ? err.message : String(err));
     return null;
   }
 }
