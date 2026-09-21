@@ -28,8 +28,8 @@ import {
   type LocationNode,
   locationGeometry,
   locationLabel,
-} from "@shared/locations";
-import { describedItems } from "@shared/reducer";
+} from "../../shared/locations";
+import { describedItems } from "../../shared/reducer";
 import type { AiLayer } from "./types";
 
 /**

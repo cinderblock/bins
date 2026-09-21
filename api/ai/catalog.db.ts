@@ -5,7 +5,7 @@
  * importing the renderer must not drag SQLite in, or its tests end up
  * migrating whatever database happens to be configured.
  */
-import { describedItems } from "@shared/reducer";
+import { describedItems } from "../../shared/reducer";
 import { and, asc, desc, eq, gt } from "drizzle-orm";
 import { db, schema } from "../../db/client.server";
 import type { CatalogSource } from "./catalog";

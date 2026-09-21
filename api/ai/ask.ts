@@ -10,7 +10,7 @@
  * The model never writes anything. It returns box numbers and reasons; a
  * person taps through to the box and acts. Nothing here authors an op.
  */
-import { locationLabel } from "@shared/locations";
+import { locationLabel } from "../../shared/locations";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "../../db/client.server";
