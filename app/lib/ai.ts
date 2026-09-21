@@ -10,7 +10,12 @@
 import { useEffect, useState } from "react";
 import { ApiError, apiFetch } from "./api";
 
-export type AskKind = "place" | "find";
+/**
+ * "auto" asks the server to work out which question was meant. It may come
+ * back `ambiguous`, which is not a failure — it is the honest answer, and the
+ * UI puts the choice back to the person.
+ */
+export type AskKind = "place" | "find" | "auto";
 
 export type AskedBox = {
   id: number;
@@ -20,9 +25,16 @@ export type AskedBox = {
   name: string | null;
   location: string | null;
   handle: string | null;
+  description: string | null;
+  fillLevel: number | null;
+  size: string | null;
 };
 
 export type AskAnswer = {
+  /** True when nothing was asked of the expensive model: say which you meant. */
+  ambiguous?: boolean;
+  /** Which question actually got answered — set unless `ambiguous`. */
+  kind?: Exclude<AskKind, "auto">;
   answer: string;
   boxes: AskedBox[];
   newBox: boolean;
@@ -35,11 +47,19 @@ export type AskAnswer = {
     bins: number;
     tailOps: number;
     cachedInputTokens: number;
+    /** Set when the classifier picked the question rather than the person. */
+    routedConfidence: number | null;
+    /** How many boxes the prompt carried, when a shortlist narrowed it. */
+    narrowedTo: number | null;
+    /** Probability an existing box fits, on a placement question. */
+    fitProbability: number | null;
   };
 };
 
 export type AiStatus = {
   available: boolean;
+  /** The classifier that routes the question; absent on older servers. */
+  jev?: { available: boolean; model: string | null; minConfidence: number };
   provider: string | null;
   model: string | null;
   unpriced: boolean;
@@ -82,17 +102,30 @@ export async function ask(
  * clearing site data.
  */
 export function useAiAvailable(): boolean {
-  const [available, setAvailable] = useState(false);
+  return useAssistant().available;
+}
+
+/**
+ * What the assistant can do here: whether it answers at all, and whether the
+ * classifier is available to route so the search box needs one button rather
+ * than two.
+ */
+export function useAssistant(): { available: boolean; routes: boolean } {
+  const [state, setState] = useState({ available: false, routes: false });
   useEffect(() => {
     let live = true;
     fetchAiStatus().then((status) => {
-      if (live) setAvailable(status?.available === true);
+      if (!live) return;
+      setState({
+        available: status?.available === true,
+        routes: status?.available === true && status.jev?.available === true,
+      });
     });
     return () => {
       live = false;
     };
   }, []);
-  return available;
+  return state;
 }
 
 /** Turn a failure into something worth reading on a phone. */

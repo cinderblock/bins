@@ -1,5 +1,5 @@
 import { handleAdmin } from "./admin";
-import { aiStatus, handleAskRequest } from "./ai/handler";
+import { assistantStatus, handleAskRequest } from "./ai/handler";
 import {
   handleDevices,
   handleJoin,
@@ -174,7 +174,8 @@ async function dispatch(
   // The AI assistant. Member-facing by default (see aiAssistAdminOnly) —
   // asking where a box goes is the everyday flow, not a provisioning action.
   if (path.startsWith("/api/ai/")) {
-    if (path === "/api/ai/status" && method === "GET") return json(aiStatus());
+    if (path === "/api/ai/status" && method === "GET")
+      return json(assistantStatus());
     if (path === "/api/ai/ask" && method === "POST")
       return await handleAskRequest(req, ctx);
     return error(404, "no such endpoint");

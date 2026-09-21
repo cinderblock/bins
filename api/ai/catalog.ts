@@ -228,6 +228,40 @@ export function renderSnapshot(
   return { text, bins: active.length };
 }
 
+/**
+ * Render an arbitrary subset of boxes, for when something has already
+ * narrowed the field (api/jev/shortlist.ts).
+ *
+ * Says out loud that the list is partial. A model handed eight boxes without
+ * being told others exist will reason as though it has seen everything, and
+ * "none of these fit, start a new box" means something very different when
+ * the eight are the whole inventory than when they are the survivors of a
+ * search.
+ */
+export function renderBoxList(
+  data: CatalogData,
+  bins: readonly CatalogBin[],
+): string {
+  const labelNames = new Map(
+    data.labels.map((label) => [label.id, label.name]),
+  );
+  const sizeNames = new Map(data.sizes.map((size) => [size.id, size.name]));
+  const placesById = new Map(data.places.map((place) => [place.id, place]));
+  return [
+    `BOXES MOST LIKELY TO MATCH (${bins.length} of the group's boxes, already narrowed by a search — others exist and are not shown)`,
+    ...bins.map((bin) =>
+      describeBin(
+        bin,
+        labelNames,
+        sizeNames,
+        placesById,
+        data.notesByBin.get(bin.id) ?? [],
+        data.describedByBin.get(bin.id) ?? [],
+      ),
+    ),
+  ].join("\n");
+}
+
 /** A single op as one readable line. Unknown types still say something. */
 export function describeOp(op: CatalogOp): string {
   const at = op.binId ? `#${op.binId}` : "—";

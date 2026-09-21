@@ -247,6 +247,55 @@ Worth knowing before the next branch that sits this long:
   migrating whatever database was configured. Reader now lives in
   `catalog.db.ts` and is passed in.
 
+## The classifier (Jev / TypeSafe AI) — added 2026-09-21
+
+A second, unrelated vendor, deliberately kept at arm's length in `api/jev/`.
+
+**Why it is not a fourth `AiProvider`** (user decision 2026-09-21): that
+interface is "layered prompt + JSON schema → parsed JSON", shaped by chat
+completions. Jev is state + typed questions → typed decision with calibrated
+probabilities, and it writes no text at all. Forcing them together gives a
+provider that cannot answer a question and a classifier that cannot write a
+sentence. Answers are validated with zod regardless — typed at the source is
+a claim about their end, not ours, and a missing `confidence` would silently
+disable the threshold everything here rests on.
+
+**What it does, in order of value:**
+
+1. **Routes the search box** so `/bins` has one button instead of two. On a
+   decline the two buttons come back inside the sheet — the UI degrades to
+   exactly what shipped before, precisely when the model does not know.
+2. **Second-opinions the new-box call.** The generative model asserts
+   `newBox` with flat certainty; Jev returns a probability over the candidate
+   boxes it named, using fullness read from the DATABASE rather than restated
+   by the model. Borderline (0.35-0.65) is now something the sheet says.
+3. **Shortlists before the expensive prompt.** MiniSearch (already a
+   dependency, same engine the phones run) proposes up to 40, one Jev choice
+   question ranks them, and the top 8 replace the full catalogue layer.
+   **FIND only** — placement genuinely needs the global picture, and a
+   lexical shortlist cannot tell you nothing else would have suited.
+
+**Measured, not assumed** (jev-1.13.0, 2026-09-21, this app's own queries):
+~130ms per call, ~400 input tokens, $0.042/M input with output free — 26
+calls cost $0.00033. Routing scored 9/10 then 10/10 across two runs.
+
+**Where the 0.4 threshold comes from:** every answer that was correct and
+stable across both runs scored >= 0.65; the one genuinely ambiguous phrase
+("new box of drill bits" — find it, or file it?) scored 0.05-0.07 and
+*flipped its answer between runs*. Nothing landed in between, so the
+threshold sits in the gap rather than on a guess.
+
+**Every path declines safely.** No key, unreachable, or unsure all produce
+the same thing: `null`, and the caller keeps what it had. `routeIntent`,
+`verifyFit` and `rankCandidates` never throw — a broken classifier must not
+be able to break the search box. `rankCandidates` also offers Jev a `none`
+option, because a forced pick from a list that lacks the thing is exactly how
+a shortlist quietly hides the right box. Verified live: "a kayak paddle"
+declined; "something to drill a hole in brick" found the masonry bits.
+
+**Not for captioning.** Jev is text-only — no images — so photo descriptions
+stay on Gemini. That is a property of the model, not a preference.
+
 ## Progress log
 
 - [x] Design settled (2026-09-20): providers, layering, geometry descriptor,

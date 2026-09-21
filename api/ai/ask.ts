@@ -15,13 +15,21 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "../../db/client.server";
 import { type Ctx, error, json } from "../context";
-import { buildCatalogLayers } from "./catalog";
+import { jevAvailable } from "../jev/client";
+import { type FitCandidate, verifyFit } from "../jev/fit";
+import { routeIntent } from "../jev/intent";
+import { lexicalShortlist, rankCandidates } from "../jev/shortlist";
+import { buildCatalogLayers, renderBoxList, renderVocabulary } from "./catalog";
 import { dbCatalogSource } from "./catalog.db";
 import { askAi } from "./provider";
 import type { AiLayer, JsonSchema } from "./types";
 
 export const askRequestSchema = z.object({
-  kind: z.enum(["place", "find"]),
+  /**
+   * "auto" lets the classifier decide which question was meant, so the search
+   * box needs one button instead of two. It can decline — see handleAsk.
+   */
+  kind: z.enum(["place", "find", "auto"]),
   /** What the person typed. Short by nature — this is a question, not a doc. */
   query: z.string().trim().min(1).max(500),
 });
@@ -151,6 +159,14 @@ export type AskedBox = {
   location: string | null;
   /** Needed to build the link on internal-number deployments (lib/boxRef). */
   handle: string | null;
+  /**
+   * Read from the row, not the answer. The fit check (api/jev/fit.ts) turns
+   * on how full a box is, and that is exactly the kind of number a generative
+   * model will restate slightly wrong — so it never gets the chance.
+   */
+  description: string | null;
+  fillLevel: number | null;
+  size: string | null;
 };
 
 /**
@@ -199,10 +215,14 @@ async function resolveBoxes(
     ),
   });
   const byId = new Map(rows.map((row) => [row.id, row]));
-  const places = await db.query.location.findMany({
-    where: eq(schema.location.groupId, groupId),
-  });
+  const [places, sizes] = await Promise.all([
+    db.query.location.findMany({
+      where: eq(schema.location.groupId, groupId),
+    }),
+    db.query.boxSize.findMany({ where: eq(schema.boxSize.groupId, groupId) }),
+  ]);
   const placesById = new Map(places.map((place) => [place.id, place]));
+  const sizeNames = new Map(sizes.map((size) => [size.id, size.name]));
 
   const resolved: AskedBox[] = [];
   for (const item of proposed) {
@@ -213,6 +233,9 @@ async function resolveBoxes(
       ...item,
       name: row.name,
       handle: row.handle,
+      description: row.description,
+      fillLevel: row.fillLevel,
+      size: row.sizeId ? (sizeNames.get(row.sizeId) ?? null) : row.sizeClass,
       location: row.locationId
         ? `${locationLabel(placesById, row.locationId)}${slot}`
         : row.locationName,
@@ -233,7 +256,21 @@ export async function handleAsk(
   });
   if (!group) return error(403, "no such group");
 
-  const framing = input.kind === "place" ? PLACE_FRAMING : FIND_FRAMING;
+  // Which question is this? Only asked when the client could not say — and
+  // a decline comes straight back, before anything expensive runs, so the UI
+  // can put the two buttons back rather than guess on someone's behalf.
+  let routedConfidence: number | null = null;
+  let kind: "find" | "place";
+  if (input.kind === "auto") {
+    const intent = await routeIntent(input.query);
+    if (!intent) return json({ ambiguous: true });
+    kind = intent.kind;
+    routedConfidence = intent.confidence;
+  } else {
+    kind = input.kind;
+  }
+
+  const framing = kind === "place" ? PLACE_FRAMING : FIND_FRAMING;
   const layers: AiLayer[] = [{ stable: true, text: framing }];
   // The group's own conventions outrank everything the model assumes about
   // what belongs with what — and they are the one thing it cannot infer.
@@ -243,13 +280,43 @@ export async function handleAsk(
       text: `HOW THIS GROUP SORTS THINGS (follow this over your own instincts)\n${group.sortingNotes.trim()}`,
     });
   }
-  const catalog = await buildCatalogLayers(ctx.groupId, dbCatalogSource);
-  layers.push(...catalog.layers);
+  // Narrowing is for FIND only. Placement genuinely needs the global picture
+  // — which categories exist, what is nearly full — and a shortlist of
+  // lexical matches cannot tell you that nothing else would have suited.
+  let narrowedTo: number | null = null;
+  let boxCount = 0;
+  let tailOps = 0;
+  if (kind === "find" && jevAvailable()) {
+    const data = await dbCatalogSource.load(ctx.groupId);
+    const candidates = lexicalShortlist(data, input.query);
+    const ranked = candidates.length
+      ? await rankCandidates(input.query, candidates, data)
+      : null;
+    if (ranked?.length) {
+      const byId = new Map(data.bins.map((bin) => [bin.id, bin]));
+      const top = ranked
+        .slice(0, 8)
+        .map((r) => byId.get(r.id))
+        .filter((bin) => bin !== undefined);
+      if (top.length) {
+        layers.push({ stable: true, text: renderVocabulary(data) });
+        layers.push({ stable: false, text: renderBoxList(data, top) });
+        narrowedTo = top.length;
+        boxCount = top.length;
+      }
+    }
+  }
+  if (narrowedTo === null) {
+    const catalog = await buildCatalogLayers(ctx.groupId, dbCatalogSource);
+    layers.push(...catalog.layers);
+    boxCount = catalog.bins;
+    tailOps = catalog.tailOps;
+  }
 
   const result = await askAi("ask", {
     layers,
     question:
-      input.kind === "place"
+      kind === "place"
         ? `Where should this go? ${input.query}`
         : `Where would I find this? ${input.query}`,
     schema: ANSWER_SCHEMA,
@@ -257,10 +324,30 @@ export async function handleAsk(
   });
 
   const raw = (result.json ?? {}) as RawAnswer;
+  const boxes = await resolveBoxes(ctx.groupId, raw.boxes);
+
+  // Second-opinion the new-box call. The generative model asserts it with the
+  // same flat certainty whether the case is obvious or a coin flip; this
+  // returns a probability, so being unsure becomes something the UI can say.
+  let newBox = raw.newBox === true;
+  let fitProbability: number | null = null;
+  if (kind === "place" && boxes.length) {
+    const verdict = await verifyFit(
+      input.query,
+      boxes satisfies FitCandidate[],
+    );
+    if (verdict) {
+      newBox = verdict.newBox;
+      fitProbability = verdict.probability;
+    }
+  }
+
   return json({
     answer: typeof raw.answer === "string" ? raw.answer : "",
-    boxes: await resolveBoxes(ctx.groupId, raw.boxes),
-    newBox: raw.newBox === true,
+    boxes,
+    ambiguous: false,
+    kind,
+    newBox,
     newBoxReason: typeof raw.newBoxReason === "string" ? raw.newBoxReason : "",
     suggestedPlace:
       typeof raw.suggestedPlace === "string" ? raw.suggestedPlace : "",
@@ -270,9 +357,15 @@ export async function handleAsk(
       provider: result.provider,
       model: result.model,
       costUsd: result.costUsd,
-      bins: catalog.bins,
-      tailOps: catalog.tailOps,
+      bins: boxCount,
+      tailOps,
       cachedInputTokens: result.usage.cachedInputTokens,
+      /** Set when the classifier picked the question, not the person. */
+      routedConfidence,
+      /** Boxes the prompt actually carried, when a shortlist narrowed it. */
+      narrowedTo,
+      /** Jev's probability that an existing box fits (placement only). */
+      fitProbability,
     },
   });
 }

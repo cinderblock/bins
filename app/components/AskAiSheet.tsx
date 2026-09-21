@@ -43,9 +43,15 @@ export function AskAiSheet({
 }) {
   const internal = useBoxNumbersInternal();
   const adminPassword = useAdminPassword();
+  const [asking, setAsking] = useState<AskKind>(kind);
   const [answer, setAnswer] = useState<AskAnswer | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Re-opening always starts from whatever the caller asked for; a previous
+  // disambiguation must not stick to the next question.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: opened is the trigger, not a value read here.
+  useEffect(() => setAsking(kind), [opened, kind]);
 
   useEffect(() => {
     if (!opened || !query.trim()) return;
@@ -53,7 +59,7 @@ export function AskAiSheet({
     setLoading(true);
     setError(null);
     setAnswer(null);
-    ask(kind, query, adminPassword)
+    ask(asking, query, adminPassword)
       .then((result) => {
         if (live) setAnswer(result);
       })
@@ -66,7 +72,7 @@ export function AskAiSheet({
     return () => {
       live = false;
     };
-  }, [opened, kind, query, adminPassword]);
+  }, [opened, asking, query, adminPassword]);
 
   return (
     <ResponsiveSheet
@@ -76,7 +82,11 @@ export function AskAiSheet({
         <Group gap="xs">
           <IconSparkles size={18} />
           <span>
-            {kind === "place" ? "Where should it go?" : "Where is it?"}
+            {asking === "place"
+              ? "Where should it go?"
+              : asking === "find"
+                ? "Where is it?"
+                : "Asking…"}
           </span>
         </Group>
       }
@@ -99,9 +109,35 @@ export function AskAiSheet({
           </Alert>
         )}
 
-        {answer && (
+        {answer?.ambiguous && (
+          <Stack gap="sm">
+            <Text>
+              Could go either way — are you looking for this, or putting it
+              away?
+            </Text>
+            <Group gap="xs">
+              <Button variant="light" onClick={() => setAsking("find")}>
+                I'm looking for it
+              </Button>
+              <Button variant="light" onClick={() => setAsking("place")}>
+                I'm putting it away
+              </Button>
+            </Group>
+          </Stack>
+        )}
+
+        {answer && !answer.ambiguous && (
           <>
             <Text>{answer.answer}</Text>
+
+            {answer.meta?.fitProbability !== null &&
+              answer.meta?.fitProbability !== undefined &&
+              answer.meta.fitProbability > 0.35 &&
+              answer.meta.fitProbability < 0.65 && (
+                <Text size="sm" c="dimmed">
+                  This one is genuinely borderline — an existing box might do.
+                </Text>
+              )}
 
             {answer.newBox && (
               <Alert
@@ -152,6 +188,11 @@ export function AskAiSheet({
                     <Text size="sm" c="dimmed">
                       {box.reason}
                     </Text>
+                    {box.fillLevel !== null && (
+                      <Text size="xs" c="dimmed">
+                        {box.fillLevel}% full
+                      </Text>
+                    )}
                     {box.location && (
                       <Group gap={4} wrap="nowrap">
                         <IconMapPin size={14} />

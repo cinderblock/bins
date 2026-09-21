@@ -60,7 +60,7 @@ import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { WeightInput } from "~/components/WeightInput";
 import { setBinFields, setBinLabel, setBinLocation } from "~/lib/actions";
 import { forgetAdmin, useAdminPassword } from "~/lib/admin";
-import { type AskKind, useAiAvailable } from "~/lib/ai";
+import { type AskKind, useAssistant } from "~/lib/ai";
 import { apiJson } from "~/lib/api";
 import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import { useBoxSizes } from "~/lib/boxSizes";
@@ -132,7 +132,7 @@ export default function Bins() {
   );
 
   const [query, setQuery] = useState("");
-  const aiAvailable = useAiAvailable();
+  const assistant = useAssistant();
   const [askKind, setAskKind] = useState<AskKind | null>(null);
   const [filterLabel, setFilterLabel] = useState<string | null>(null);
   const indexRef = useRef<MiniSearch<SearchDoc> | null>(null);
@@ -487,24 +487,40 @@ export default function Bins() {
       {/* The typed query doubles as the question, so there is no second text
           field to fill in. Hidden entirely when the server has no provider
           configured — the list below is the feature that always works. */}
-      {aiAvailable && query.trim() && (
+      {assistant.available && query.trim() && (
         <Group gap="xs">
-          <Button
-            size="compact-sm"
-            variant="light"
-            leftSection={<IconSparkles size={14} />}
-            onClick={() => setAskKind("find")}
-          >
-            Where is it?
-          </Button>
-          <Button
-            size="compact-sm"
-            variant="light"
-            leftSection={<IconSparkles size={14} />}
-            onClick={() => setAskKind("place")}
-          >
-            Where should it go?
-          </Button>
+          {assistant.routes ? (
+            // One button: the classifier works out from the words whether
+            // this is "where is it" or "where does it go", and only asks
+            // when it genuinely cannot tell.
+            <Button
+              size="compact-sm"
+              variant="light"
+              leftSection={<IconSparkles size={14} />}
+              onClick={() => setAskKind("auto")}
+            >
+              Ask about this
+            </Button>
+          ) : (
+            <>
+              <Button
+                size="compact-sm"
+                variant="light"
+                leftSection={<IconSparkles size={14} />}
+                onClick={() => setAskKind("find")}
+              >
+                Where is it?
+              </Button>
+              <Button
+                size="compact-sm"
+                variant="light"
+                leftSection={<IconSparkles size={14} />}
+                onClick={() => setAskKind("place")}
+              >
+                Where should it go?
+              </Button>
+            </>
+          )}
         </Group>
       )}
 

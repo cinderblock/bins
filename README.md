@@ -33,6 +33,14 @@ where.
   proposes: every answer is a link to a real box, and nothing is written
   without a tap. Works with Gemini, OpenAI or Anthropic; budget-capped, and
   the offline search above is untouched. See `.env.example`.
+- **One search box, not two buttons** (optional, `TYPESAFE_AI_API_KEY`): a
+  decision classifier reads what you typed and works out whether you are
+  looking for a thing or putting one away, and says so only when it is sure —
+  when it genuinely cannot tell ("new box of drill bits" — find it, or file
+  it?) it asks instead of guessing. It also shortlists boxes before the
+  expensive prompt is built, and second-opinions "should we start a new box"
+  with a probability rather than an unexplained boolean. Unset, all three
+  quietly do not happen and the two buttons come back.
 - **Photo descriptions** (optional, same key): reads each box's contents
   photo and files the words beside it, so a box that was only ever
   photographed is findable by typing what's in it. This is the gap it

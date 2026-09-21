@@ -8,7 +8,9 @@
  */
 import { aiAssistAdminOnly } from "../config";
 import { type Ctx, error, json } from "../context";
+import { jevStatus } from "../jev/client";
 import { type AskRequestInput, askRequestSchema, handleAsk } from "./ask";
+import { aiStatus } from "./provider";
 import { AiBudgetError, AiProviderError, AiUnavailableError } from "./types";
 
 /**
@@ -51,5 +53,12 @@ export async function handleAskRequest(
   }
 }
 
-/** Re-exported so the router reaches the whole surface through one module. */
+/**
+ * Everything the client needs to decide what to render: which generative
+ * provider answers, and whether the classifier is there to route for it.
+ */
+export function assistantStatus() {
+  return { ...aiStatus(), jev: jevStatus() };
+}
+
 export { aiStatus } from "./provider";
