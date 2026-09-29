@@ -296,6 +296,15 @@ the page header, following the "rare actions don't go in headers" rule):
     elevation and scrolls to it. Desk-mode detail pane shows the same.
   - Place editor → "Give it a floor plan" on a plain place opens its
     (empty) plan in the editor.
+- 2026-09-29 (deployed): bins `6c0c9fe`, image digest
+  `sha256:c159a80e…0194d8`, pinned on BOTH deployments by user decision
+  (ops `934ab04` warehouse, `fdb2e64` the other). Both `/_version` endpoints
+  report `6c0c9fe`. The ops "Server Deploys" run was marked failed: on the
+  warehouse host every stack including bins deployed, then the final Caddy
+  step failed to pull its (unchanged) image — `TLS handshake timeout` to
+  ghcr.io, a transient network error, not this change. Caddy kept running
+  its existing container, so the site stayed up. Rollback for either is
+  reverting its pin. Host-specific detail: `plans/local.md`.
 - **Not verified:** phone width (the harness's resize times out here, as
   it did for the wide-screens work), real touch gestures (pinch, two-
   finger pan, touch drag — the automation can only synthesize single
