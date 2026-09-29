@@ -11,6 +11,7 @@ import { Badge, Button, Group, Paper, Stack, Text } from "@mantine/core";
 import { locationLabel } from "@shared/locations";
 import type { LocationState } from "@shared/reducer";
 import { IconQrcode, IconX } from "@tabler/icons-react";
+import { FloorPlanMini } from "~/components/FloorPlanMini";
 import type { PlaceMap } from "~/lib/places";
 
 export function PutawayBar({
@@ -70,6 +71,9 @@ export function PutawayBar({
             </Text>
           </Group>
         )}
+        {/* "You are here": the shelf just scanned, on the room's map. Only
+            when the room has one; short, because the camera is underneath. */}
+        {place && <FloorPlanMini placeId={place.id} height={90} />}
 
         {recent.length > 0 && (
           <div>

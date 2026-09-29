@@ -5,8 +5,12 @@
  * rather than reading.
  *
  * Reads the same places and placements as everything else; nothing here is
- * a separate model. A top-down map of the whole building can sit on top of
- * the same data later.
+ * a separate model.
+ *
+ * Above the walls sits the floor plan: a SPACE (a place with a plan, or deep
+ * enough to hold walls) draws as a top-down map instead, and tapping a wall
+ * on it comes back here to that wall's elevation. `?place=` says which;
+ * `?find=<box>` / `?at=<place>` point at something on either view.
  *
  * It is also where an admin FIXES what they are looking at. Noticing that a
  * shelf is mislabelled, or that a box is on the wrong one, happens here —
@@ -30,6 +34,8 @@ import {
 } from "@mantine/core";
 import { useDocumentTitle } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
+import { planKind } from "@shared/floorplan";
+import { locationLabel, locationPath } from "@shared/locations";
 import type { BinState, LocationState } from "@shared/reducer";
 import {
   IconArrowLeft,
@@ -41,10 +47,12 @@ import {
   IconSettings,
 } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
-import { useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { BoxQuickEdit } from "~/components/BoxQuickEdit";
+import { FloorPlanView, type PointAt } from "~/components/FloorPlanView";
 import { LocationSheet } from "~/components/LocationSheet";
+import { NewSpaceSheet } from "~/components/NewSpaceSheet";
 import { PhotoImg } from "~/components/PhotoImg";
 import { PlaceEditSheet } from "~/components/PlaceEditSheet";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
@@ -53,18 +61,16 @@ import { useAdminPassword } from "~/lib/admin";
 import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import { useBoxSizes } from "~/lib/boxSizes";
 import { db } from "~/lib/db";
-import {
-  childrenOf,
-  isGrid,
-  placeSlots,
-  useOccupancy,
-  usePlaceMap,
-} from "~/lib/places";
+import { usePlanData } from "~/lib/floorplan";
+import { childrenOf, isGrid, placeSlots, useOccupancy } from "~/lib/places";
 import { SizeIcon } from "~/lib/sizeIcons";
 import { HOVER_ACTIONS, HOVER_ONLY, HOVER_PARENT } from "~/lib/ui";
 
 /** Height of one shelf unit in the drawing, px. */
 const UNIT = 92;
+
+/** The ring around whatever a "show me" link pointed at. */
+const POINTED_RING = "0 0 0 3px var(--mantine-color-yellow-5)";
 
 /**
  * What an admin can do to the thing under the pointer. Passed down rather
@@ -77,29 +83,95 @@ type WallActions = {
   editBin: (bin: BinState) => void;
   moveBin: (bin: BinState) => void;
   fillSlot: (shelf: LocationState, slot: string) => void;
+  /** What a "show me" link is pointing at: a box, or a shelf. */
+  pointAt: { binId: number | null; placeId: string | null };
 };
 
 export default function Shelves() {
   useDocumentTitle("Shelves · bins");
   const navigate = useNavigate();
   const location = useLocation();
+  const [params] = useSearchParams();
   // Whether this IS the home surface, which decides the header — see below.
   const atHome = location.pathname === "/";
-  const byId = usePlaceMap();
+  const plans = usePlanData();
+  const byId = plans.byId;
   const occupancy = useOccupancy();
   const numbersInternal = useBoxNumbersInternal();
   const sizes = useBoxSizes();
   const sizeById = new Map(sizes.map((s) => [s.id, s]));
   const unlocked = typeof useAdminPassword() === "string";
 
-  // Roots worth drawing: places whose children are bays (have children of
-  // their own) or shelves. Plain top-level places with nothing inside are
-  // not a wall.
-  const roots = childrenOf(byId, null).filter(
-    (p) => childrenOf(byId, p.id).length > 0 || isGrid(p),
+  // What can be drawn. SPACES draw as a floor plan. WALLS draw as an
+  // elevation: anything whose children are bays, plus — as before the map
+  // existed — a top-level bay or shelf, and a bay standing loose in a space.
+  // Plain places with nothing inside are neither.
+  const spaces: LocationState[] = [];
+  const walls: LocationState[] = [];
+  for (const p of byId.values()) {
+    if (p.archived) continue;
+    const kind = planKind(plans.index, p);
+    if (kind === "space") spaces.push(p);
+    else if (kind === "wall") walls.push(p);
+    else if (kind === "bay" || (kind === "zone" && isGrid(p))) {
+      const parent = p.parentId ? byId.get(p.parentId) : undefined;
+      if (!p.parentId || (parent && planKind(plans.index, parent) === "space"))
+        walls.push(p);
+    }
+  }
+  const byLabel = (a: LocationState, b: LocationState) =>
+    locationLabel(byId, a.id).localeCompare(
+      locationLabel(byId, b.id),
+      undefined,
+      { numeric: true },
+    ) || a.sortOrder - b.sortOrder;
+  spaces.sort(byLabel);
+  walls.sort(byLabel);
+  const topWalls = walls.filter((w) => !w.parentId);
+
+  const requested = params.get("place");
+  const selected =
+    (requested ? byId.get(requested) : undefined) ??
+    spaces.find((s) => !s.parentId) ??
+    spaces[0] ??
+    childrenOf(byId, null).find((p) => walls.includes(p)) ??
+    walls[0];
+  const selectedIsSpace =
+    selected !== undefined && planKind(plans.index, selected) === "space";
+  const root = selectedIsSpace ? undefined : selected;
+  // The space a wall stands in, for the way back to its map.
+  const homeSpace = root
+    ? [...locationPath(byId, root.id)]
+        .reverse()
+        .slice(1)
+        .find((p) => spaces.some((s) => s.id === p.id))
+    : undefined;
+
+  const findId = Number(params.get("find")) || null;
+  const findBin = useLiveQuery(
+    async () => (findId ? await db.bins.get(findId) : undefined),
+    [findId],
   );
-  const [rootId, setRootId] = useState<string | null>(null);
-  const root = (rootId ? byId.get(rootId) : undefined) ?? roots[0];
+  const atPlace = params.get("at");
+  const pointAt: PointAt | null = findBin
+    ? { bin: findBin }
+    : atPlace
+      ? { placeId: atPlace }
+      : null;
+
+  function go(placeId: string, point?: PointAt) {
+    const next = new URLSearchParams({ place: placeId });
+    if (point?.bin) next.set("find", String(point.bin.id));
+    else if (point?.placeId) next.set("at", point.placeId);
+    navigate(`${location.pathname}?${next}`);
+  }
+  function clearPoint() {
+    const next = new URLSearchParams(params);
+    next.delete("find");
+    next.delete("at");
+    navigate(`${location.pathname}?${next}`, { replace: true });
+  }
+  const [newSpace, setNewSpace] = useState(false);
 
   // The edit surfaces, opened from something on the wall (or, for a new
   // place, from the empty state when there is no wall yet).
@@ -136,6 +208,7 @@ export default function Shelves() {
     editBin: setEditBin,
     moveBin: setMoveBin,
     fillSlot: (shelf, slot) => setFill({ shelf, slot }),
+    pointAt: { binId: findBin?.id ?? null, placeId: atPlace },
   };
 
   // Under a root: bays that contain shelves, drawn as columns; shelves that
@@ -191,13 +264,34 @@ export default function Shelves() {
           <Title order={3}>Shelves</Title>
         </Group>
         <Group gap="xs">
-          {roots.length > 1 && (
+          {spaces.length + walls.length > 1 && (
             <Select
-              data={roots.map((r) => ({ value: r.id, label: r.name }))}
-              value={root?.id ?? null}
-              onChange={setRootId}
+              aria-label="Which floor plan or wall"
+              data={[
+                ...(spaces.length
+                  ? [
+                      {
+                        group: "Floor plans",
+                        items: spaces.map((r) => ({
+                          value: r.id,
+                          label: locationLabel(byId, r.id),
+                        })),
+                      },
+                    ]
+                  : []),
+                {
+                  group: "Walls",
+                  items: walls.map((r) => ({
+                    value: r.id,
+                    label: locationLabel(byId, r.id),
+                  })),
+                },
+              ]}
+              value={selected?.id ?? null}
+              onChange={(id) => id && go(id)}
               allowDeselect={false}
-              w={160}
+              searchable={spaces.length + walls.length > 8}
+              w={200}
             />
           )}
           {/* A shelves-home deployment reaches everything from here, so the
@@ -236,7 +330,55 @@ export default function Shelves() {
           so adding one is offered only here, where there is nothing to draw.
           Once a wall exists, new places come from Settings or the admin
           shelf builder, not from a button in the header of every visit. */}
-      {!root && (
+      {/* Several walls and nowhere to say how they stand relative to each
+          other: the one moment the floor plan is worth offering unasked.
+          Once any space exists, new ones come from the place editor. */}
+      {unlocked && spaces.length === 0 && topWalls.length >= 2 && (
+        <Paper p="sm" radius="md" withBorder>
+          <Group justify="space-between" gap="xs">
+            <Text size="sm">
+              {topWalls.length} walls, but nothing says where they stand in the
+              room.
+            </Text>
+            <Button size="xs" variant="light" onClick={() => setNewSpace(true)}>
+              Lay them out on a floor plan
+            </Button>
+          </Group>
+        </Paper>
+      )}
+
+      {selectedIsSpace && selected && (
+        <FloorPlanView
+          key={selected.id}
+          space={selected}
+          pointAt={pointAt}
+          startEditing={Boolean(
+            (location.state as { editPlan?: boolean } | null)?.editPlan,
+          )}
+          onOpenPlace={go}
+          onClearFind={clearPoint}
+        />
+      )}
+
+      {homeSpace && (
+        <Group gap={4}>
+          <Button
+            size="compact-sm"
+            variant="subtle"
+            leftSection={<IconArrowLeft size={14} />}
+            onClick={() => go(homeSpace.id, pointAt ?? undefined)}
+          >
+            {homeSpace.name} floor plan
+          </Button>
+          {root && (
+            <Text size="sm" c="dimmed">
+              › {root.name}
+            </Text>
+          )}
+        </Group>
+      )}
+
+      {!selected && (
         <Stack gap="sm" align="flex-start">
           <Text c="dimmed">
             No shelves to draw yet.{" "}
@@ -311,7 +453,7 @@ export default function Shelves() {
         </div>
       )}
 
-      {unplaced.length > 0 && (
+      {unplaced.length > 0 && !selectedIsSpace && (
         <Paper p="sm" radius="md" withBorder>
           <Group justify="space-between" mb={6}>
             <Text fw={600} size="sm">
@@ -358,6 +500,18 @@ export default function Shelves() {
         </Paper>
       )}
 
+      <NewSpaceSheet
+        opened={newSpace}
+        onClose={() => setNewSpace(false)}
+        candidates={topWalls}
+        nextSortOrder={byId.size}
+        onCreated={(id) => {
+          setNewSpace(false);
+          navigate(`${location.pathname}?place=${id}`, {
+            state: { editPlan: true },
+          });
+        }}
+      />
       <PlaceEditSheet
         place={editPlace}
         opened={editPlace !== null}
@@ -407,9 +561,28 @@ function Shelf({
   const height = UNIT * (shelf.span ?? 1);
   const count = here?.all.length ?? 0;
   const over = grid && count > slots.length;
+  const { binId: pointedBin, placeId: pointedPlace } = actions.pointAt;
+  const pointedShelf = pointedPlace === shelf.id;
+  const holdsPointed =
+    pointedBin !== null &&
+    (here?.all.some((b) => b.id === pointedBin) ?? false);
+
+  // Bring the pointed-at shelf or slot into view once, when it becomes the
+  // target — a wall is wider than a phone, and the point is not to hunt.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pointedShelf && !holdsPointed) return;
+    const el = ref.current?.querySelector("[data-pointed]") ?? ref.current;
+    el?.scrollIntoView({
+      block: "center",
+      inline: "center",
+      behavior: "smooth",
+    });
+  }, [pointedShelf, holdsPointed]);
 
   return (
     <Paper
+      ref={ref}
       p={6}
       radius="md"
       withBorder
@@ -417,6 +590,7 @@ function Shelf({
         minHeight: height,
         width: grid ? Math.max(180, (shelf.cols ?? 1) * 64) : 200,
         borderColor: over ? "var(--mantine-color-red-6)" : undefined,
+        boxShadow: pointedShelf ? POINTED_RING : undefined,
       }}
     >
       {/* The header strip is the hover target, not the whole card: a card-
@@ -460,14 +634,17 @@ function Shelf({
           {slots.map((slot) => {
             const boxes = here?.bySlot.get(slot) ?? [];
             const bin = boxes[0];
+            const pointed = boxes.some((b) => b.id === pointedBin);
             return (
               <div
                 key={slot}
+                data-pointed={pointed || undefined}
                 style={{
                   minHeight: 44,
                   borderRadius: 4,
                   border: "1px dashed var(--mantine-color-default-border)",
                   overflow: "hidden",
+                  boxShadow: pointed ? POINTED_RING : undefined,
                 }}
               >
                 {bin ? (
@@ -556,10 +733,20 @@ function BoxCell({
   compact?: boolean;
 }) {
   const title = boxTitle(bin, numbersInternal);
+  // Grid slots ring themselves; a count-only shelf's cells are the only
+  // thing to ring.
+  const pointed = compact && actions.pointAt.binId === bin.id;
   return (
     <div
       className={HOVER_PARENT}
-      style={{ position: "relative", width: "100%", minWidth: 0 }}
+      data-pointed={pointed || undefined}
+      style={{
+        position: "relative",
+        width: "100%",
+        minWidth: 0,
+        borderRadius: 4,
+        boxShadow: pointed ? POINTED_RING : undefined,
+      }}
     >
       <UnstyledButton
         onClick={() => onOpen(bin)}

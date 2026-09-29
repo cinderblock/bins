@@ -575,6 +575,18 @@ per-bin/per-field ACLs (scope is group-wide read or write), token expiry
   renamed and recoloured; places and categories can be un-archived from
   Settings. Details, including the two traps, in
   `plans/wide-screens-and-direct-edits.md`.
+- [x] **Floor plans** (2026-09-28, user request: "if I have multiple walls
+  of boxes, i need more controls to show how those are laid out in a
+  potentially arbitrarily shaped space"). A space (a place given a plan, or
+  deep enough to hold walls) draws as a top-down map at `/shelves`: any-
+  shaped room outline, walls/loose bays/zones positioned and turned to face
+  their aisle, landmarks, drawn to scale or roughed in on a grid. Positions
+  are their own op on their own clock (`location.setLayout`), the outline
+  another (`location.setPlan`); kinds are derived from contents, so no
+  existing data needed migrating. Everyone gets fullness / category
+  shading and "where is this box" from the box page, desk pane, peek and
+  put-away. Phone width and real touch gestures not yet verified. Details
+  in `plans/floor-plan.md`.
 - [ ] On-device testing (iPhone + Android): camera lifecycle in installed PWA,
   scan-to-bin latency, airplane-mode round-trip on two devices.
 

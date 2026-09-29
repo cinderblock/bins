@@ -98,6 +98,14 @@ where.
   numbered slot from the location sheet (it shows what's already there),
   and see the whole wall at `/shelves` — every bay, shelf and slot with the
   box in it. Freeform places ("Sam's truck") still work.
+- **Floor plans**: when there is more than one wall, lay them out on a
+  top-down map of the room — any shape of room, drawn to measurements (feet
+  or metres, per device) or roughed in on a grid. Drag walls, loose bays and
+  open areas into place, turn them to face the aisle, and mark doors,
+  pillars and workbenches to find your way by. Everyone can shade the map
+  by how full each bay is or by what's in it, tap a wall to open its
+  shelves, and follow "where is this box" from a box's page, a search
+  result, a scan or a shelf scanned in put-away straight to the right bay.
 - **Edit what you're looking at**: on the wall, an unlocked admin gets edit
   and move controls on hover — on a bay, on a shelf, on a box in a slot —
   and an empty slot is a "put a box here" target. The same place editor is

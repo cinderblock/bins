@@ -38,6 +38,7 @@ import { Link } from "react-router";
 import { DeleteEntryButton } from "~/components/DeleteEntryButton";
 import { DeletedEntries } from "~/components/DeletedEntries";
 import { describeFillLevel } from "~/components/FillLevel";
+import { FloorPlanMini } from "~/components/FloorPlanMini";
 import { PhotoImg } from "~/components/PhotoImg";
 import { useAuthors } from "~/lib/authors";
 import {
@@ -197,6 +198,7 @@ export function BinDetailPane({ binId }: { binId: number | null }) {
             )
           );
         })()}
+        <FloorPlanMini bin={bin} height={120} />
 
         {binLabels.length > 0 && (
           <Group gap={6}>

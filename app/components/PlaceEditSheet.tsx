@@ -24,11 +24,12 @@ import {
 import { notifications } from "@mantine/notifications";
 import { locationLabel, slotNames, wouldCycle } from "@shared/locations";
 import type { LocationState } from "@shared/reducer";
-import { IconArchive, IconArchiveOff } from "@tabler/icons-react";
+import { IconArchive, IconArchiveOff, IconMap2 } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { InlineCreate } from "~/components/InlineCreate";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
-import { archiveLocation, upsertLocation } from "~/lib/actions";
+import { archiveLocation, setPlacePlan, upsertLocation } from "~/lib/actions";
 import { createPlace, usePlaceMap } from "~/lib/places";
 
 type Draft = {
@@ -68,10 +69,30 @@ export function PlaceEditSheet({
   onClose: () => void;
 }) {
   const byId = usePlaceMap();
+  const navigate = useNavigate();
   const [draft, setDraft] = useState<Draft>(() =>
     draftOf(place, defaultParentId),
   );
   const [busy, setBusy] = useState(false);
+  // Removing a plan throws away a drawn outline; the first tap only arms it.
+  const [armRemovePlan, setArmRemovePlan] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: disarm on open / target change
+  useEffect(() => setArmRemovePlan(false), [opened, place?.id]);
+
+  /** Open this place's floor plan, making an empty one first if needed. */
+  async function openPlan() {
+    if (!place) return;
+    if (!place.plan)
+      await setPlacePlan(place.id, {
+        scaled: false,
+        outline: [],
+        landmarks: [],
+      });
+    onClose();
+    navigate(`/shelves?place=${place.id}`, {
+      state: { editPlan: !place.plan },
+    });
+  }
 
   // Re-seed each time it opens (and whenever it's pointed at another place):
   // the sheet outlives any one row, and stale values here write real ops.
@@ -253,6 +274,40 @@ export function PlaceEditSheet({
         >
           {place ? "Save" : "Add place"}
         </Button>
+        {/* A room, a building, a yard: anything whose contents stand
+            somewhere relative to each other can have a floor plan. */}
+        {place && (
+          <Group gap="xs" grow>
+            <Button
+              variant="light"
+              leftSection={<IconMap2 size={16} />}
+              onClick={() => void openPlan()}
+            >
+              {place.plan ? "Open its floor plan" : "Give it a floor plan"}
+            </Button>
+            {place.plan && (
+              <Button
+                variant="subtle"
+                color={armRemovePlan ? "red" : "gray"}
+                onClick={() => {
+                  if (!armRemovePlan) {
+                    setArmRemovePlan(true);
+                    return;
+                  }
+                  void setPlacePlan(place.id, null);
+                  setArmRemovePlan(false);
+                  notifications.show({
+                    message: `${place.name} no longer has a floor plan`,
+                  });
+                }}
+              >
+                {armRemovePlan
+                  ? "Remove the room's outline?"
+                  : "Remove floor plan"}
+              </Button>
+            )}
+          </Group>
+        )}
         {place && (
           <Button
             variant="subtle"

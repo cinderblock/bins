@@ -166,11 +166,38 @@ the page header, following the "rare actions don't go in headers" rule):
 
 - Colour-by: Fullness (a sequential ramp over occupied slots ÷ capacity),
   Category (the dominant label's colour in that bay), or None.
-- `find` pulses the segment holding the box and shows a caption with
-  "Open wall", which highlights the slot in the elevation.
+- `?find=<box>` (or `?at=<place>` for a scanned shelf) pulses the segment
+  holding it and shows a caption with "Open the shelves", which opens the
+  elevation with that slot (or shelf) ringed and scrolled into view.
 - `FloorPlanMini`, a small read-only map with one highlight, appears on the
   box page, the desk-mode detail pane, the scanner peek and the put-away
-  bar. Tapping it opens the full map with `find`.
+  bar. It renders NOTHING unless the thing is actually on a map. Tapping it
+  opens the full map pointing at the same thing. In the thumbnail only bay
+  letters are drawn — names and counts collide at that size.
+- On an unscaled space the inspector counts grid squares (1 square =
+  500 mm) instead of showing lengths.
+
+**Where each piece lives.**
+
+- `shared/floorplan.ts` — pure geometry: kind derivation, `activeLayout`,
+  `baySegments`, transforms, snapping, `sanitize*`, outline helpers,
+  `mapTarget`. Tested in `shared/floorplan.test.ts`.
+- `app/lib/floorplan.ts` — `usePlanData` (places + per-place fullness and
+  dominant category), `buildScene` (drafts applied), the ramp.
+- `app/lib/lengths.ts` — ft/in and m formatting and parsing, per-device
+  unit, snap and grid steps. Tested.
+- `app/components/FloorPlanSvg.tsx` — the drawing: view state, pan / zoom /
+  pinch, gesture classification into tap / drag / pan, handles.
+- `app/components/FloorPlanView.tsx` — viewer + editor: drafts, undo/redo,
+  keyboard, tray, inspectors, legend, focus card, pointed-at caption.
+- `app/components/FloorPlanMini.tsx`, `LengthField.tsx`,
+  `NewSpaceSheet.tsx` ("lay these walls out on a floor plan").
+- `PlaceEditSheet` gained "Give it a floor plan" / "Open its floor plan" /
+  "Remove floor plan" (two-tap).
+- `routes/shelves.tsx` — `?place=`, `?find=`, `?at=`; selector grouped into
+  floor plans and walls; breadcrumb from a wall back to its map; the
+  "N walls, nothing says where they stand" offer (admins, no space yet,
+  two or more top-level walls).
 
 ## Plan / steps
 
@@ -181,20 +208,43 @@ the page header, following the "rare actions don't go in headers" rule):
 3. [x] Schema: migration 0020 (additive columns on `location`), Dexie
        v14 backfill, store adapters, API round-trip test. Also: the AI
        catalog's diff tail now skips layout/plan ops (`SILENT_OPS`).
-4. [ ] **← current step** `shared/floorplan.ts`: pure geometry (footprints, bay subdivision,
-       snapping, rotation, polygon helpers). Unit-tested.
-5. [ ] `FloorPlan` component (view): outline, walls with a facing marker,
-       bay ticks, occupancy fill, labels, pan/zoom, tap → elevation.
-6. [ ] Editor: drag, rotate, resize, "not placed yet" tray, outline
-       drawing with grid/right-angle snap, landmarks.
-7. [ ] `/shelves` integration: map on top, wall selector generalized to
-       walls at any depth.
-8. [ ] Box → map: highlight where a box is (from a box page, a search hit,
-       a scan).
-9. [ ] Checks (`typecheck`, `lint`, `test`), browser-verify at desk and
-       phone widths, README, commit.
+4. [x] `shared/floorplan.ts`: pure geometry. 21 unit tests.
+5. [x] `FloorPlanSvg` (view): outline, walls with a facing marker, bay
+       segments, fullness / category fill, labels, pan/zoom, tap → details.
+6. [x] Editor: drag, rotate, resize, tray, outline editing with grid and
+       right-angle snap, landmarks, inspector, keyboard, undo/redo.
+7. [x] `/shelves` integration.
+8. [x] Box → map on the box page, desk detail pane, scanner peek, put-away.
+9. [x] Checks, browser verification at desk width, README, commit.
+10. [ ] **Open:** verify at phone width and on a real touch device (pinch,
+       two-finger pan, drag). See "Not verified" in the progress log.
 
 ## Findings / gotchas
+
+- **Read the space from the view's OWN live query.** `FloorPlanView` first
+  drew the space passed in by `/shelves`, which comes from a different
+  `useLiveQuery` than the one drafts are retired against. The two update at
+  different moments: the draft was retired as soon as the view's query
+  agreed, the drawing then fell back to the caller's copy — still without
+  the change — and the next edit was built on that. Found in a browser:
+  "Draw the room's walls" then "Add a landmark" lost the outline. Fixed by
+  resolving `data.byId.get(space.id)` inside the view.
+- **Sanitize once, before drafting.** Drafts held raw drag values
+  (`3657.5999999999995`) while the op carried the rounded one, so a draft
+  never equalled the stored value and only retired on its timeout.
+  `apply()` now sanitizes first and uses the same value for draft, undo
+  record and op.
+- **The admin check is async.** `useAdminPassword()` is undefined on the
+  first render, so `useState(startEditing && unlocked)` was always false;
+  "Create and arrange" landed on the map, not the editor. A one-shot
+  effect opens the editor once `unlocked` arrives.
+- **`setPointerCapture` throws for a pointer the browser doesn't consider
+  active** (synthetic events, some pen edge cases). Wrapped; the gesture
+  works without capture, just not past the map's edge.
+- **The preview harness's wheel-to-scroll zooms the map.** Clicking a menu
+  item that overlays the SVG sometimes left the map zoomed in — the
+  automation scrolls with wheel events and the map's wheel handler zooms.
+  Not an app bug; "Fit" restores it.
 
 - **A schema-invalid op fails the WHOLE push with 400**, not a per-op
   `rejected` entry (`api/sync.ts` parses the batch as one). So an
@@ -222,9 +272,44 @@ the page header, following the "rare actions don't go in headers" rule):
 
 ## Progress log
 
-- 2026-09-28: surveyed the model and wrote this plan. Waiting on the
-  operator's answers.
+- 2026-09-28: surveyed the model and wrote this plan; operator answered.
+- 2026-09-28: data layer committed (`608d379`): ops, reducer, migration
+  0020, Dexie v14, API round-trip test, AI tail filter.
+- 2026-09-28: geometry, units, map, editor and every integration point
+  built. `typecheck` clean, all tests pass (291), lint clean on every file
+  touched. Driven in a browser at desk width against an isolated dev
+  instance (ports 3180/3181, scratch db, seeded with three walls, 60
+  boxes, four categories):
+  - The "3 walls, nothing says where they stand" offer → Create and
+    arrange → map opens in the editor with all three walls in the tray.
+  - Placing each wall, dragging (snapped to 6″), quarter-turning, arrow
+    nudges, Shift-nudge, two undos and a redo — all verified against the
+    replica's stored layouts.
+  - Room outline from a rectangle, a corner inserted by dragging an edge
+    midpoint, a neighbouring corner snapping square; door and pillar
+    landmarks alongside it.
+  - Viewer: fullness shading and legend, category tint and legend, tap a
+    bay → "Box wall › E · 18 of 39 slots used · Mostly tools" → Open the
+    shelves → elevation with a "Warehouse floor plan › Box wall" way back.
+  - Box page mini-map pulses the right bay; tapping it opens the full map
+    pointing at the box; "Open the shelves" rings its slot in the
+    elevation and scrolls to it. Desk-mode detail pane shows the same.
+  - Place editor → "Give it a floor plan" on a plain place opens its
+    (empty) plan in the editor.
+- **Not verified:** phone width (the harness's resize times out here, as
+  it did for the wide-screens work), real touch gestures (pinch, two-
+  finger pan, touch drag — the automation can only synthesize single
+  mouse-style pointers), and the scanner peek / put-away bar mini-maps
+  (both need a live camera; they reuse the component verified on the box
+  page).
 
 ## Open questions for the user
 
 (none open. All four were answered 2026-09-28; see "Operator answers".)
+
+Worth deciding later, not blocking:
+
+1. Should the AI assistant learn the map ("the kitchen stuff is on the
+   north wall by the door")? It currently ignores layout on purpose — see
+   `SILENT_OPS`. *Recommendation: only if asked; it answers by shelf name
+   already, and the map is one tap from any answer.*

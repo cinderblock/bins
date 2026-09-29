@@ -27,6 +27,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { Link } from "react-router";
 import { DeleteEntryButton } from "~/components/DeleteEntryButton";
+import { FloorPlanMini } from "~/components/FloorPlanMini";
 import { PhotoImg } from "~/components/PhotoImg";
 import { PhotoLightbox } from "~/components/PhotoLightbox";
 import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
@@ -113,6 +114,10 @@ export function BinPeek({
           {where ?? "no location set"} · updated {relativeTime(bin.updatedAt)}
         </Text>
       </Group>
+      {/* Short: this sits over the camera, which is the point of the screen. */}
+      <div style={{ marginBottom: "var(--mantine-spacing-xs)" }}>
+        <FloorPlanMini bin={bin} height={90} />
+      </div>
 
       {photos.length > 0 && (
         <Group

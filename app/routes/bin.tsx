@@ -43,6 +43,7 @@ import { ClaimBin } from "~/components/ClaimBin";
 import { DeletedEntries } from "~/components/DeletedEntries";
 import { EditBoxSheet } from "~/components/EditBoxSheet";
 import { FillLevelBadge } from "~/components/FillLevel";
+import { FloorPlanMini } from "~/components/FloorPlanMini";
 import { LabelSheet } from "~/components/LabelSheet";
 import { LabelStudio } from "~/components/LabelStudio";
 import { LocationSheet } from "~/components/LocationSheet";
@@ -460,6 +461,9 @@ export default function BinPage() {
               </Badge>
             )}
           </Group>
+
+          {/* Where that is in the room, when the room has a floor plan. */}
+          <FloorPlanMini bin={bin} />
 
           {/* Category labels — tap to add/remove or set weight */}
           <Group gap="xs">
