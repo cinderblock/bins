@@ -86,7 +86,9 @@ comes to you rather than you navigating to a settings page that owns it.
        editing via the sheet, archived toggles with restore.
 7. [x] Admin: wide layout.
 8. [x] Shelves wall: hover edit on bays, shelves and box cells; empty slots
-       are a "put a box here" target for admins; "Add a place" in the header.
+       are a "put a box here" target for admins. (An "Add a place" header
+       button shipped here and was then moved into the empty state — see
+       the 2026-09-28 log entry.)
 9. [x] `bun run typecheck && lint && test`, browser-verify, commit.
 
 ## Findings / gotchas
@@ -118,6 +120,11 @@ comes to you rather than you navigating to a settings page that owns it.
 
 ## Things not to do
 
+- Don't put rare actions in a page header. Operator, 2026-09-28: *"'Add a
+  place' as a top level button doesn't make sense. We don't change places
+  that often."* The header is for what every visit needs (boxes, scan,
+  settings); a rare create action belongs in the empty state that needs it,
+  or on the management page that owns it.
 - Don't make a hover-only control the only way to do something.
 - Don't use `title=` for any of these affordances.
 - Don't let the box quick-edit write `locationName` over a structured
@@ -155,3 +162,8 @@ comes to you rather than you navigating to a settings page that owns it.
   two new tables, and one unique index on a freshly-added nullable column),
   and the AI features are inert where no key is configured. Rollback for
   either is reverting its pin. Host-specific detail: `plans/local.md`.
+
+- 2026-09-28: the shelves wall's header "Add a place" button is gone. It
+  now appears only in the "No shelves to draw yet" empty state (adding a
+  top-level place). With a wall already drawn, new places come from
+  Settings › Places or the admin shelf builder, both unchanged.

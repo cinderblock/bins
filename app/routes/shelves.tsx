@@ -101,7 +101,8 @@ export default function Shelves() {
   const [rootId, setRootId] = useState<string | null>(null);
   const root = (rootId ? byId.get(rootId) : undefined) ?? roots[0];
 
-  // The edit surfaces, all of them opened from something on the wall.
+  // The edit surfaces, opened from something on the wall (or, for a new
+  // place, from the empty state when there is no wall yet).
   // `newPlace` is separate from `editPlace` so "add" and "edit" can't be
   // confused for one another when both are null.
   const [editPlace, setEditPlace] = useState<LocationState | null>(null);
@@ -199,20 +200,6 @@ export default function Shelves() {
               w={160}
             />
           )}
-          {/* Adding a shelf to the wall you are standing in front of. The
-              full builder (bays in bulk, archived places) is still in admin;
-              this is the one-off. */}
-          {unlocked && (
-            <Button
-              size="sm"
-              radius="xl"
-              variant="light"
-              leftSection={<IconPlus size={18} />}
-              onClick={() => setNewPlaceUnder(root?.id ?? null)}
-            >
-              Add a place
-            </Button>
-          )}
           {/* A shelves-home deployment reaches everything from here, so the
               same three ways on as the box list has. */}
           <ActionIcon
@@ -245,13 +232,30 @@ export default function Shelves() {
         </Group>
       </Group>
 
+      {/* Places change rarely — a wall is set up once and then lived in —
+          so adding one is offered only here, where there is nothing to draw.
+          Once a wall exists, new places come from Settings or the admin
+          shelf builder, not from a button in the header of every visit. */}
       {!root && (
-        <Text c="dimmed">
-          No shelves to draw yet.{" "}
-          {unlocked
-            ? "“Add a place” above starts one, or build a whole bay in Admin › Places."
-            : "An admin sets up bays and shelves under Admin › Places."}
-        </Text>
+        <Stack gap="sm" align="flex-start">
+          <Text c="dimmed">
+            No shelves to draw yet.{" "}
+            {unlocked
+              ? "Start with one place here, or build a whole bay in Admin › Places."
+              : "An admin sets up bays and shelves under Admin › Places."}
+          </Text>
+          {unlocked && (
+            <Button
+              size="sm"
+              radius="xl"
+              variant="light"
+              leftSection={<IconPlus size={18} />}
+              onClick={() => setNewPlaceUnder(null)}
+            >
+              Add a place
+            </Button>
+          )}
+        </Stack>
       )}
 
       {root && (
