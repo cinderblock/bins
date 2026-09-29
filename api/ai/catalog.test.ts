@@ -264,4 +264,22 @@ describe("catalog layering", () => {
     const { layers } = await buildCatalogLayers(GROUP, source);
     expect(layer(layers, 2).text).toContain("#10 bin.somethingNew");
   });
+
+  test("rearranging the floor plan is not news to the model", async () => {
+    forgetSnapshot(GROUP);
+    const source = sourceWith();
+    await buildCatalogLayers(GROUP, source);
+    // One op per drag: an afternoon of arranging walls would otherwise fill
+    // the tail with lines that say nothing about where any box is.
+    source.append({ binId: null, type: "location.setLayout", payload: {} });
+    source.append({ binId: null, type: "location.setPlan", payload: {} });
+    const quiet = await buildCatalogLayers(GROUP, source);
+    expect(quiet.layers).toHaveLength(2);
+    expect(quiet.tailOps).toBe(0);
+
+    source.append({ binId: 10, type: "bin.retire", payload: {} });
+    const { layers } = await buildCatalogLayers(GROUP, source);
+    expect(layer(layers, 2).text).not.toContain("setLayout");
+    expect(layer(layers, 2).text).toContain("#10 RETIRED");
+  });
 });

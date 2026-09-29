@@ -141,6 +141,13 @@
       "when": 1789950920090,
       "tag": "0019_dark_jazinda",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1790644405834,
+      "tag": "0020_bumpy_ultimates",
+      "breakpoints": true
     }
   ]
 }

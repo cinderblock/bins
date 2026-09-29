@@ -163,6 +163,72 @@ export const boxSizeNameSchema = z.string().min(1).max(100);
 /** 0 is meaningless for a dimension, so treat it as "unset". */
 export const dimensionMmSchema = z.number().int().positive().max(100_000);
 
+/**
+ * Floor-plan geometry. Always millimetres, whether or not the space is drawn
+ * to scale: an unscaled plan is just one nobody has measured, and storing
+ * both the same way means switching a space between the two is a display
+ * change, not a data migration. A kilometre either way is room for any
+ * building; finite, not integer, because 6 inches is 152.4 mm.
+ */
+const planCoordSchema = z.number().finite().min(-1_000_000).max(1_000_000);
+const planLengthSchema = z.number().finite().positive().max(100_000);
+/** Degrees clockwise. At 0 the FRONT faces +y — down the page. */
+const planRotationSchema = z.number().finite().min(0).lt(360);
+
+/**
+ * Where a place stands on its parent's floor plan: the centre of its
+ * footprint, in the parent's frame.
+ *
+ * `parentId` records WHICH parent's frame. A place moved to another parent
+ * keeps coordinates that mean nothing there, and the reducer can't clear
+ * them without reading another row (order-dependence, again), so readers
+ * treat a layout whose parentId no longer matches as "not on the plan".
+ */
+export const placeLayoutSchema = z.object({
+  parentId: z.string().uuid(),
+  x: planCoordSchema,
+  y: planCoordSchema,
+  rotation: planRotationSchema,
+  /** Along the front. */
+  width: planLengthSchema,
+  /** Front to back. */
+  depth: planLengthSchema,
+});
+export type PlaceLayout = z.infer<typeof placeLayoutSchema>;
+
+/**
+ * Something drawn on a plan to find your way by — a door, a pillar, a
+ * workbench — that is NOT a place: no box can be put in one, so it never
+ * shows up in a location picker. `kind` is free-form so the set can grow
+ * without a protocol change; the app draws kinds it doesn't know as a
+ * plain fixture.
+ */
+export const landmarkSchema = z.object({
+  id: z.string().uuid(),
+  kind: z.string().min(1).max(20),
+  label: z.string().max(100).nullable(),
+  x: planCoordSchema,
+  y: planCoordSchema,
+  rotation: planRotationSchema,
+  width: planLengthSchema,
+  depth: planLengthSchema,
+});
+export type Landmark = z.infer<typeof landmarkSchema>;
+
+/**
+ * A space's floor plan: its outline and its landmarks. The things stored IN
+ * the space are not here — each carries its own layout, so two people
+ * arranging different walls never overwrite each other.
+ */
+export const placePlanSchema = z.object({
+  /** Drawn to measurements (show lengths) vs roughed in on a grid. */
+  scaled: z.boolean(),
+  /** The room's walls, as a closed polygon. Empty = not drawn yet. */
+  outline: z.array(z.tuple([planCoordSchema, planCoordSchema])).max(200),
+  landmarks: z.array(landmarkSchema).max(200),
+});
+export type PlacePlan = z.infer<typeof placePlanSchema>;
+
 export const labelNameSchema = z.string().min(1).max(100);
 /** A Mantine color name (e.g. "grape"); free-form so the palette can grow. */
 export const labelColorSchema = z.string().max(20);
@@ -311,6 +377,35 @@ export const clientOpSchema = z.discriminatedUnion("type", [
     payload: z.object({
       locationId: z.string().uuid(),
       archived: z.boolean(),
+    }),
+  }),
+  /**
+   * Put a place on its parent's floor plan, move it, or (null) take it off.
+   *
+   * Its own op on its own clock rather than more fields on location.upsert,
+   * because an upsert ASSIGNS every field: renaming a shelf would otherwise
+   * compete with someone dragging it, and any client that predates the map
+   * would wipe positions on every edit it made.
+   */
+  z.object({
+    ...opBase,
+    type: z.literal("location.setLayout"),
+    payload: z.object({
+      locationId: z.string().uuid(),
+      layout: placeLayoutSchema.nullable(),
+    }),
+  }),
+  /**
+   * A space's outline and landmarks, as one value. Two people redrawing the
+   * same room's walls at once is rare, and a polygon has no meaningful
+   * per-vertex merge — last writer wins the whole outline.
+   */
+  z.object({
+    ...opBase,
+    type: z.literal("location.setPlan"),
+    payload: z.object({
+      locationId: z.string().uuid(),
+      plan: placePlanSchema.nullable(),
     }),
   }),
   /**

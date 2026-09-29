@@ -27,6 +27,8 @@ function place(
     span: null,
     code,
     archived,
+    layout: null,
+    plan: null,
     fieldClocks: {},
   };
 }

@@ -188,6 +188,8 @@ export class DrizzleStateStore implements StateStore {
       span: row.span,
       code: row.code,
       archived: row.archived,
+      layout: row.layout ?? null,
+      plan: row.plan ?? null,
       fieldClocks: row.fieldClocks,
     };
   }

@@ -1,6 +1,8 @@
 import type {
   BinFields,
   ClientOp,
+  PlaceLayout,
+  PlacePlan,
   SightingVia,
   SuggestFields,
 } from "@shared/ops";
@@ -217,6 +219,31 @@ export async function archiveLocation(locationId: string, archived: boolean) {
     ...stamp(),
     type: "location.archive",
     payload: { locationId, archived },
+  });
+}
+
+/**
+ * Stand a place somewhere on its parent's floor plan, or (null) take it off.
+ * One call per finished gesture — the map keeps a drag in local state and
+ * writes where it ENDED, never a stream of in-between positions.
+ */
+export async function setPlaceLayout(
+  locationId: string,
+  layout: PlaceLayout | null,
+) {
+  await enqueueOp({
+    ...stamp(),
+    type: "location.setLayout",
+    payload: { locationId, layout },
+  });
+}
+
+/** Replace a space's floor plan (outline + landmarks) wholesale, or clear it. */
+export async function setPlacePlan(locationId: string, plan: PlacePlan | null) {
+  await enqueueOp({
+    ...stamp(),
+    type: "location.setPlan",
+    payload: { locationId, plan },
   });
 }
 

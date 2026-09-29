@@ -262,6 +262,17 @@ export function renderBoxList(
   ].join("\n");
 }
 
+/**
+ * Op types that change nothing the model is told. Where a wall stands on the
+ * floor plan is not a fact about where any box is, and an editing session
+ * writes one of these per drag — listing them would bury the changes that
+ * matter under a run of "location.setLayout".
+ */
+const SILENT_OPS: ReadonlySet<string> = new Set([
+  "location.setLayout",
+  "location.setPlan",
+]);
+
 /** A single op as one readable line. Unknown types still say something. */
 export function describeOp(op: CatalogOp): string {
   const at = op.binId ? `#${op.binId}` : "—";
@@ -345,14 +356,15 @@ export async function buildCatalogLayers(
     { stable: true, text: renderVocabulary(data) },
     { stable: true, text: current.text },
   ];
-  if (tail.length) {
+  const changes = tail.filter((op) => !SILENT_OPS.has(op.type));
+  if (changes.length) {
     layers.push({
       stable: false,
       text: [
         "CHANGES SINCE THAT SNAPSHOT (oldest first — these win over the list above)",
-        ...tail.map(describeOp),
+        ...changes.map(describeOp),
       ].join("\n"),
     });
   }
-  return { layers, bins: current.bins, tailOps: tail.length };
+  return { layers, bins: current.bins, tailOps: changes.length };
 }

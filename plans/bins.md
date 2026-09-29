@@ -19,6 +19,9 @@ edit flow.
 Companion plan: `plans/wide-screens-and-direct-edits.md` — the wide-screen
 card layout for Settings/Admin, and the hover-to-edit affordances that put
 a shelf's editor on the shelf instead of in a settings page.
+Companion plan: `plans/floor-plan.md` — the top-down map of a space: many
+walls, loose bays and zones positioned in an arbitrarily shaped room, with
+landmarks, fullness/category shading, and "where is this box" highlighting.
 
 ## Goal
 

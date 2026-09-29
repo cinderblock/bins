@@ -1,10 +1,11 @@
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 /**
  * Materialized group location list ("storage", "shelf A2", "trailer", …).
  * Op-driven (location.upsert / location.archive) so location config also
  * works offline and sync stays uniform. Bins reference locations by NAME
  * (locationName), not id, so freeform one-off locations need no row here.
  */
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import type { PlaceLayout, PlacePlan } from "../../shared/ops";
 import { group } from "./group";
 
 export const location = sqliteTable(
@@ -32,6 +33,14 @@ export const location = sqliteTable(
      */
     code: text("code"),
     archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+    /**
+     * Where this place stands on its parent's floor plan (location.setLayout).
+     * Stale when its `parentId` no longer matches the column above — readers
+     * treat that as "not placed".
+     */
+    layout: text("layout", { mode: "json" }).$type<PlaceLayout>(),
+    /** This place's floor plan when it is a space (location.setPlan). */
+    plan: text("plan", { mode: "json" }).$type<PlacePlan>(),
     fieldClocks: text("field_clocks", { mode: "json" })
       .notNull()
       .$type<Record<string, string>>(),

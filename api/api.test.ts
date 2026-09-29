@@ -797,6 +797,119 @@ describe("api", () => {
     expect(pullBody.ops.some((o) => o.type === "bin.setLabel")).toBe(true);
   });
 
+  test("floor plan: a space's plan and a wall's layout store and pull", async () => {
+    const { eq } = await import("drizzle-orm");
+    const spaceId = crypto.randomUUID();
+    const wallId = crypto.randomUUID();
+    const plan = {
+      scaled: false,
+      outline: [
+        [0, 0],
+        [8000, 0],
+        [8000, 5000],
+        [0, 5000],
+      ],
+      landmarks: [
+        {
+          id: crypto.randomUUID(),
+          kind: "door",
+          label: null,
+          x: 4000,
+          y: 5000,
+          rotation: 0,
+          width: 900,
+          depth: 100,
+        },
+      ],
+    };
+    const layout = {
+      parentId: spaceId,
+      x: 152.4,
+      y: 450,
+      rotation: 180,
+      width: 3600,
+      depth: 450,
+    };
+    const push = await call("POST", "/api/sync/push", {
+      token: tokenA,
+      body: {
+        ops: [
+          {
+            opId: uuid(),
+            type: "location.upsert",
+            payload: { locationId: spaceId, name: "Shop", sortOrder: 0 },
+            clientTime: Date.now(),
+          },
+          {
+            opId: uuid(),
+            type: "location.upsert",
+            payload: {
+              locationId: wallId,
+              name: "Back wall",
+              sortOrder: 0,
+              parentId: spaceId,
+            },
+            clientTime: Date.now(),
+          },
+          {
+            opId: uuid(),
+            type: "location.setPlan",
+            payload: { locationId: spaceId, plan },
+            clientTime: Date.now(),
+          },
+          {
+            opId: uuid(),
+            type: "location.setLayout",
+            payload: { locationId: wallId, layout },
+            clientTime: Date.now(),
+          },
+        ],
+      },
+    });
+    expect(push.status).toBe(200);
+    const body = (await push.json()) as {
+      acks: unknown[];
+      rejected: unknown[];
+    };
+    expect(body.acks).toHaveLength(4);
+    expect(body.rejected).toHaveLength(0);
+
+    // Out of range — rotation is [0, 360) — is refused at the door, not
+    // clamped into something the author didn't draw.
+    const bad = await call("POST", "/api/sync/push", {
+      token: tokenA,
+      body: {
+        ops: [
+          {
+            opId: uuid(),
+            type: "location.setLayout",
+            payload: {
+              locationId: wallId,
+              layout: { ...layout, rotation: 360 },
+            },
+            clientTime: Date.now(),
+          },
+        ],
+      },
+    });
+    expect(bad.status).toBe(400);
+
+    // JSON columns round-trip exactly, fractional millimetres included.
+    const space = await db.query.location.findFirst({
+      where: eq(schema.location.id, spaceId),
+    });
+    expect(space?.plan).toEqual(plan as NonNullable<typeof space>["plan"]);
+    const wall = await db.query.location.findFirst({
+      where: eq(schema.location.id, wallId),
+    });
+    expect(wall?.layout).toEqual(layout);
+
+    const pull = await call("GET", "/api/sync/pull?since=0", { token: tokenB });
+    const pulled = (await pull.json()) as { ops: { type: string }[] };
+    expect(pulled.ops.some((o) => o.type === "location.setPlan")).toBe(true);
+    expect(pulled.ops.some((o) => o.type === "location.setLayout")).toBe(true);
+  });
+
   test("revoked device can re-join with the SAME deviceId (sign-back-in)", async () => {
     const deviceId = crypto.randomUUID();
     const first = await call("POST", "/api/auth/join", {

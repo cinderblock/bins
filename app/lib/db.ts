@@ -201,6 +201,20 @@ db.version(13).upgrade((tx) =>
     }),
 );
 
+// v14: places gain a floor-plan position (`location.setLayout`) and spaces a
+// floor plan (`location.setPlan`). No index changes — the map reads every
+// place anyway. Backfill explicit nulls so replica rows match freshly-reduced
+// ones.
+db.version(14).upgrade((tx) =>
+  tx
+    .table("locations")
+    .toCollection()
+    .modify((row: Record<string, unknown>) => {
+      if (row.layout === undefined) row.layout = null;
+      if (row.plan === undefined) row.plan = null;
+    }),
+);
+
 // v12: a shelf can carry the string printed on its own sticker, so scanning
 // one files a box onto it. Indexed because put-away looks a place up by code
 // on every shelf scan. `code` is stored as typed (case preserved) and matched

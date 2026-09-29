@@ -18,7 +18,7 @@
  * - The primary photo is DERIVED — latest non-deleted contents_photo by
  *   (effectiveTime, id) — never a settable field, so it cannot conflict.
  */
-import type { CanonicalOp, EntryKind } from "./ops";
+import type { CanonicalOp, EntryKind, PlaceLayout, PlacePlan } from "./ops";
 
 /**
  * `deleted` is a tombstone an admin can set on a RETIRED box: the record is
@@ -166,6 +166,15 @@ export interface LocationState {
   /** What the shelf's own printed sticker says; null = it has none. */
   code: string | null;
   archived: boolean;
+  /**
+   * Where this place stands on its parent's floor plan; null = not placed.
+   * Its own `layout` clock — see the location.setLayout op for why. Readers
+   * must ignore it when `layout.parentId !== parentId` (placed in a parent
+   * it has since left).
+   */
+  layout: PlaceLayout | null;
+  /** This place's floor plan, when it is a space; own `plan` clock. */
+  plan: PlacePlan | null;
   fieldClocks: Record<string, string>;
 }
 
@@ -269,6 +278,27 @@ export function clockOf(op: Pick<CanonicalOp, "effectiveTime" | "opId">) {
  */
 function wins(next: string, prev: string | undefined): boolean {
   return prev === undefined || next >= prev;
+}
+
+/**
+ * A place nothing has described yet. The start of every get-or-create, so a
+ * field added to LocationState has exactly one default to add.
+ */
+function emptyLocation(id: string): LocationState {
+  return {
+    id,
+    name: "",
+    sortOrder: 0,
+    parentId: null,
+    cols: null,
+    rows: null,
+    span: null,
+    code: null,
+    archived: false,
+    layout: null,
+    plan: null,
+    fieldClocks: {},
+  };
 }
 
 function newBin(id: number, time: number): BinState {
@@ -660,16 +690,9 @@ export async function applyOp(
       const { locationId, name, sortOrder } = op.payload;
       const clock = clockOf(op);
       const location = (await store.getLocation(locationId)) ?? {
-        id: locationId,
+        ...emptyLocation(locationId),
         name,
         sortOrder,
-        parentId: null,
-        cols: null,
-        rows: null,
-        span: null,
-        code: null,
-        archived: false,
-        fieldClocks: {},
       };
       if (wins(clock, location.fieldClocks.value)) {
         location.name = name;
@@ -698,14 +721,7 @@ export async function applyOp(
       if (!location) {
         // archive before upsert: keep the flag, name arrives later via LWW.
         await store.putLocation({
-          id: locationId,
-          name: "",
-          sortOrder: 0,
-          parentId: null,
-          cols: null,
-          rows: null,
-          span: null,
-          code: null,
+          ...emptyLocation(locationId),
           archived,
           fieldClocks: { archived: clock },
         });
@@ -714,6 +730,35 @@ export async function applyOp(
       if (wins(clock, location.fieldClocks.archived)) {
         location.archived = archived;
         location.fieldClocks.archived = clock;
+        await store.putLocation(location);
+      }
+      return;
+    }
+
+    // Layout and plan are each one LWW value on their own clock. Like
+    // archive, either may arrive before the place's upsert and leaves a
+    // nameless stub the upsert fills in later.
+    case "location.setLayout": {
+      const { locationId, layout } = op.payload;
+      const clock = clockOf(op);
+      const location =
+        (await store.getLocation(locationId)) ?? emptyLocation(locationId);
+      if (wins(clock, location.fieldClocks.layout)) {
+        location.layout = layout;
+        location.fieldClocks.layout = clock;
+        await store.putLocation(location);
+      }
+      return;
+    }
+
+    case "location.setPlan": {
+      const { locationId, plan } = op.payload;
+      const clock = clockOf(op);
+      const location =
+        (await store.getLocation(locationId)) ?? emptyLocation(locationId);
+      if (wins(clock, location.fieldClocks.plan)) {
+        location.plan = plan;
+        location.fieldClocks.plan = clock;
         await store.putLocation(location);
       }
       return;

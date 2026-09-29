@@ -6,7 +6,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { MemoryStore } from "./memory-store";
-import type { CanonicalOp } from "./ops";
+import type { CanonicalOp, PlacePlan } from "./ops";
 import { applyOp, describedItems } from "./reducer";
 
 let uuidCounter = 0;
@@ -963,6 +963,173 @@ describe("structured locations", () => {
         },
       }),
     ]);
+  });
+});
+
+describe("floor plan", () => {
+  const space = "00000000-0000-4000-8000-00000000bb01";
+  const wall = "00000000-0000-4000-8000-00000000bb02";
+  const at = (x: number) => ({
+    parentId: space,
+    x,
+    y: 500,
+    rotation: 90,
+    width: 3600,
+    depth: 450,
+  });
+
+  test("a layout converges with the place's own edits, on its own clock", async () => {
+    // The reason setLayout is its own op: a rename that lands AFTER a drag
+    // must not undo the drag, and an old-client upsert (which knows nothing
+    // of layouts) must not wipe one.
+    const snapshot = await expectConvergence([
+      op({
+        type: "location.upsert",
+        effectiveTime: 1000,
+        payload: {
+          locationId: wall,
+          name: "North",
+          sortOrder: 0,
+          parentId: space,
+        },
+      }),
+      op({
+        type: "location.setLayout",
+        effectiveTime: 2000,
+        payload: { locationId: wall, layout: at(1200) },
+      }),
+      op({
+        type: "location.upsert",
+        effectiveTime: 3000,
+        payload: {
+          locationId: wall,
+          name: "North wall",
+          sortOrder: 0,
+          parentId: space,
+        },
+      }),
+    ] as CanonicalOp[]);
+    expect(snapshot).toContain('"name":"North wall"');
+    expect(snapshot).toContain('"x":1200');
+  });
+
+  test("two drags of one wall: the later wins, in any order", async () => {
+    const snapshot = await expectConvergence([
+      op({
+        type: "location.setLayout",
+        effectiveTime: 2000,
+        payload: { locationId: wall, layout: at(1200) },
+      }),
+      op({
+        type: "location.setLayout",
+        effectiveTime: 3000,
+        payload: { locationId: wall, layout: at(4800) },
+      }),
+      op({
+        type: "location.upsert",
+        effectiveTime: 1000,
+        payload: {
+          locationId: wall,
+          name: "North",
+          sortOrder: 0,
+          parentId: space,
+        },
+      }),
+    ] as CanonicalOp[]);
+    expect(snapshot).toContain('"x":4800');
+    expect(snapshot).not.toContain('"x":1200');
+    // A layout that outran its place still ends up on the named place.
+    expect(snapshot).toContain('"name":"North"');
+  });
+
+  test("taking a wall off the plan competes like any other write", async () => {
+    const snapshot = await expectConvergence([
+      op({
+        type: "location.setLayout",
+        effectiveTime: 2000,
+        payload: { locationId: wall, layout: at(1200) },
+      }),
+      op({
+        type: "location.setLayout",
+        effectiveTime: 3000,
+        payload: { locationId: wall, layout: null },
+      }),
+    ] as CanonicalOp[]);
+    expect(snapshot).toContain('"layout":null');
+  });
+
+  test("a space's plan and its archive flag don't clobber each other", async () => {
+    const plan: PlacePlan = {
+      scaled: true,
+      outline: [
+        [0, 0],
+        [10000, 0],
+        [10000, 6000],
+        [0, 6000],
+      ],
+      landmarks: [
+        {
+          id: "00000000-0000-4000-8000-00000000bb09",
+          kind: "door",
+          label: "Front",
+          x: 5000,
+          y: 6000,
+          rotation: 0,
+          width: 900,
+          depth: 100,
+        },
+      ],
+    };
+    const snapshot = await expectConvergence([
+      op({
+        type: "location.archive",
+        effectiveTime: 1000,
+        payload: { locationId: space, archived: true },
+      }),
+      op({
+        type: "location.setPlan",
+        effectiveTime: 2000,
+        payload: { locationId: space, plan },
+      }),
+      op({
+        type: "location.upsert",
+        effectiveTime: 1500,
+        payload: { locationId: space, name: "Warehouse", sortOrder: 0 },
+      }),
+      op({
+        type: "location.setPlan",
+        effectiveTime: 1800,
+        payload: { locationId: space, plan: null },
+      }),
+    ] as CanonicalOp[]);
+    expect(snapshot).toContain('"archived":true');
+    expect(snapshot).toContain('"name":"Warehouse"');
+    expect(snapshot).toContain('"label":"Front"');
+  });
+
+  test("a layout survives a reparent as data; readers decide it is stale", async () => {
+    // The reducer must not clear a layout when the parent changes — that
+    // would mean reading the parent inside the reducer and depending on
+    // order. The layout keeps recording which parent it was drawn in.
+    const snapshot = await expectConvergence([
+      op({
+        type: "location.setLayout",
+        effectiveTime: 2000,
+        payload: { locationId: wall, layout: at(1200) },
+      }),
+      op({
+        type: "location.upsert",
+        effectiveTime: 3000,
+        payload: {
+          locationId: wall,
+          name: "North",
+          sortOrder: 0,
+          parentId: null,
+        },
+      }),
+    ] as CanonicalOp[]);
+    expect(snapshot).toContain(`"parentId":"${space}"`);
+    expect(snapshot).toContain('"parentId":null');
   });
 });
 
