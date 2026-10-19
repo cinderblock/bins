@@ -109,24 +109,45 @@ function titleFit(
 }
 
 /**
- * Pixel size of an artwork as supplied, for fitting it into its box.
+ * Decode an artwork as supplied and re-encode it as a PNG sized for its box.
+ *
+ * The bytes decide the format, never the data URL's claim: satori trusts the
+ * declared type, and a JPEG labelled image/png — which is what Gemini's
+ * output was stored as — is dropped without an error. Re-encoding means
+ * satori only ever sees a PNG it can read, whatever arrived.
  *
  * Throws rather than returning null: a label that silently comes out without
  * the drawing someone chose is the worst outcome — they approve a preview
  * that looks whole, print stock, and only notice later. Whoever calls this
  * turns the throw into something the person can read.
  */
-async function imageSize(
+async function fitArt(
   dataUrl: string,
-): Promise<{ width: number; height: number }> {
+  boxW: number,
+  boxH: number,
+): Promise<{ src: string; width: number; height: number }> {
   const comma = dataUrl.indexOf(",");
   if (comma < 0) throw new Error("drawing is not a data URL");
-  const meta = await sharp(
-    Buffer.from(dataUrl.slice(comma + 1), "base64"),
-  ).metadata();
+  const input = Buffer.from(dataUrl.slice(comma + 1), "base64");
+  const meta = await sharp(input).metadata();
   if (!meta.width || !meta.height)
     throw new Error("drawing has no readable dimensions");
-  return { width: meta.width, height: meta.height };
+  // A box too small to draw in would scale the picture to nothing, which
+  // looks exactly like no picture at all. Say so instead.
+  if (boxW < 16 || boxH < 16) {
+    throw new Error(
+      `no room for the drawing on this label (${boxW}x${boxH}px left after the title and QR)`,
+    );
+  }
+  const scale = Math.min(boxW / meta.width, boxH / meta.height, 4);
+  const width = Math.max(1, Math.floor(meta.width * scale));
+  const height = Math.max(1, Math.floor(meta.height * scale));
+  const png = await sharp(input).resize(width, height).png().toBuffer();
+  return {
+    src: `data:image/png;base64,${png.toString("base64")}`,
+    width,
+    height,
+  };
 }
 
 /** Render to a PNG in the printer's portrait geometry. */
@@ -169,23 +190,9 @@ export async function renderLabel(
   // shrink an image to fit a flex box on its own.
   const artBoxW = inner - leftWidth - gap;
   const artBoxH = height - pad * 2 - titleHeight - Math.round(pad / 4);
-  let art: { src: string; width: number; height: number } | null = null;
-  if (content.artDataUrl) {
-    const size = await imageSize(content.artDataUrl);
-    // A box too small to draw in would scale the picture to nothing, which
-    // looks exactly like no picture at all. Say so instead.
-    if (artBoxW < 16 || artBoxH < 16) {
-      throw new Error(
-        `no room for the drawing on this label (${artBoxW}x${artBoxH}px left after the title and QR)`,
-      );
-    }
-    const scale = Math.min(artBoxW / size.width, artBoxH / size.height, 4);
-    art = {
-      src: content.artDataUrl,
-      width: Math.max(1, Math.floor(size.width * scale)),
-      height: Math.max(1, Math.floor(size.height * scale)),
-    };
-  }
+  const art = content.artDataUrl
+    ? await fitArt(content.artDataUrl, artBoxW, artBoxH)
+    : null;
 
   const qrSrc =
     !isArt && content.url ? await qrPngDataUrl(content.url, qrSize) : null;

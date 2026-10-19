@@ -169,6 +169,55 @@ describe("label rendering", () => {
     expect(withArt).toBeGreaterThan(without * 2);
   });
 
+  test("a JPEG drawing lands too, whatever its data URL claims", async () => {
+    // Gemini's image models answer in JPEG, and saved drawings reached the
+    // renderer labelled image/png. satori believed the label and the drawing
+    // vanished without an error, so a box's chosen picture printed as blank
+    // paper while the label reported it as "saved". The bytes decide the
+    // format, never the URL's claim.
+    const drawing = await sharp({
+      create: {
+        width: 600,
+        height: 400,
+        channels: 3,
+        background: "#ffffff",
+      },
+    })
+      .composite([
+        {
+          input: Buffer.from(
+            `<svg width="600" height="400"><circle cx="300" cy="200" r="160" fill="black"/></svg>`,
+          ),
+          top: 0,
+          left: 0,
+        },
+      ])
+      .jpeg()
+      .toBuffer();
+    const ink = async (png: Buffer) => {
+      const { data } = await sharp(png)
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      let dark = 0;
+      for (let i = 0; i < data.length; i++) if ((data[i] ?? 255) < 128) dark++;
+      return dark;
+    };
+    const content = {
+      template: "qr" as const,
+      title: "Garden hoses",
+      url: "HTTPS://EXAMPLE/B/ABC#QQQQ",
+      lines: ["Green", "Two lengths"],
+    };
+    const without = await ink(await renderLabel(content, FOUR_BY_SIX));
+    for (const claimed of ["image/png", "image/jpeg"]) {
+      const artDataUrl = `data:${claimed};base64,${drawing.toString("base64")}`;
+      const withArt = await ink(
+        await renderLabel({ ...content, artDataUrl }, FOUR_BY_SIX),
+      );
+      expect(withArt).toBeGreaterThan(without * 2);
+    }
+  });
+
   test("a drawing it cannot read fails loudly rather than printing blank", async () => {
     // Dropping it in silence is the worst outcome: a preview that looks
     // whole, physical stock committed, and nobody the wiser until later.

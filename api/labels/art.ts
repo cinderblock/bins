@@ -12,6 +12,7 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import sharp from "sharp";
 import { sha256Hex } from "../context";
 
 /** Per-image USD cost, so a budget can be enforced before spending it. */
@@ -224,6 +225,24 @@ export async function generateArt(request: ArtRequest): Promise<string> {
   return `data:image/png;base64,${png.toString("base64")}`;
 }
 
+const PNG_SIGNATURE = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
+
+/**
+ * Make the bytes the PNG everything downstream says they are.
+ *
+ * Gemini's image models answer in JPEG. Everything after this point — the
+ * blob store's content type, every data URL, the label renderer — calls the
+ * result a PNG, and satori believes the label: a JPEG called image/png is
+ * dropped from the label without an error. Converting here keeps the name
+ * honest instead of teaching every consumer to sniff.
+ */
+async function asPng(image: Buffer): Promise<Buffer> {
+  if (image.subarray(0, 8).equals(PNG_SIGNATURE)) return image;
+  return sharp(image).png().toBuffer();
+}
+
 /**
  * Generate (or reuse) line art.
  *
@@ -254,12 +273,16 @@ export async function generateArtPng(request: ArtRequest): Promise<{
   const cachePath = join(artCacheDir(), `${cacheKey}.png`);
   const cost = MODEL_PRICING[model] ?? 0;
 
+  let cached: Buffer | null = null;
   try {
-    const cached = readFileSync(cachePath);
-    return { png: cached, cached: true, model, costUsd: cost };
+    cached = readFileSync(cachePath);
   } catch {
     // Not cached yet — fall through and generate.
   }
+  // Re-encoded on the way out too: entries written before asPng existed hold
+  // the provider's JPEG under a .png name.
+  if (cached)
+    return { png: await asPng(cached), cached: true, model, costUsd: cost };
 
   const budget = artBudgetUsd();
   if (budget !== null && spentThisMonth() + cost > budget) {
@@ -274,7 +297,9 @@ export async function generateArtPng(request: ArtRequest): Promise<{
   // with nothing to show for it.
   recordSpend(cost);
   try {
-    const png = await callProvider(model, key, prompt, request.references);
+    const png = await asPng(
+      await callProvider(model, key, prompt, request.references),
+    );
     mkdirSync(dirname(cachePath), { recursive: true });
     writeFileSync(cachePath, png);
     return { png, cached: false, model, costUsd: cost };

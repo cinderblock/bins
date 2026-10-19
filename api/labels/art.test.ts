@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
+import sharp from "sharp";
 import {
   ArtBudgetError,
   ArtInputError,
@@ -119,6 +120,45 @@ describe("generation", () => {
     expect(url.startsWith("data:image/png;base64,")).toBe(true);
     expect(calls).toBe(1);
     expect(spentThisMonth()).toBeCloseTo(0.039, 5);
+  });
+
+  test("a JPEG from the provider comes back as the PNG it is called", async () => {
+    // Gemini's image models answer in JPEG. Stored and labelled as PNG
+    // unconverted, the label renderer dropped it without a word.
+    const jpeg = await sharp({
+      create: { width: 8, height: 8, channels: 3, background: "#000000" },
+    })
+      .jpeg()
+      .toBuffer();
+    stubProvider(
+      () =>
+        new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      inlineData: {
+                        mimeType: "image/jpeg",
+                        data: jpeg.toString("base64"),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    for (let i = 0; i < 2; i++) {
+      // Second pass is the cache, which must be just as honest.
+      const url = await generateArt({ title: "Nuts" });
+      const bytes = Buffer.from(url.slice(url.indexOf(",") + 1), "base64");
+      expect((await sharp(bytes).metadata()).format).toBe("png");
+    }
+    expect(calls).toBe(1);
   });
 
   test("identical requests reuse the cached image and cost nothing", async () => {
