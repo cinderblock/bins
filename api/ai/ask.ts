@@ -1,3 +1,6 @@
+import { and, eq, inArray } from "drizzle-orm";
+import { z } from "zod";
+import { db, schema } from "../../db/client.server";
 /**
  * The two questions people actually ask in a storage space:
  *
@@ -11,9 +14,7 @@
  * person taps through to the box and acts. Nothing here authors an op.
  */
 import { locationLabel } from "../../shared/locations";
-import { and, eq, inArray } from "drizzle-orm";
-import { z } from "zod";
-import { db, schema } from "../../db/client.server";
+import { boxNumbers } from "../config";
 import { type Ctx, error, json } from "../context";
 import { jevAvailable } from "../jev/client";
 import { type FitCandidate, verifyFit } from "../jev/fit";
@@ -116,6 +117,15 @@ Rules:
 - If nothing plausibly matches, return an empty list and say so rather than reaching for the least-bad box.
 - Say where each box physically is, when that is recorded — the point is to walk to it.
 - Be brief. The answer is read standing up, on a phone.`;
+
+/**
+ * Where box numbers are internal (config.boxNumbers), nobody can see one:
+ * "it's in box 16" names something that is printed nowhere and shown
+ * nowhere. The number still rides `id`, which is what becomes the link.
+ * Fixed per deployment, so it stays a stable layer.
+ */
+export const INTERNAL_NUMBERS_RULE = `BOX NUMBERS ARE HIDDEN HERE
+The people asking never see box numbers; boxes are known by their names. In "answer", "reason" and "newBoxReason", refer to a box by its name, never by its number. Call a box with no name "an unnamed box". Box numbers belong only in the "id" field.`;
 
 /**
  * Per-device ceiling, alongside the money one.
@@ -272,6 +282,8 @@ export async function handleAsk(
 
   const framing = kind === "place" ? PLACE_FRAMING : FIND_FRAMING;
   const layers: AiLayer[] = [{ stable: true, text: framing }];
+  if (boxNumbers() === "internal")
+    layers.push({ stable: true, text: INTERNAL_NUMBERS_RULE });
   // The group's own conventions outrank everything the model assumes about
   // what belongs with what — and they are the one thing it cannot infer.
   if (group.sortingNotes?.trim()) {
