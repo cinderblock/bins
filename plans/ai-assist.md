@@ -344,7 +344,19 @@ model, spend and `jev.available` without spending anything.
       member-facing with a cap.
 - [x] Built (2026-09-20): all of steps 1-6. `bun run typecheck`, `bun test`
       (208 pass) and Biome clean on every touched file.
-- [ ] **Never exercised against a live provider.** Every test is hermetic —
+- [x] **First live answers 2026-10-19** (Gemini `gemini-3.6-flash` + Jev),
+      on a small real catalog. Every path returned 200 in 3-5 s for ~$0.0023
+      per question. Routing: "where are the temperature sensors" → find @0.86;
+      "ATmega328 breakout board, which box" → place @0.98; "new box of drill
+      bits" declined in 0.2 s, spending nothing (as designed). The FIND
+      shortlist narrowed to the one matching box. "a kayak paddle" correctly
+      got "start a new box". `cachedInputTokens` was 0 throughout: the catalog
+      is far below Gemini's implicit-cache minimum, as expected.
+      One defect found and fixed (`be55384`): on `BOX_NUMBERS=internal` the
+      prose said "box 16", a number nobody can see; a stable layer now
+      tells the model to name boxes instead.
+- [x] ~~**Never exercised against a live provider.**~~ Superseded by the line
+      above. Kept for history: every test is hermetic —
       no key was used, so the three request shapes are written from each
       vendor's documentation and have not had a real 200 back. First run with
       a real key is the actual acceptance test. Watch for: Gemini's

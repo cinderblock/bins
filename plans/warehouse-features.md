@@ -207,6 +207,19 @@ The new-box flow becomes one screen modelled on the label generator:
 - The art key is `GEMINI_API_KEY` (renamed 2026-09-20 from the neutral
   `LABEL_ART_API_KEY`): every model the module can call is Google's, and a
   neutral name only hid which account gets billed.
+- **Gemini's image models return JPEG, and saved drawings printed blank
+  (found 2026-10-19, fixed `e78668b`).** Everything after the provider call
+  called the bytes a PNG (art cache filenames, blob content type, the data
+  URL given to satori). satori trusts the declared type and drops a JPEG
+  labelled `image/png` *without an error*, so the label came out with an
+  empty art area while the response said `X-Bins-Label-Art: saved`. The
+  studio never showed it: the browser sniffs the real format, so the picker
+  and thumbnail looked right. The "drawing lands" test used a PNG, which is
+  why it passed. Now the renderer re-encodes whatever it's given to a PNG
+  sized for the art box, which covers drawings already saved as JPEG.
+  Generation converts to PNG before caching and on legacy cache reads.
+  **Lesson:** test with the format the provider actually returns, not a
+  hand-made fixture.
 
 ## Decisions from the operator (2026-09-19)
 
