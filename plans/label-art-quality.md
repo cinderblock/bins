@@ -73,8 +73,10 @@ LabelPrinter repo), which does not have these problems in day-to-day use.
        Browser-verified on a throwaway db (`bun run dev`, fake key, stubbed
        art response): image paste adds a reference, text paste is untouched,
        tiles remove, and the saved drawing clears to `labelArtHash: null`.
-7. [ ] **Current:** deploy (ops pin needs the operator's yes), then one
-       real generation on the store to see the pipeline live.
+7. [ ] **Current:** deploy. The pin is staged (operator specifics in
+       `plans/*.local.md`) and needs the operator's yes. Then one real
+       generation to see the pipeline live: check `textRemoved`, the
+       monochrome result, and the latency the text check adds.
 8. [ ] Optional follow-ups for the operator to choose: aspect ratio fitted
        to the art box (LabelPi does this; we always ask 3:2); a persisted
        history of recent candidates per box (LabelPi keeps 20 in
