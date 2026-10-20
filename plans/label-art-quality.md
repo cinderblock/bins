@@ -73,10 +73,12 @@ LabelPrinter repo), which does not have these problems in day-to-day use.
        Browser-verified on a throwaway db (`bun run dev`, fake key, stubbed
        art response): image paste adds a reference, text paste is untouched,
        tiles remove, and the saved drawing clears to `labelArtHash: null`.
-7. [ ] **Current:** deploy. The pin is staged (operator specifics in
-       `plans/*.local.md`) and needs the operator's yes. Then one real
-       generation to see the pipeline live: check `textRemoved`, the
-       monochrome result, and the latency the text check adds.
+7. [x] Deployed 2026-10-19 at the operator's yes (operator specifics in
+       `plans/*.local.md`). Live check via production `generateArtPng`,
+       subject "ODrive — Official, Knockoff, ODESC": `textRemoved: 11`, no
+       captions left, 1-channel PNG, 7.4 s for generation and check
+       together. The third board's dark fill thresholded to solid black,
+       the case behind follow-up 8's third item.
 8. [ ] Optional follow-ups for the operator to choose: aspect ratio fitted
        to the art box (LabelPi does this; we always ask 3:2); a persisted
        history of recent candidates per box (LabelPi keeps 20 in
