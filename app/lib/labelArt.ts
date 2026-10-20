@@ -15,6 +15,8 @@ export type ArtStatus = {
   defaultModel: string;
   spentUsd: number;
   budgetUsd: number | null;
+  /** The "3 variations" directions: what to send, and what to call it. */
+  variants: { id: string; label: string }[];
 };
 
 export async function fetchArtStatus(
@@ -96,6 +98,8 @@ export async function generateLabelArt(
     instructions?: string | null;
     references?: ArtReference[];
     nonce?: string;
+    /** One of ArtStatus.variants; omitted = a plain drawing. */
+    variant?: string;
   },
 ): Promise<ArtResult> {
   const result = await apiJson<ArtResult>("/api/admin/bins/art", {
@@ -112,6 +116,7 @@ export async function generateLabelArt(
         data: r.data,
       })),
       nonce: options.nonce,
+      variant: options.variant,
     }),
   });
   const bytes = await (await fetch(result.dataUrl)).blob();

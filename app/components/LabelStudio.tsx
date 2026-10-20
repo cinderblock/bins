@@ -84,6 +84,8 @@ type Candidate = {
   model: string;
   /** Words painted out of the drawing; null = the check didn't run. */
   textRemoved: number | null;
+  /** Which "3 variations" direction made it; null = a plain Generate. */
+  variantLabel: string | null;
 };
 
 /** The little a studio needs to know about its box once it has one. */
@@ -232,9 +234,23 @@ export function LabelStudio({
     };
   }
 
-  /** The box, allocating one if this studio has none yet. */
-  async function ensureBox(): Promise<BoxIdentity> {
-    if (boxRef.current) return boxRef.current;
+  /**
+   * The box, allocating one if this studio has none yet. Concurrent callers
+   * share one allocation: two quick taps on Generate, or "3 variations",
+   * must not each allocate a box of their own.
+   */
+  const allocatingRef = useRef<Promise<BoxIdentity> | null>(null);
+  function ensureBox(): Promise<BoxIdentity> {
+    if (boxRef.current) return Promise.resolve(boxRef.current);
+    if (!allocatingRef.current) {
+      allocatingRef.current = allocateBox().finally(() => {
+        allocatingRef.current = null;
+      });
+    }
+    return allocatingRef.current;
+  }
+
+  async function allocateBox(): Promise<BoxIdentity> {
     const response = await apiJson<{
       bins: { id: number; handle: string | null; code: string | null }[];
     }>("/api/admin/bins/allocate", {
@@ -259,8 +275,18 @@ export function LabelStudio({
    * exist. The first write of a new box is its claim; every later write is a
    * setFields carrying only changed keys, so a field left alone can never
    * clobber another device's newer value. Returns once the server has it.
+   *
+   * One at a time: two overlapping flushes would both see the box unclaimed
+   * and both claim it, or both diff against the same "last written".
    */
-  async function flush(): Promise<BoxIdentity> {
+  const flushChainRef = useRef<Promise<unknown>>(Promise.resolve());
+  function flush(): Promise<BoxIdentity> {
+    const next = flushChainRef.current.then(flushNow, flushNow);
+    flushChainRef.current = next.catch(() => {});
+    return next;
+  }
+
+  async function flushNow(): Promise<BoxIdentity> {
     const target = await ensureBox();
     const next = currentFields();
     if (!claimedRef.current) {
@@ -386,7 +412,7 @@ export function LabelStudio({
    * and the person picks. The request carries the title, subtext and
    * instructions as typed right now.
    */
-  async function generate() {
+  async function generate(variant?: { id: string; label: string }) {
     if (!name.trim()) {
       notifications.show({ message: "Give the box a title first" });
       return;
@@ -403,6 +429,7 @@ export function LabelStudio({
         error: null,
         model: chosenModel,
         textRemoved: null,
+        variantLabel: variant?.label ?? null,
       },
     ]);
     try {
@@ -414,6 +441,7 @@ export function LabelStudio({
         instructions: artPrompt.trim() || null,
         references,
         nonce: id,
+        variant: variant?.id,
       });
       setCandidates((prev) =>
         prev.map((c) =>
@@ -449,6 +477,15 @@ export function LabelStudio({
         ),
       );
     }
+  }
+
+  /**
+   * Three pictures at once, each asked a different way (ArtStatus.variants),
+   * so they differ in kind rather than by luck. Safe to fire together:
+   * ensureBox and flush each run once however many callers overlap.
+   */
+  function generateVariations() {
+    for (const variant of art?.variants ?? []) void generate(variant);
   }
 
   async function save(then: "done" | "print") {
@@ -664,6 +701,24 @@ export function LabelStudio({
                 {candidates.length === 0 ? "Generate" : "Another one"}
               </Button>
             </Group>
+            {art.variants.length > 0 && (
+              <Button
+                variant="light"
+                leftSection={<IconSparkles size={16} />}
+                rightSection={
+                  modelInfo ? (
+                    <Badge size="xs" variant="light" color="gray">
+                      {formatUsd(modelInfo.usd * art.variants.length)}
+                    </Badge>
+                  ) : undefined
+                }
+                onClick={generateVariations}
+                disabled={!name.trim() || serverDown}
+              >
+                {art.variants.length} variations:{" "}
+                {art.variants.map((v) => v.label.toLowerCase()).join(", ")}
+              </Button>
+            )}
             {pending > 0 && (
               <Text size="xs" c="dimmed">
                 {pending} drawing{pending === 1 ? "" : "s"} on the way…
@@ -731,6 +786,11 @@ export function LabelStudio({
                         </ActionIcon>
                       )}
                     </div>
+                    {c.variantLabel && (
+                      <Text size="xs" fw={500} ta="center" lh={1.2}>
+                        {c.variantLabel}
+                      </Text>
+                    )}
                     {c.status === "done" && c.textRemoved !== 0 && (
                       <Text size="xs" c="dimmed" ta="center" lh={1.2}>
                         {c.textRemoved === null

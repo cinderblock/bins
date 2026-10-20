@@ -14,9 +14,11 @@ import { db, schema } from "../db/client.server";
 import { storeBlob } from "./blobs";
 import { type Ctx, error, json } from "./context";
 import {
+  ART_VARIANT_KEYS,
   ArtBudgetError,
   ArtInputError,
   ArtUnavailableError,
+  type ArtVariant,
   artStatus,
   generateArtPng,
 } from "./labels/art";
@@ -48,6 +50,8 @@ export const artRequestSchema = z.object({
    * (a reprint of the SAME choice stays free).
    */
   nonce: z.string().max(64).nullish(),
+  /** One of ART_VARIANTS (labels/art.ts): a direction, by name. */
+  variant: z.enum(ART_VARIANT_KEYS as [ArtVariant, ...ArtVariant[]]).nullish(),
 });
 export type ArtRequestInput = z.infer<typeof artRequestSchema>;
 
@@ -85,6 +89,7 @@ export async function handleArt(
       references: input.references,
       model: input.model,
       nonce: input.nonce ?? undefined,
+      variant: input.variant ?? undefined,
     });
     // Into the group's blob store so every device can fetch it by hash and
     // the service worker caches it like any photo.

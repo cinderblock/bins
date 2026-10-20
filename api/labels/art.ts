@@ -52,6 +52,7 @@ const SYSTEM_PROMPT = `Generate a simple black and white line drawing of the sub
 - Pure white background, black line art only — no greys, no gradients, no shading fills
 - NO text, letters, numbers, or symbols anywhere in the image. Never label, caption or name anything — when the subject lists several kinds, tell them apart by their shape, not with words
 - NO borders or frames
+- Prefer an isometric view, seen from above at three-quarters: it shows an object's shape best
 - Clean, bold outlines: thicker lines (5-10px) for key shapes, thinner (2-5px) for fine detail
 - Simple and uncluttered — focus on the subject, no background scenery
 - Subject fully contained in the image, not cropped by the edges
@@ -60,6 +61,32 @@ const SYSTEM_PROMPT = `Generate a simple black and white line drawing of the sub
 
 const REFERENCES_NOTE =
   "- Any additional images provided are style references only — take inspiration, don't copy them";
+
+/**
+ * Directions for "3 variations": the same subject asked three distinct ways,
+ * so the three pictures differ in kind rather than by chance. A plain
+ * Generate sends none and gets the rules alone. Keyed so the client sends a
+ * name, never prompt text, and the label is what its tile says.
+ */
+export const ART_VARIANTS = {
+  group: {
+    label: "Side by side",
+    direction:
+      "Isometric view, one of each kind side by side, evenly spaced and all the same scale",
+  },
+  closeup: {
+    label: "Close-up",
+    direction:
+      "Isometric view of one representative item, large enough to fill the frame, with its defining details clear",
+  },
+  icon: {
+    label: "Flat icon",
+    direction:
+      "This time not isometric: a flat, straight-on front view, bold and simple like an icon, fewest lines that still read",
+  },
+} as const;
+export type ArtVariant = keyof typeof ART_VARIANTS;
+export const ART_VARIANT_KEYS = Object.keys(ART_VARIANTS) as ArtVariant[];
 
 /** A reference picture, already downscaled by the client to a style hint. */
 export type ArtReference = {
@@ -81,6 +108,8 @@ export type ArtRequest = {
   model?: string;
   /** Different nonce, different picture — see generateArtPng. */
   nonce?: string | null;
+  /** One of ART_VARIANTS; omitted = the rules alone. */
+  variant?: ArtVariant | null;
 };
 
 /**
@@ -113,6 +142,8 @@ export function artStatus(): {
   defaultModel: string;
   spentUsd: number;
   budgetUsd: number | null;
+  /** The "3 variations" directions, by name and tile label. */
+  variants: { id: ArtVariant; label: string }[];
 } {
   const def = artModel();
   const models = ART_MODELS.some((m) => m.id === def)
@@ -127,6 +158,10 @@ export function artStatus(): {
     defaultModel: def,
     spentUsd: spentThisMonth(),
     budgetUsd: artBudgetUsd(),
+    variants: ART_VARIANT_KEYS.map((id) => ({
+      id,
+      label: ART_VARIANTS[id].label,
+    })),
   };
 }
 
@@ -169,7 +204,12 @@ export function buildSubject(request: ArtRequest): string {
 /** The full prompt: the style rules, then the subject. */
 export function buildPrompt(request: ArtRequest): string {
   const style = request.references?.length ? `\n${REFERENCES_NOTE}` : "";
-  return `${SYSTEM_PROMPT}${style}\n\nSubject: ${buildSubject(request)}`;
+  // Last among the rules, so it can overrule the general preference (the
+  // icon variant is deliberately not isometric).
+  const variant = request.variant
+    ? `\n- ${ART_VARIANTS[request.variant].direction}`
+    : "";
+  return `${SYSTEM_PROMPT}${style}${variant}\n\nSubject: ${buildSubject(request)}`;
 }
 
 /**

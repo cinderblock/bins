@@ -7,6 +7,8 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
 import {
+  ART_VARIANTS,
+  ART_VARIANT_KEYS,
   ArtBudgetError,
   ArtInputError,
   ArtUnavailableError,
@@ -127,6 +129,19 @@ describe("prompt", () => {
     // The constraints that keep a thermal print legible.
     expect(prompt).toContain("no greys");
     expect(prompt).toContain("NO text");
+  });
+
+  test("isometric is the house style; a variant's direction comes last and can overrule it", () => {
+    const plain = buildPrompt({ title: "ODrive" });
+    expect(plain).toContain("isometric view");
+    for (const id of ART_VARIANT_KEYS) {
+      const varied = buildPrompt({ title: "ODrive", variant: id });
+      const rules = varied.slice(0, varied.indexOf("\n\nSubject:"));
+      // The last rule, so "not isometric" for the icon wins over the default.
+      expect(rules.endsWith(`- ${ART_VARIANTS[id].direction}`)).toBe(true);
+      expect(varied).toContain("Subject: ODrive");
+    }
+    expect(plain).not.toContain(ART_VARIANTS.icon.direction);
   });
 
   test("a blank title is refused rather than drawn as a generic box", () => {
@@ -314,6 +329,14 @@ describe("generation", () => {
     expect(calls).toBe(2);
     await generateArt({ title: "Nuts", nonce: "second" });
     expect(calls).toBe(2);
+  });
+
+  test("each variant is its own picture, not a cache hit on the plain one", async () => {
+    stubProvider();
+    await generateArt({ title: "Nuts" });
+    await generateArt({ title: "Nuts", variant: "closeup" });
+    await generateArt({ title: "Nuts", variant: "icon" });
+    expect(calls).toBe(3);
   });
 
   test("reference pictures are sent inline, after the prompt", async () => {
