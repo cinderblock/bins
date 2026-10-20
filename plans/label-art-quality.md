@@ -49,6 +49,33 @@ LabelPrinter repo), which does not have these problems in day-to-day use.
   and ~2-4 s per drawing. Charged to the label-art ledger. If the check
   fails, the drawing is still kept, and the studio says it couldn't check.
 
+### Round 2 (operator answers, 2026-10-20)
+
+- **Don't change the aspect ratio** we request (stays 3:2), "but yes" to
+  fitting the label better. Read as: trim the drawing's white margins so
+  it scales up into the art box, never distorted. (If that reading is
+  wrong, the trim is one function in `mono.ts` to drop.)
+- **Per-box history: yes.** A server-side `label_art` table (admin-only,
+  like generation), not the op log. Reasons: art is online-only by nature
+  (generation needs the server), so offline sync buys nothing. Entries
+  were the alternative, and they're consumed in ~30 places that assume
+  "contents of the box" (gallery, search, captions, catalog, v1 API), so a
+  new kind would leak drawings into all of them. `labelArtHash` on the bin
+  stays the one synced, printed choice.
+- **Dark fills: a slider** ("or a slider?"). It's a threshold control
+  ("Darkness"), because a 1-bit label has no grey; it can only move the
+  cut. Each drawing keeps its pre-threshold greyscale source blob. The
+  studio previews the cut client-side (exactly: a single-channel image,
+  `v >= T`, the same rule sharp's `threshold` uses), and on release the
+  server re-cuts the source and stores a new mono blob, so `labelArtHash`
+  stays exactly what prints.
+- **Prompt prefers isometric views** ("we like isometric views a lot").
+- **"2-3 different pictures with distinct options":** a "3 variations"
+  button: three generations at once, each with a different direction
+  (side by side / close-up / flat icon), labelled on their tiles.
+- Reprinting Environment Sensors: the operator handles reprints; drop it.
+- ISSUES.md entries: leave for other threads.
+
 ## Plan / steps
 
 1. [x] Read the LabelPi survey (background agent) and note real differences.
@@ -79,11 +106,31 @@ LabelPrinter repo), which does not have these problems in day-to-day use.
        captions left, 1-channel PNG, 7.4 s for generation and check
        together. The third board's dark fill thresholded to solid black,
        the case behind follow-up 8's third item.
-8. [ ] Optional follow-ups for the operator to choose: aspect ratio fitted
-       to the art box (LabelPi does this; we always ask 3:2); a persisted
-       history of recent candidates per box (LabelPi keeps 20 in
-       IndexedDB); a gentler colour treatment than a hard threshold for dark
-       fills.
+8. [x] Follow-ups put to the operator. Answers are in "Round 2" above.
+
+Round 2:
+
+9. [x] Isometric in the rules; `ART_VARIANTS` (group / closeup / icon)
+       placed last among the rules so "icon" can overrule isometric; a
+       "3 variations" button (`953510e`). Also fixed: overlapping
+       generations on a NEW box each allocated a box, and overlapping
+       saves each claimed it. Allocation is now shared, and flushes are
+       serialized.
+10. [x] Margin trim (`6829cb6`): `toSource` (flatten, greyscale, trim
+        tolerance 30) at generation, and `fitMonochrome` at the render
+        boundary. On Environment Sensors the drawing renders visibly
+        larger in the same box.
+11. [x] `label_art` table (migration 0021, additive), plus history, cut and
+        remove endpoints (`d0c38c1`). The list is newest first, with
+        `rowid` breaking same-millisecond ties.
+12. [x] Studio (`9657a21`): history tiles, persistent ✕, and a Darkness
+        slider (16-240, step 4) with an on-device preview and a queued
+        server re-cut. Browser-tested on a throwaway db seeded through the
+        real pipeline (`%TEMP%/bins-scripts/seed-history.ts`). The first
+        try disabled the slider during a cut, and only 5 of 12 keyboard
+        presses landed; with commits queued instead, all 12 did.
+13. [ ] **Current:** deploy (needs the operator's yes), then a live check:
+        one "3 variations" run on the store.
 
 ## Findings / gotchas
 
