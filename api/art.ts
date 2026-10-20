@@ -95,6 +95,7 @@ export async function handleArt(
       dataUrl: `data:image/png;base64,${result.png.toString("base64")}`,
       cached: result.cached,
       model: result.model,
+      textRemoved: result.textRemoved,
       costUsd: result.cached ? 0 : result.costUsd,
       spentUsd: status.spentUsd,
       budgetUsd: status.budgetUsd,

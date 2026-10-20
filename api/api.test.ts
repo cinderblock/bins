@@ -1972,7 +1972,17 @@ describe("open access", () => {
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
     let providerCalls = 0;
     const realFetch = globalThis.fetch;
-    globalThis.fetch = (async () => {
+    globalThis.fetch = (async (url: unknown) => {
+      // The text check after each drawing (labels/detext.ts): finds none.
+      if (String(url).includes("/gemini-3.6-flash:"))
+        return new Response(
+          JSON.stringify({
+            candidates: [
+              { content: { parts: [{ text: JSON.stringify({ texts: [] }) }] } },
+            ],
+          }),
+          { status: 200 },
+        );
       providerCalls++;
       return new Response(
         JSON.stringify({

@@ -73,6 +73,8 @@ export type ArtResult = {
   dataUrl: string;
   cached: boolean;
   model: string;
+  /** Pieces of text painted out of the drawing; null = couldn't check. */
+  textRemoved: number | null;
   costUsd: number;
   spentUsd: number;
   budgetUsd: number | null;

@@ -32,6 +32,7 @@ import { createRequire } from "node:module";
 import QRCode from "qrcode";
 import satori, { type SatoriOptions } from "satori";
 import sharp from "sharp";
+import { toMonochrome } from "./mono";
 import type { LabelContent, LabelGeometry } from "./spec";
 
 const require = createRequire(import.meta.url);
@@ -142,7 +143,9 @@ async function fitArt(
   const scale = Math.min(boxW / meta.width, boxH / meta.height, 4);
   const width = Math.max(1, Math.floor(meta.width * scale));
   const height = Math.max(1, Math.floor(meta.height * scale));
-  const png = await sharp(input).resize(width, height).png().toBuffer();
+  // Black and white at the size it prints: scaling brings back grey edges,
+  // and a drawing saved before generation thresholded is still in colour.
+  const png = await toMonochrome(input, { width, height });
   return {
     src: `data:image/png;base64,${png.toString("base64")}`,
     width,
