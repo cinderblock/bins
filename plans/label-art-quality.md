@@ -129,8 +129,18 @@ Round 2:
         real pipeline (`%TEMP%/bins-scripts/seed-history.ts`). The first
         try disabled the slider during a cut, and only 5 of 12 keyboard
         presses landed; with commits queued instead, all 12 did.
-13. [ ] **Current:** deploy (needs the operator's yes), then a live check:
-        one "3 variations" run on the store.
+13. [x] Deployed 2026-10-20 at the operator's yes. Another thread had
+        just pushed an unrelated ops change. The per-server deploy jobs
+        have `cancel-in-progress: true`, so I waited for their run to
+        finish before pushing, rather than cancel it mid-deploy. Live
+        "3 variations" on the ODrive box: all 200, 5.7 s in parallel, pure
+        B/W, trimmed, text removed (0/3/3). Side by side and Flat icon did
+        as asked. **Close-up drew three boards**: the subtext's three kinds
+        beat "one representative item".
+14. [x] Close-up direction firmed to "exactly ONE item, even if the
+        subject lists several kinds" (`af8674c`). 3 of 3 live tries drew
+        one board.
+15. [ ] **Current:** deploy `af8674c` (needs the operator's yes).
 
 ## Findings / gotchas
 
