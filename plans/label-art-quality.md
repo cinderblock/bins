@@ -63,10 +63,23 @@ LabelPrinter repo), which does not have these problems in day-to-day use.
        no harm).
        The text model's URL is distinct (`/gemini-3.6-flash:`), so test
        stubs route on it (`art.test.ts`, `api.test.ts`).
-5. [ ] Paste references (paste event + a Paste button), with any
-       downscaling unchanged.
-6. [ ] Remove a candidate from the strip, and clear the box's chosen drawing.
-7. [ ] Typecheck/test/lint, commit, deploy (ops pin needs the operator's yes).
+5. [x] Paste references: a document `paste` listener (image items only, so
+       text pastes into fields pass through) plus a Paste button using
+       `navigator.clipboard.read()` for phones. Downscaling unchanged.
+6. [x] A ✕ on every finished or failed candidate tile (removing the chosen
+       one clears the label's drawing), plus "Remove the drawing from this
+       label" under the preview for the box's saved drawing. Each tile
+       notes "Text removed in N places" or "Not checked for text".
+       Browser-verified on a throwaway db (`bun run dev`, fake key, stubbed
+       art response): image paste adds a reference, text paste is untouched,
+       tiles remove, and the saved drawing clears to `labelArtHash: null`.
+7. [ ] **Current:** deploy (ops pin needs the operator's yes), then one
+       real generation on the store to see the pipeline live.
+8. [ ] Optional follow-ups for the operator to choose: aspect ratio fitted
+       to the art box (LabelPi does this; we always ask 3:2); a persisted
+       history of recent candidates per box (LabelPi keeps 20 in
+       IndexedDB); a gentler colour treatment than a hard threshold for dark
+       fills.
 
 ## Findings / gotchas
 

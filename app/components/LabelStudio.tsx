@@ -27,7 +27,6 @@ import {
   Alert,
   Badge,
   Button,
-  Center,
   Divider,
   FileButton,
   Group,
@@ -45,10 +44,12 @@ import { notifications } from "@mantine/notifications";
 import type { BinFields } from "@shared/ops";
 import type { BinState } from "@shared/reducer";
 import {
+  IconClipboard,
   IconInfoCircle,
   IconPhotoUp,
   IconPrinter,
   IconSparkles,
+  IconTrash,
   IconX,
 } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
@@ -81,6 +82,8 @@ type Candidate = {
   dataUrl: string | null;
   error: string | null;
   model: string;
+  /** Words painted out of the drawing; null = the check didn't run. */
+  textRemoved: number | null;
 };
 
 /** The little a studio needs to know about its box once it has one. */
@@ -315,6 +318,68 @@ export function LabelStudio({
     setReferences((prev) => [...prev, ...made].slice(0, MAX_REFERENCES));
   }
 
+  // Paste a picture anywhere on the studio to make it a reference, as the
+  // label generator does. Only when the clipboard holds an image: a text
+  // paste into the title or subtext must reach the field untouched. Through
+  // a ref so the listener, registered once, always sees the current count.
+  const addReferencesRef = useRef(addReferences);
+  addReferencesRef.current = addReferences;
+  const artOn = art?.available === true;
+  useEffect(() => {
+    if (!artOn) return;
+    function onPaste(event: ClipboardEvent) {
+      // `items`, not `files`: an image copied from a web page arrives only
+      // as an item in some browsers.
+      const images = Array.from(event.clipboardData?.items ?? [])
+        .filter(
+          (item) => item.kind === "file" && item.type.startsWith("image/"),
+        )
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => file !== null);
+      if (images.length === 0) return;
+      event.preventDefault();
+      void addReferencesRef.current(images);
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [artOn]);
+
+  /**
+   * The Paste button: a phone has no keyboard shortcut and nowhere to
+   * long-press that isn't a text field. Reading the clipboard needs the
+   * browser's permission prompt (Safari shows its own Paste bubble), so
+   * this only runs from a tap.
+   */
+  async function pasteReferences() {
+    try {
+      const items = await navigator.clipboard.read();
+      const images: File[] = [];
+      for (const item of items) {
+        const type = item.types.find((t) => t.startsWith("image/"));
+        if (!type) continue;
+        const blob = await item.getType(type);
+        images.push(new File([blob], "pasted", { type }));
+      }
+      if (images.length === 0) {
+        notifications.show({ message: "No picture on the clipboard" });
+        return;
+      }
+      await addReferences(images);
+    } catch {
+      notifications.show({
+        message:
+          "Couldn't read the clipboard. Allow it when asked, or use Add pictures.",
+        color: "red",
+      });
+    }
+  }
+
+  /** Take a candidate off the strip; if it was the label's, the label has none. */
+  function removeCandidate(candidate: Candidate) {
+    setCandidates((prev) => prev.filter((c) => c.id !== candidate.id));
+    if (candidate.hash && candidate.hash === chosenHash) setChosenHash(null);
+  }
+
   /**
    * Another candidate. Never disabled while one is in flight: each tap is a
    * separate job with its own nonce, so the results are different pictures
@@ -337,6 +402,7 @@ export function LabelStudio({
         dataUrl: null,
         error: null,
         model: chosenModel,
+        textRemoved: null,
       },
     ]);
     try {
@@ -357,6 +423,7 @@ export function LabelStudio({
                 status: "done",
                 hash: result.hash,
                 dataUrl: result.dataUrl,
+                textRemoved: result.textRemoved,
               }
             : c,
         ),
@@ -447,14 +514,28 @@ export function LabelStudio({
 
       <NeedsServer what="Drawings and printing" />
 
-      <Center>
+      <Stack gap={4} align="center">
         <LabelPreview
           title={name}
           lines={lines}
           url={previewUrl}
           artUrl={chosenUrl}
         />
-      </Center>
+        {/* The box's drawing persists across visits, so it needs a way off
+            that doesn't depend on this session's candidates. Shown even with
+            drawings turned off: a box can keep a picture from before. */}
+        {chosenHash && (
+          <Button
+            variant="subtle"
+            color="gray"
+            size="xs"
+            leftSection={<IconTrash size={14} />}
+            onClick={() => setChosenHash(null)}
+          >
+            Remove the drawing from this label
+          </Button>
+        )}
+      </Stack>
 
       {art?.available ? (
         <Paper p="sm" radius="md" withBorder>
@@ -517,26 +598,40 @@ export function LabelStudio({
                   </div>
                 ))}
                 {references.length < MAX_REFERENCES && (
-                  <FileButton
-                    onChange={(files) => void addReferences(files)}
-                    accept="image/*"
-                    multiple
-                  >
-                    {(props) => (
-                      <Button
-                        {...props}
-                        variant="default"
-                        size="sm"
-                        leftSection={<IconPhotoUp size={16} />}
-                      >
-                        Add pictures
-                      </Button>
-                    )}
-                  </FileButton>
+                  <>
+                    <FileButton
+                      onChange={(files) => void addReferences(files)}
+                      accept="image/*"
+                      multiple
+                    >
+                      {(props) => (
+                        <Button
+                          {...props}
+                          variant="default"
+                          size="sm"
+                          leftSection={<IconPhotoUp size={16} />}
+                        >
+                          Add pictures
+                        </Button>
+                      )}
+                    </FileButton>
+                    {typeof navigator !== "undefined" &&
+                      typeof navigator.clipboard?.read === "function" && (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          leftSection={<IconClipboard size={16} />}
+                          onClick={() => void pasteReferences()}
+                        >
+                          Paste
+                        </Button>
+                      )}
+                  </>
                 )}
               </Group>
               <Text size="xs" c="dimmed" mt={4}>
-                Style hints for the drawing, not stored on the box.
+                Style hints for the drawing, not stored on the box. You can also
+                paste a picture anywhere here.
               </Text>
             </div>
             <Group justify="space-between" align="flex-end">
@@ -575,52 +670,75 @@ export function LabelStudio({
               </Text>
             )}
             {candidates.length > 0 && (
-              <Group gap="xs">
+              <Group gap="xs" align="flex-start">
                 {candidates.map((c) => (
-                  <UnstyledButton
-                    key={c.id}
-                    disabled={c.status !== "done"}
-                    onClick={() => c.hash && setChosenHash(c.hash)}
-                    aria-label={
-                      c.status === "done"
-                        ? "Use this drawing"
-                        : c.status === "failed"
-                          ? `Failed: ${c.error}`
-                          : "Drawing in progress"
-                    }
-                    style={{
-                      width: 96,
-                      height: 72,
-                      borderRadius: 6,
-                      background: "#fff",
-                      display: "grid",
-                      placeItems: "center",
-                      overflow: "hidden",
-                      border: `2px solid ${
-                        c.hash && c.hash === chosenHash
-                          ? "var(--mantine-primary-color-filled)"
-                          : "var(--mantine-color-default-border)"
-                      }`,
-                    }}
-                  >
-                    {c.status === "pending" && <Loader size="sm" />}
-                    {c.status === "failed" && (
-                      <Text size="xs" c="red" ta="center" px={4}>
-                        failed
+                  <Stack key={c.id} gap={2} w={96}>
+                    <div style={{ position: "relative" }}>
+                      <UnstyledButton
+                        disabled={c.status !== "done"}
+                        onClick={() => c.hash && setChosenHash(c.hash)}
+                        aria-label={
+                          c.status === "done"
+                            ? "Use this drawing"
+                            : c.status === "failed"
+                              ? `Failed: ${c.error}`
+                              : "Drawing in progress"
+                        }
+                        style={{
+                          width: 96,
+                          height: 72,
+                          borderRadius: 6,
+                          background: "#fff",
+                          display: "grid",
+                          placeItems: "center",
+                          overflow: "hidden",
+                          border: `2px solid ${
+                            c.hash && c.hash === chosenHash
+                              ? "var(--mantine-primary-color-filled)"
+                              : "var(--mantine-color-default-border)"
+                          }`,
+                        }}
+                      >
+                        {c.status === "pending" && <Loader size="sm" />}
+                        {c.status === "failed" && (
+                          <Text size="xs" c="red" ta="center" px={4}>
+                            failed
+                          </Text>
+                        )}
+                        {c.status === "done" && c.dataUrl && (
+                          <img
+                            src={c.dataUrl}
+                            alt="Candidate drawing"
+                            style={{
+                              maxWidth: "100%",
+                              maxHeight: "100%",
+                              objectFit: "contain",
+                            }}
+                          />
+                        )}
+                      </UnstyledButton>
+                      {c.status !== "pending" && (
+                        <ActionIcon
+                          size="xs"
+                          radius="xl"
+                          variant="filled"
+                          color="gray"
+                          aria-label="Remove this drawing"
+                          style={{ position: "absolute", top: -6, right: -6 }}
+                          onClick={() => removeCandidate(c)}
+                        >
+                          <IconX size={12} />
+                        </ActionIcon>
+                      )}
+                    </div>
+                    {c.status === "done" && c.textRemoved !== 0 && (
+                      <Text size="xs" c="dimmed" ta="center" lh={1.2}>
+                        {c.textRemoved === null
+                          ? "Not checked for text"
+                          : `Text removed in ${c.textRemoved} place${c.textRemoved === 1 ? "" : "s"}`}
                       </Text>
                     )}
-                    {c.status === "done" && c.dataUrl && (
-                      <img
-                        src={c.dataUrl}
-                        alt="Candidate drawing"
-                        style={{
-                          maxWidth: "100%",
-                          maxHeight: "100%",
-                          objectFit: "contain",
-                        }}
-                      />
-                    )}
-                  </UnstyledButton>
+                  </Stack>
                 ))}
               </Group>
             )}
