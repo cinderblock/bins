@@ -32,7 +32,7 @@ import { createRequire } from "node:module";
 import QRCode from "qrcode";
 import satori, { type SatoriOptions } from "satori";
 import sharp from "sharp";
-import { toMonochrome } from "./mono";
+import { fitMonochrome } from "./mono";
 import type { LabelContent, LabelGeometry } from "./spec";
 
 const require = createRequire(import.meta.url);
@@ -130,9 +130,6 @@ async function fitArt(
   const comma = dataUrl.indexOf(",");
   if (comma < 0) throw new Error("drawing is not a data URL");
   const input = Buffer.from(dataUrl.slice(comma + 1), "base64");
-  const meta = await sharp(input).metadata();
-  if (!meta.width || !meta.height)
-    throw new Error("drawing has no readable dimensions");
   // A box too small to draw in would scale the picture to nothing, which
   // looks exactly like no picture at all. Say so instead.
   if (boxW < 16 || boxH < 16) {
@@ -140,16 +137,14 @@ async function fitArt(
       `no room for the drawing on this label (${boxW}x${boxH}px left after the title and QR)`,
     );
   }
-  const scale = Math.min(boxW / meta.width, boxH / meta.height, 4);
-  const width = Math.max(1, Math.floor(meta.width * scale));
-  const height = Math.max(1, Math.floor(meta.height * scale));
-  // Black and white at the size it prints: scaling brings back grey edges,
-  // and a drawing saved before generation thresholded is still in colour.
-  const png = await toMonochrome(input, { width, height });
+  // Trimmed of empty paper so it fills the box, and black and white at the
+  // size it prints: scaling brings back grey edges, and a drawing saved
+  // before generation thresholded is still in colour (mono.ts).
+  const fitted = await fitMonochrome(input, { width: boxW, height: boxH }, 4);
   return {
-    src: `data:image/png;base64,${png.toString("base64")}`,
-    width,
-    height,
+    src: `data:image/png;base64,${fitted.png.toString("base64")}`,
+    width: fitted.width,
+    height: fitted.height,
   };
 }
 

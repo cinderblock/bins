@@ -14,7 +14,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { sha256Hex } from "../context";
 import { type TextBox, eraseText, findText } from "./detext";
-import { toMonochrome } from "./mono";
+import { toMonochrome, toSource } from "./mono";
 
 /** Per-image USD cost, so a budget can be enforced before spending it. */
 const MODEL_PRICING: Record<string, number> = {
@@ -360,7 +360,8 @@ export async function generateArtPng(request: ArtRequest): Promise<{
  *
  * 1. Text painted out (detext.ts): the model writes captions despite the
  *    prompt.
- * 2. Pure black and white as a PNG (mono.ts). Gemini answers in JPEG, and
+ * 2. Empty paper trimmed off, so a small subject fills the label (mono.ts).
+ * 3. Pure black and white as a PNG (mono.ts). Gemini answers in JPEG, and
  *    everything downstream (blob content type, data URLs, the label
  *    renderer) calls it a PNG; satori believes that and drops a JPEG
  *    without an error. And the model draws in colour on a 1-bit label.
@@ -369,7 +370,9 @@ async function finishDrawing(
   raw: Buffer,
   boxes: TextBox[] | null,
 ): Promise<Buffer> {
-  return toMonochrome(boxes ? await eraseText(raw, boxes) : raw);
+  return toMonochrome(
+    await toSource(boxes ? await eraseText(raw, boxes) : raw),
+  );
 }
 
 /**

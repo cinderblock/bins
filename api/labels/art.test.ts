@@ -209,8 +209,12 @@ describe("text in the drawing", () => {
     stubProvider(twoSquares, () => textReply([CAPTION]));
     const result = await generateArtPng({ title: "ODrive" });
     expect(result.textRemoved).toBe(1);
-    expect(await pixel(result.png, 25, 25)).toBe(255);
-    expect(await pixel(result.png, 165, 65)).toBe(0);
+    // The caption became paper, and paper is trimmed off the edges: what is
+    // left is the other square alone, about 30px each way and solid ink.
+    const meta = await sharp(result.png).metadata();
+    expect(meta.width).toBeLessThan(40);
+    expect(meta.height).toBeLessThan(40);
+    expect(await pixel(result.png, 15, 15)).toBe(0);
   });
 
   test("the check is billed to the art budget at the text model's rate", async () => {
@@ -233,7 +237,8 @@ describe("text in the drawing", () => {
     // Not a failed generation: the picture is there and was paid for.
     expect(result.textRemoved).toBeNull();
     expect(spentThisMonth()).toBeCloseTo(0.039, 6);
-    expect(await pixel(result.png, 25, 25)).toBe(0);
+    // Nothing erased: both squares survive, spanning ~170px once trimmed.
+    expect((await sharp(result.png).metadata()).width).toBeGreaterThan(150);
   });
 
   test("a reply in the wrong shape counts as a failed check, not as no text", async () => {
