@@ -77,7 +77,7 @@ export const ART_VARIANTS = {
   closeup: {
     label: "Close-up",
     direction:
-      "Isometric view of one representative item, large enough to fill the frame, with its defining details clear",
+      "Draw exactly ONE item, even if the subject lists several kinds: a single representative, isometric, large enough to fill the frame, with its defining details clear",
   },
   icon: {
     label: "Flat icon",
