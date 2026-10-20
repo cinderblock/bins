@@ -34,6 +34,7 @@ import {
   Loader,
   Paper,
   SegmentedControl,
+  Slider,
   Stack,
   Text,
   TextInput,
@@ -58,6 +59,7 @@ import { LabelChips } from "~/components/LabelChips";
 import { LabelPreview } from "~/components/LabelPreview";
 import { LabelPrintSheet } from "~/components/LabelSheet.print";
 import { NeedsServer, useServerDown } from "~/components/NeedsServer";
+import { PhotoImg } from "~/components/PhotoImg";
 import { SizePicker } from "~/components/SizePicker";
 import { WeightInput } from "~/components/WeightInput";
 import { claimBin, setBinFields, setBinLabel } from "~/lib/actions";
@@ -68,10 +70,16 @@ import { useDeployment } from "~/lib/deployment";
 import {
   type ArtReference,
   type ArtStatus,
+  type DarknessRange,
+  type LabelDrawing,
+  cutLabelDrawing,
   fetchArtStatus,
+  fetchLabelDrawings,
   formatUsd,
   generateLabelArt,
   makeReference,
+  previewCut,
+  removeLabelDrawing,
 } from "~/lib/labelArt";
 import { syncNow } from "~/lib/sync";
 
@@ -86,7 +94,34 @@ type Candidate = {
   textRemoved: number | null;
   /** Which "3 variations" direction made it; null = a plain Generate. */
   variantLabel: string | null;
+  /**
+   * The box's history row (api/art.ts), once the server has made it. Null
+   * while pending or failed: those exist only in this session.
+   */
+  drawingId: string | null;
+  /** The drawing before the cut, which the darkness slider re-cuts. */
+  sourceHash: string | null;
+  /** Where black starts in `hash`; the slider's position. */
+  threshold: number | null;
 };
+
+/** A history row as a tile: finished, from the server, any session. */
+function candidateOf(drawing: LabelDrawing): Candidate {
+  return {
+    id: drawing.id,
+    status: "done",
+    hash: drawing.hash,
+    // Shown from the blob cache by hash (PhotoImg), not carried inline.
+    dataUrl: null,
+    error: null,
+    model: drawing.model,
+    textRemoved: drawing.textRemoved,
+    variantLabel: drawing.variantLabel,
+    drawingId: drawing.id,
+    sourceHash: drawing.sourceHash,
+    threshold: drawing.threshold,
+  };
+}
 
 /** The little a studio needs to know about its box once it has one. */
 type BoxIdentity = BoxRef & {
@@ -146,6 +181,14 @@ export function LabelStudio({
     bin?.labelArtHash ?? null,
   );
   const [chosenUrl, setChosenUrl] = useState<string | null>(null);
+  // The darkness slider: the server's range, and while a finger is on it,
+  // the cut being shown (computed here, from the source, per step).
+  const [darknessRange, setDarknessRange] = useState<DarknessRange | null>(
+    null,
+  );
+  const [liveDarkness, setLiveDarkness] = useState<number | null>(null);
+  const [liveArtUrl, setLiveArtUrl] = useState<string | null>(null);
+  const [cutting, setCutting] = useState(false);
 
   const serverDown = useServerDown();
   const [saving, setSaving] = useState(false);
@@ -194,6 +237,33 @@ export function LabelStudio({
       cancelled = true;
     };
   }, [adminPassword]);
+
+  // The box's earlier drawings, from any device and session, as tiles
+  // before this session's. A new box has none until its first drawing.
+  const boxId = box?.id ?? null;
+  useEffect(() => {
+    if (boxId === null) return;
+    let cancelled = false;
+    fetchLabelDrawings(adminPassword, boxId)
+      .then(({ drawings, thresholds }) => {
+        if (cancelled) return;
+        setDarknessRange(thresholds);
+        setCandidates((prev) => {
+          const have = new Set(prev.map((c) => c.drawingId));
+          const earlier = drawings
+            .filter((d) => !have.has(d.id))
+            .reverse()
+            .map(candidateOf);
+          return [...earlier, ...prev];
+        });
+      })
+      .catch(() => {
+        // Not fatal: the studio still makes drawings without its history.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [adminPassword, boxId]);
 
   // The chosen picture, for the live preview: from this session's
   // candidates when it was just made, else from the local blob cache.
@@ -400,10 +470,99 @@ export function LabelStudio({
     }
   }
 
-  /** Take a candidate off the strip; if it was the label's, the label has none. */
+  /**
+   * Take a candidate off the strip, and out of the box's history on every
+   * device. If it was the label's, the label has none until another is
+   * tapped. Optimistic: on failure it comes back with a note.
+   */
   function removeCandidate(candidate: Candidate) {
     setCandidates((prev) => prev.filter((c) => c.id !== candidate.id));
     if (candidate.hash && candidate.hash === chosenHash) setChosenHash(null);
+    if (!candidate.drawingId) return;
+    removeLabelDrawing(adminPassword, candidate.drawingId).catch((err) => {
+      setCandidates((prev) => [candidate, ...prev]);
+      notifications.show({
+        message: `Couldn't remove that drawing: ${err instanceof Error ? err.message : String(err)}`,
+        color: "red",
+      });
+    });
+  }
+
+  // The darkness slider belongs to the label's drawing, when it has a
+  // source to re-cut (drawings made before sources were kept have none).
+  const chosen = candidates.find(
+    (c) => c.hash !== null && c.hash === chosenHash && c.sourceHash !== null,
+  );
+
+  /** Follow the finger: cut the source here, no server round trip. */
+  const previewRunRef = useRef(0);
+  function previewDarkness(threshold: number) {
+    setLiveDarkness(threshold);
+    if (!chosen?.sourceHash) return;
+    const run = ++previewRunRef.current;
+    previewCut(chosen.sourceHash, threshold)
+      .then((url) => {
+        // Only the latest step paints; earlier ones finish late on slow
+        // devices and would flicker the preview backwards.
+        if (run === previewRunRef.current) setLiveArtUrl(url);
+      })
+      .catch(() => {});
+  }
+
+  /**
+   * Let go: the server re-cuts the source and stores the result, so the
+   * label still points at exactly what prints. Free: no model is called.
+   *
+   * One cut in flight at a time, and only the newest wish waits behind it:
+   * keyboard nudges commit on every press, and a second drag can end
+   * before the first cut returns. The slider stays live throughout, and
+   * the preview keeps following it until the queue is empty.
+   */
+  const wantedDarknessRef = useRef<number | null>(null);
+  const cuttingRef = useRef(false);
+  async function commitDarkness(threshold: number) {
+    const target = chosen;
+    if (!target?.drawingId) return;
+    wantedDarknessRef.current = threshold;
+    if (cuttingRef.current) return;
+    cuttingRef.current = true;
+    setCutting(true);
+    try {
+      while (wantedDarknessRef.current !== null) {
+        const want = wantedDarknessRef.current;
+        wantedDarknessRef.current = null;
+        const cut = await cutLabelDrawing(
+          adminPassword,
+          target.drawingId,
+          want,
+        );
+        setCandidates((prev) =>
+          prev.map((c) =>
+            c.id === target.id
+              ? {
+                  ...c,
+                  hash: cut.hash,
+                  dataUrl: cut.dataUrl,
+                  threshold: cut.threshold,
+                }
+              : c,
+          ),
+        );
+        setChosenHash(cut.hash);
+      }
+    } catch (err) {
+      wantedDarknessRef.current = null;
+      notifications.show({
+        message: `Couldn't change the darkness: ${err instanceof Error ? err.message : String(err)}`,
+        color: "red",
+      });
+    } finally {
+      cuttingRef.current = false;
+      previewRunRef.current++;
+      setLiveDarkness(null);
+      setLiveArtUrl(null);
+      setCutting(false);
+    }
   }
 
   /**
@@ -430,6 +589,9 @@ export function LabelStudio({
         model: chosenModel,
         textRemoved: null,
         variantLabel: variant?.label ?? null,
+        drawingId: null,
+        sourceHash: null,
+        threshold: null,
       },
     ]);
     try {
@@ -452,6 +614,9 @@ export function LabelStudio({
                 hash: result.hash,
                 dataUrl: result.dataUrl,
                 textRemoved: result.textRemoved,
+                drawingId: result.id,
+                sourceHash: result.sourceHash,
+                threshold: result.threshold,
               }
             : c,
         ),
@@ -556,11 +721,39 @@ export function LabelStudio({
           title={name}
           lines={lines}
           url={previewUrl}
-          artUrl={chosenUrl}
+          artUrl={liveArtUrl ?? chosenUrl}
         />
         {/* The box's drawing persists across visits, so it needs a way off
             that doesn't depend on this session's candidates. Shown even with
             drawings turned off: a box can keep a picture from before. */}
+        {chosen && darknessRange && (
+          <Stack gap={2} w="100%" maw={360}>
+            <Group justify="space-between">
+              <Text size="xs" fw={500}>
+                Darkness
+              </Text>
+              {cutting && <Loader size={12} />}
+            </Group>
+            {/* A 1-bit label has no grey, so this moves where black starts:
+                lighter frees dark fills, darker keeps faint lines. */}
+            <Slider
+              min={darknessRange.min}
+              max={darknessRange.max}
+              step={4}
+              value={liveDarkness ?? chosen.threshold ?? darknessRange.default}
+              onChange={previewDarkness}
+              onChangeEnd={(value) => void commitDarkness(value)}
+              disabled={serverDown}
+              marks={[
+                { value: darknessRange.min, label: "Lighter" },
+                { value: darknessRange.default },
+                { value: darknessRange.max, label: "Darker" },
+              ]}
+              label={null}
+              mb="md"
+            />
+          </Stack>
+        )}
         {chosenHash && (
           <Button
             variant="subtle"
@@ -768,6 +961,18 @@ export function LabelStudio({
                               maxWidth: "100%",
                               maxHeight: "100%",
                               objectFit: "contain",
+                            }}
+                          />
+                        )}
+                        {c.status === "done" && !c.dataUrl && c.hash && (
+                          <PhotoImg
+                            hash={c.hash}
+                            alt="Earlier drawing"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "contain",
+                              background: "#fff",
                             }}
                           />
                         )}
