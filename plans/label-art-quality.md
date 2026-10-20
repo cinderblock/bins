@@ -140,7 +140,8 @@ Round 2:
 14. [x] Close-up direction firmed to "exactly ONE item, even if the
         subject lists several kinds" (`af8674c`). 3 of 3 live tries drew
         one board.
-15. [ ] **Current:** deploy `af8674c` (needs the operator's yes).
+15. [x] Deployed `af8674c` 2026-10-20 at the operator's yes (no other ops
+        pushes or deploys in flight). Container healthy, edge still refuses.
 
 ## Findings / gotchas
 
