@@ -7,6 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
+import sharp from "sharp";
 
 const TEST_DIR = join(import.meta.dir, "..", "data", "test");
 process.env.DATABASE_PATH = join(TEST_DIR, "api-test.db");
@@ -2075,6 +2076,138 @@ describe("open access", () => {
           ],
         },
       });
+    }
+  });
+
+  test("label art history: every drawing kept, re-cut at another darkness, removable", async () => {
+    // A drawing that is all mid-grey (luminance 100): black at the default
+    // cut of 128, white at 64. So a re-cut visibly changes the label art.
+    const grey = (
+      await sharp({
+        create: { width: 30, height: 20, channels: 3, background: "#646464" },
+      })
+        .png()
+        .toBuffer()
+    ).toString("base64");
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: unknown) => {
+      if (String(url).includes("/gemini-3.6-flash:"))
+        return new Response(
+          JSON.stringify({
+            candidates: [
+              { content: { parts: [{ text: JSON.stringify({ texts: [] }) }] } },
+            ],
+          }),
+          { status: 200 },
+        );
+      return new Response(
+        JSON.stringify({
+          candidates: [
+            { content: { parts: [{ inlineData: { data: grey } }] } },
+          ],
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+    process.env.GEMINI_API_KEY = "test-key";
+    process.env.LABEL_ART_PATH = join(TEST_DIR, "art-history");
+    const admin = (path: string, body: Record<string, unknown>) =>
+      call("POST", path, {
+        token: tokenA,
+        body: { adminPassword: "admin-pw", ...body },
+      });
+    try {
+      const made: { id: string; hash: string; sourceHash: string }[] = [];
+      for (const [nonce, variant] of [
+        ["h1", null],
+        ["h2", "icon"],
+      ] as const) {
+        const res = await admin("/api/admin/bins/art", {
+          binId,
+          nonce,
+          variant,
+        });
+        expect(res.status).toBe(200);
+        made.push(await res.json());
+      }
+      const [first, second] = made;
+      if (!first || !second) throw new Error("no drawings");
+
+      const history = async () =>
+        (await (
+          await admin("/api/admin/bins/art/history", { binId })
+        ).json()) as {
+          drawings: {
+            id: string;
+            hash: string;
+            threshold: number;
+            variantLabel: string | null;
+          }[];
+          thresholds: { default: number };
+        };
+      // Ours only: the test above left a drawing of its own on this box.
+      const ours = (l: Awaited<ReturnType<typeof history>>) =>
+        l.drawings.filter((d) => d.id === first.id || d.id === second.id);
+      let listed = await history();
+      // Newest first, each with its own variant's label.
+      expect(ours(listed).map((d) => d.id)).toEqual([second.id, first.id]);
+      expect(ours(listed)[0]?.variantLabel).toBe("Flat icon");
+      expect(ours(listed)[1]?.variantLabel).toBeNull();
+      expect(ours(listed)[1]?.threshold).toBe(listed.thresholds.default);
+
+      // The source is an ordinary group blob, so the studio can preview cuts.
+      const source = await call("GET", `/api/blobs/${first.sourceHash}`, {
+        token: tokenB,
+      });
+      expect(source.status).toBe(200);
+
+      // Re-cut lighter: new label art, no model call, and history follows.
+      const cut = await admin("/api/admin/bins/art/cut", {
+        id: first.id,
+        threshold: 64,
+      });
+      expect(cut.status).toBe(200);
+      const recut = (await cut.json()) as { hash: string; threshold: number };
+      expect(recut.threshold).toBe(64);
+      expect(recut.hash).not.toBe(first.hash);
+      const blob = await call("GET", `/api/blobs/${recut.hash}`, {
+        token: tokenB,
+      });
+      const { data } = await sharp(Buffer.from(await blob.arrayBuffer()))
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      expect(data.every((v) => v === 255)).toBe(true);
+      listed = await history();
+      expect(ours(listed)[1]?.hash).toBe(recut.hash);
+
+      // Out-of-range darkness is clamped, not obeyed into an all-ink label.
+      const extreme = await admin("/api/admin/bins/art/cut", {
+        id: first.id,
+        threshold: 9999,
+      });
+      expect(((await extreme.json()) as { threshold: number }).threshold).toBe(
+        240,
+      );
+
+      // Removed drawings leave the history; the other stays.
+      expect(
+        (await admin("/api/admin/bins/art/remove", { id: second.id })).status,
+      ).toBe(200);
+      listed = await history();
+      expect(ours(listed).map((d) => d.id)).toEqual([first.id]);
+
+      // Another group's drawing can't be re-cut by id.
+      const stranger = await admin("/api/admin/bins/art/cut", {
+        id: uuid(),
+        threshold: 100,
+      });
+      expect(stranger.status).toBe(404);
+    } finally {
+      globalThis.fetch = realFetch;
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.GEMINI_API_KEY;
+      // biome-ignore lint/performance/noDelete: unsetting an env var needs it
+      delete process.env.LABEL_ART_PATH;
     }
   });
 

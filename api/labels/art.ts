@@ -277,7 +277,10 @@ export async function generateArt(request: ArtRequest): Promise<string> {
  * result is cached under its own key so choosing it later is free too.
  */
 export async function generateArtPng(request: ArtRequest): Promise<{
+  /** The label art: black and white at DEFAULT_THRESHOLD. */
   png: Buffer;
+  /** The same drawing before the cut, for re-cutting at another darkness. */
+  source: Buffer;
   cached: boolean;
   model: string;
   costUsd: number;
@@ -314,7 +317,7 @@ export async function generateArtPng(request: ArtRequest): Promise<{
   if (cached) {
     const boxes = readTextBoxes(textPath);
     return {
-      png: await finishDrawing(cached, boxes),
+      ...(await finishDrawing(cached, boxes)),
       cached: true,
       model,
       costUsd: cost,
@@ -337,12 +340,12 @@ export async function generateArtPng(request: ArtRequest): Promise<{
   try {
     const raw = await callProvider(model, key, prompt, request.references);
     const boxes = await checkForText(raw, key);
-    const png = await finishDrawing(raw, boxes);
+    const drawing = await finishDrawing(raw, boxes);
     mkdirSync(dirname(cachePath), { recursive: true });
     writeFileSync(cachePath, raw);
     if (boxes) writeFileSync(textPath, JSON.stringify(boxes));
     return {
-      png,
+      ...drawing,
       cached: false,
       model,
       costUsd: cost,
@@ -361,18 +364,19 @@ export async function generateArtPng(request: ArtRequest): Promise<{
  * 1. Text painted out (detext.ts): the model writes captions despite the
  *    prompt.
  * 2. Empty paper trimmed off, so a small subject fills the label (mono.ts).
- * 3. Pure black and white as a PNG (mono.ts). Gemini answers in JPEG, and
- *    everything downstream (blob content type, data URLs, the label
- *    renderer) calls it a PNG; satori believes that and drops a JPEG
- *    without an error. And the model draws in colour on a 1-bit label.
+ *    That much, in greyscale, is the `source`.
+ * 3. Pure black and white as a PNG at the default cut (mono.ts). Gemini
+ *    answers in JPEG, and everything downstream (blob content type, data
+ *    URLs, the label renderer) calls it a PNG; satori believes that and
+ *    drops a JPEG without an error. And the model draws in colour on a
+ *    1-bit label.
  */
 async function finishDrawing(
   raw: Buffer,
   boxes: TextBox[] | null,
-): Promise<Buffer> {
-  return toMonochrome(
-    await toSource(boxes ? await eraseText(raw, boxes) : raw),
-  );
+): Promise<{ png: Buffer; source: Buffer }> {
+  const source = await toSource(boxes ? await eraseText(raw, boxes) : raw);
+  return { png: await toMonochrome(source), source };
 }
 
 /**

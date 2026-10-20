@@ -15,7 +15,17 @@ import { applyOp } from "../shared/reducer";
 import { captionPending, captionStatus } from "./ai/caption";
 import { aiErrorResponse } from "./ai/handler";
 import { allocateBins, allocateSchema } from "./allocate";
-import { artRequestSchema, handleArt, handleArtStatus } from "./art";
+import {
+  artCutSchema,
+  artHistorySchema,
+  artRemoveSchema,
+  artRequestSchema,
+  handleArt,
+  handleArtCut,
+  handleArtHistory,
+  handleArtRemove,
+  handleArtStatus,
+} from "./art";
 import { normalizeAccessCode } from "./auth";
 import { BUILD_SHA } from "./build";
 import { publicOrigin } from "./config";
@@ -401,6 +411,21 @@ export async function handleAdmin(
     const parsed = artRequestSchema.safeParse(body);
     if (!parsed.success) return error(400, "invalid art request");
     return handleArt(ctx, parsed.data);
+  }
+  if (path === "/api/admin/bins/art/history") {
+    const parsed = artHistorySchema.safeParse(body);
+    if (!parsed.success) return error(400, "invalid history request");
+    return handleArtHistory(ctx, parsed.data);
+  }
+  if (path === "/api/admin/bins/art/remove") {
+    const parsed = artRemoveSchema.safeParse(body);
+    if (!parsed.success) return error(400, "invalid remove request");
+    return handleArtRemove(ctx, parsed.data);
+  }
+  if (path === "/api/admin/bins/art/cut") {
+    const parsed = artCutSchema.safeParse(body);
+    if (!parsed.success) return error(400, "invalid darkness request");
+    return handleArtCut(ctx, parsed.data);
   }
   if (path === "/api/admin/art/status") return handleArtStatus();
 

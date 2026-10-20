@@ -1,19 +1,23 @@
 /**
- * Label artwork for a box: generate candidates, keep the chosen one.
+ * Label artwork for a box: generate candidates, keep them, keep the chosen
+ * one.
  *
  * Admin-gated like printing (it spends money). Each generation lands in the
- * group's blob store as an ordinary content-addressed PNG, so the chosen
+ * group's blob store as ordinary content-addressed PNGs, so the chosen
  * picture syncs to every device through the same path photos take and a
  * reprint months later is free. Which one is "the" label art is a field on
  * the box (`labelArtHash`, an LWW scalar the client sets once it has picked),
- * so nothing here writes materialized state.
+ * so nothing here writes materialized state. Every drawing also gets a row
+ * in `label_art`, the box's history (see db/schema/label-art.ts for why
+ * that table is outside the op log).
  */
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "../db/client.server";
-import { storeBlob } from "./blobs";
+import { readBlob, storeBlob } from "./blobs";
 import { type Ctx, error, json } from "./context";
 import {
+  ART_VARIANTS,
   ART_VARIANT_KEYS,
   ArtBudgetError,
   ArtInputError,
@@ -22,6 +26,13 @@ import {
   artStatus,
   generateArtPng,
 } from "./labels/art";
+import {
+  DEFAULT_THRESHOLD,
+  MAX_THRESHOLD,
+  MIN_THRESHOLD,
+  clampThreshold,
+  toMonochrome,
+} from "./labels/mono";
 
 /** Reference pictures ride inline: ≤5, each already downscaled client-side. */
 const referenceSchema = z.object({
@@ -92,15 +103,29 @@ export async function handleArt(
       variant: input.variant ?? undefined,
     });
     // Into the group's blob store so every device can fetch it by hash and
-    // the service worker caches it like any photo.
+    // the service worker caches it like any photo. The source too: it is
+    // what a darkness change re-cuts, and the studio previews from it.
     const hash = await storeBlob(ctx, result.png, "image/png");
+    const sourceHash = await storeBlob(ctx, result.source, "image/png");
+    const row = {
+      id: crypto.randomUUID(),
+      groupId: ctx.groupId,
+      binId: bin.id,
+      sourceHash,
+      hash,
+      threshold: DEFAULT_THRESHOLD,
+      model: result.model,
+      variant: input.variant ?? null,
+      textRemoved: result.textRemoved,
+      createdAt: Date.now(),
+      removedAt: null,
+    };
+    await db.insert(schema.labelArt).values(row);
     const status = artStatus();
     return json({
-      hash,
+      ...drawingOf(row),
       dataUrl: `data:image/png;base64,${result.png.toString("base64")}`,
       cached: result.cached,
-      model: result.model,
-      textRemoved: result.textRemoved,
       costUsd: result.cached ? 0 : result.costUsd,
       spentUsd: status.spentUsd,
       budgetUsd: status.budgetUsd,
@@ -112,4 +137,120 @@ export async function handleArt(
     const reason = err instanceof Error ? err.message : String(err);
     return error(502, `could not generate label art: ${reason}`);
   }
+}
+
+type LabelArtRow = typeof schema.labelArt.$inferSelect;
+
+/** A history row as the studio sees it. */
+function drawingOf(row: LabelArtRow) {
+  const variant =
+    row.variant && Object.hasOwn(ART_VARIANTS, row.variant)
+      ? ART_VARIANTS[row.variant as ArtVariant]
+      : null;
+  return {
+    id: row.id,
+    hash: row.hash,
+    sourceHash: row.sourceHash,
+    threshold: row.threshold,
+    model: row.model,
+    variantLabel: variant?.label ?? null,
+    textRemoved: row.textRemoved,
+    createdAt: row.createdAt,
+  };
+}
+
+/** The studio shows a box's recent drawings, not every one ever made. */
+const HISTORY_LIMIT = 30;
+
+export const artHistorySchema = z.object({
+  binId: z.number().int().positive(),
+});
+
+/** A box's drawings, newest first, without the removed ones. */
+export async function handleArtHistory(
+  ctx: Ctx,
+  input: z.infer<typeof artHistorySchema>,
+): Promise<Response> {
+  const rows = await db
+    .select()
+    .from(schema.labelArt)
+    .where(
+      and(
+        eq(schema.labelArt.groupId, ctx.groupId),
+        eq(schema.labelArt.binId, input.binId),
+        isNull(schema.labelArt.removedAt),
+      ),
+    )
+    // rowid breaks ties: two drawings in the same millisecond ("3
+    // variations") still list in the order they were made.
+    .orderBy(desc(schema.labelArt.createdAt), desc(sql`rowid`))
+    .limit(HISTORY_LIMIT);
+  return json({
+    drawings: rows.map(drawingOf),
+    thresholds: {
+      min: MIN_THRESHOLD,
+      max: MAX_THRESHOLD,
+      default: DEFAULT_THRESHOLD,
+    },
+  });
+}
+
+export const artRemoveSchema = z.object({ id: z.string().uuid() });
+
+/**
+ * Take a drawing off the box's history. Hidden, not deleted: its blob may
+ * be the label a box already printed (see db/schema/label-art.ts).
+ */
+export async function handleArtRemove(
+  ctx: Ctx,
+  input: z.infer<typeof artRemoveSchema>,
+): Promise<Response> {
+  await db
+    .update(schema.labelArt)
+    .set({ removedAt: Date.now() })
+    .where(
+      and(
+        eq(schema.labelArt.id, input.id),
+        eq(schema.labelArt.groupId, ctx.groupId),
+      ),
+    );
+  return json({ ok: true });
+}
+
+export const artCutSchema = z.object({
+  id: z.string().uuid(),
+  threshold: z.number().int(),
+});
+
+/**
+ * Re-cut a drawing at another darkness, from its source. No model call and
+ * no cost: the source already is the drawing, only the line between black
+ * and white moves. The new label art replaces the row's; the studio points
+ * the box at it if this was the box's chosen drawing.
+ */
+export async function handleArtCut(
+  ctx: Ctx,
+  input: z.infer<typeof artCutSchema>,
+): Promise<Response> {
+  const row = await db.query.labelArt.findFirst({
+    where: and(
+      eq(schema.labelArt.id, input.id),
+      eq(schema.labelArt.groupId, ctx.groupId),
+    ),
+  });
+  if (!row) return error(404, "no such drawing");
+  const source = await readBlob(ctx.groupId, row.sourceHash);
+  if (!source) return error(404, "the drawing's source is missing");
+
+  const threshold = clampThreshold(input.threshold);
+  const png = await toMonochrome(source, { threshold });
+  const hash = await storeBlob(ctx, png, "image/png");
+  await db
+    .update(schema.labelArt)
+    .set({ hash, threshold })
+    .where(eq(schema.labelArt.id, row.id));
+  return json({
+    ...drawingOf({ ...row, hash, threshold }),
+    dataUrl: `data:image/png;base64,${png.toString("base64")}`,
+  });
 }
