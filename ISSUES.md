@@ -30,3 +30,21 @@ hostnames and host names listed in the untracked `plans/*.local.md` files.
 Why it matters: the repo is meant to be publishable as a tenant-agnostic
 core. Move the specifics into the untracked `plans/*.local.md` files and
 leave generic wording behind. They stay in git history either way.
+
+## An upstream provider's failure reads as "server unreachable"
+
+`app/lib/health.ts` treats every 5xx as the backend being down
+(`isServerDownStatus`: `status >= 500`), on purpose: a reverse proxy's 502 is
+indistinguishable from the app being down. But the app itself answers 502/503
+for failures that are NOT the server: `api/art.ts` and `api/label.ts`
+("could not generate label art", printer unreachable) and
+`api/ai/handler.ts` (provider error 502, AI not configured 503). Reproduce:
+the label studio with an invalid `GEMINI_API_KEY`, tap Generate. The red
+"Can't reach the server" banner appears and "Another one" is disabled until
+the next probe (~3 s) recovers.
+
+Why it matters: Gemini safety blocks and outages are routine, and each one
+tells the warehouse the whole server is down. Needs a way to tell an app
+answer from a proxy's (a response header, or non-5xx codes for upstream
+failures), plus whatever the AI sheet's `askErrorMessage` 502/503 cases
+should become.
