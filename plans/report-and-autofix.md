@@ -47,6 +47,11 @@ losing work in progress.
   a page can't miss a field the way masking can. The trail still goes, and known
   secrets are scrubbed from everything.
 
+- **The watcher is started by hand and rarely** (operator decision, 2026-11-01).
+  It doesn't need to survive a reboot, so don't add autostart. Reporting never
+  depends on it: reports queue on the server and wait, and starting the watcher
+  works through the backlog.
+
 ## How a deploy happens now
 
 `plans/local.md`'s "two steps" is out of date. Since 2026-10-24 Renovate
@@ -136,7 +141,7 @@ and screenshot quality in WebKit all need a real device.
     bun scripts/report-watcher.ts --stop   # stop
 
 State, log and pid are in `~/.bins-report-watcher/`. It doesn't restart after a
-reboot: the app shows "Agent offline" until it's started again.
+reboot, by design: the app shows "Agent offline" until it's started again.
 
 Never yet exercised for real: the push, build wait, deploy wait and live reload
 stages. The dry run stops before pushing, so the first real report is that test.
