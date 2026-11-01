@@ -222,6 +222,15 @@ stuck on a blank screen, `/<origin>/api/recover` clears the service worker and
 caches — deliberately under `/api/`, which the worker never intercepts — and
 leaves IndexedDB alone, so nothing captured offline is lost.
 
+### Fixing reports automatically (optional)
+
+`scripts/report-watcher.ts` turns reports from `/admin`'s queue into shipped
+fixes using the Claude Code CLI: it fixes each one in its own worktree, runs the
+checks, pushes to master and waits for the deployment. Configuration and usage
+are at the top of the file. An admin's report is followed as an instruction.
+A member's report gets an agent with no shell or network, is fixed only if it's
+an obvious interface bug, and has its diff gated and independently reviewed.
+
 ### If you lose the access code or admin password
 
 Neither is recoverable from a hash, so the access code is stored readable:

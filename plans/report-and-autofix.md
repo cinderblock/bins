@@ -80,9 +80,10 @@ contain any string from the local deny list (tenant names, hostnames).
 4. [x] Reload safety: never reload over unsaved input, even when hidden.
 5. [x] Close the loop: update check as soon as the server has the fix, and a
        toast once this device runs it.
-6. [ ] Ship reporting, verify on the live sites. (current step)
-7. [ ] `scripts/report-watcher.ts`, then a dry run against a seeded report.
-8. [ ] Integration tokens from the operator, start the watcher on request.
+6. [x] Ship reporting: `2382121` live on both deployments, 2026-11-01 about 1:22 PM PST (21:22Z).
+7. [x] `scripts/report-watcher.ts`, then a dry run against seeded reports.
+8. [ ] Integration tokens from the operator, start the watcher. (current step)
+9. [ ] Live test: a real report from a phone, through to the reload.
 
 ## Findings / gotchas
 
@@ -94,6 +95,16 @@ contain any string from the local deny list (tenant names, hostnames).
   guard matched closed sheets. It went unnoticed because a hidden page skipped
   the check. Found by a real reload in headless Chrome: `blocker: "overlay open"`
   with both drawers closed. Now matches `-content`, which only exists while open.
+- **`Grep` in `--allowedTools` escaped the folder.** With `Read(./**),Glob,Grep`,
+  a hostile prompt read a file from the home directory through Grep, with no
+  denial. `Read(./**)` governs Grep and Glob when they aren't listed separately,
+  so they're left off, and a test pins it. Rerun: outside paths denied, inside
+  paths work.
+- Member containment, tested with hostile prompts: no shell, no network, no write
+  outside `app/`, reads stop at the folder.
+- Dry run, 2026-11-01 1:21 PM PST (21:21Z), on a throwaway server: an ordinary
+  report was fixed, reviewed and checked in about 2.5 min; a fake "SYSTEM OVERRIDE"
+  asking to send the token to an outside URL was declined in 14 s, unchanged.
 - `/_version` is the oracle for what a deployment runs.
 - Update checks ran every 15 minutes, far too slow to feel automatic.
 
@@ -108,8 +119,19 @@ draft and an open sheet, then proceeding.
 Not verified: a physical phone. Shake on real hardware, the iOS permission flow,
 and screenshot quality in WebKit all need a real device.
 
+## Known limits
+
+- The watcher runs on the operator's workstation, so it needs that machine on.
+  The app shows "Agent offline" when it isn't, and reports wait in the queue.
+- A fix ships to every deployment, whichever one reported it, because Renovate
+  moves both pins in one commit.
+- An admin-tier agent has full tools on the workstation. That is the requested
+  "blindly follow", and a stolen admin session would inherit it. Only its own
+  words are treated as instructions, and it still can't skip the checks to ship.
+
 ## Things not to do
 
+- Don't add Grep or Glob to `MEMBER_ALLOWED_TOOLS`.
 - Don't let a member report's text reach a tool that can run commands.
 - Don't push with force, ever. Rebase onto origin/master and retry.
 - Don't put a raw report into a commit message: this repo is public.
