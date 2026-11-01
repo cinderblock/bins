@@ -1,3 +1,5 @@
+import { and, asc, desc, eq, gt } from "drizzle-orm";
+import { db, schema } from "../../db/client.server";
 /**
  * The database behind the catalog.
  *
@@ -6,8 +8,6 @@
  * migrating whatever database happens to be configured.
  */
 import { describedItems } from "../../shared/reducer";
-import { and, asc, desc, eq, gt } from "drizzle-orm";
-import { db, schema } from "../../db/client.server";
 import type { CatalogSource } from "./catalog";
 
 /** The real source: the group's materialized tables and its op log. */
