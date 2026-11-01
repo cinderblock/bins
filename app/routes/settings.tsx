@@ -43,6 +43,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { CardGrid } from "~/components/CardGrid";
 import { PlaceEditSheet } from "~/components/PlaceEditSheet";
+import { ReportSettings } from "~/components/ReportSettings";
 import {
   archiveLabel,
   archiveLocation,
@@ -785,6 +786,8 @@ export default function Settings() {
             </Group>
           </Stack>
         </Paper>
+
+        <ReportSettings />
 
         <Paper p="md" radius="lg" withBorder>
           <Stack gap="xs">

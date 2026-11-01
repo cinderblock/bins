@@ -11,7 +11,9 @@ import { FirstRun } from "~/components/FirstRun";
 import { InstallHint } from "~/components/InstallHint";
 import { Landing } from "~/components/Landing";
 import { RemoteSignIn } from "~/components/RemoteSignIn";
+import { ReportLauncher } from "~/components/ReportLauncher";
 import { SyncBanner } from "~/components/SyncBanner";
+import { installUnsavedTracking } from "~/lib/appUpdate";
 import { IDENTITY_KEY, type Identity, REMOTE_LOCKED_KEY, db } from "~/lib/db";
 import { refreshDeployment, useDeployment } from "~/lib/deployment";
 import { installErrorReporting } from "~/lib/errors";
@@ -59,6 +61,11 @@ export default function Shell() {
   // Cheap, unauthenticated, and a failure leaves the cached value alone.
   useEffect(() => {
     void refreshDeployment();
+  }, []);
+
+  // From the first keystroke: see lib/appUpdate.
+  useEffect(() => {
+    installUnsavedTracking();
   }, []);
 
   // Bending down to scan a low box shouldn't reflow the page mid-scan.
@@ -134,6 +141,7 @@ export default function Shell() {
     <>
       <SyncBanner />
       <InstallHint />
+      <ReportLauncher />
       <Outlet />
     </>
   );

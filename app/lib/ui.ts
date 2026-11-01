@@ -88,6 +88,7 @@ export const HOVER_ONLY = "bins-hover-only";
  * times, so nothing reflows under the pointer on the way to a click.
  */
 export const UI_CSS = `
+@media print { .report-tab { display: none; } }
 .${HOVER_ACTIONS}, .${HOVER_ONLY} { transition: opacity 120ms ease; }
 .${HOVER_ONLY} { display: none; }
 @media ${DESKTOP_MEDIA} {

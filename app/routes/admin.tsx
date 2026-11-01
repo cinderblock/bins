@@ -42,6 +42,7 @@ import { ErrorLog } from "~/components/ErrorLog";
 import { PasskeyManager } from "~/components/PasskeyManager";
 import { PhotoDescriptions } from "~/components/PhotoDescriptions";
 import { PushToggle } from "~/components/PushToggle";
+import { ReportLog } from "~/components/ReportLog";
 import { ShelfBuilder } from "~/components/ShelfBuilder";
 import { SuggestionQueue } from "~/components/SuggestionQueue";
 import { forgetAdmin, rememberAdmin, useAdminPassword } from "~/lib/admin";
@@ -468,6 +469,8 @@ export default function Admin() {
             <BoxSizeManager adminPassword={password} />
 
             <PhotoDescriptions adminPassword={password} />
+
+            <ReportLog adminPassword={password} />
 
             <ErrorLog adminPassword={password} />
 

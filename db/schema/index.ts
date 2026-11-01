@@ -6,6 +6,7 @@ export * from "./location";
 export * from "./label";
 export * from "./box-size";
 export * from "./client-error";
+export * from "./report";
 export * from "./suggestion";
 export * from "./push";
 export * from "./photo";

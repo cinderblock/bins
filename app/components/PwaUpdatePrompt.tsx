@@ -20,7 +20,7 @@ import { registerSW } from "virtual:pwa-register";
 import { Button, Group, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useEffect } from "react";
-import { reloadWhenSafe } from "~/lib/appUpdate";
+import { registerUpdateCheck, reloadWhenSafe } from "~/lib/appUpdate";
 
 /**
  * How often to ask the browser to re-check the worker script. The browser
@@ -42,6 +42,8 @@ export function PwaUpdatePrompt() {
           // anything; the next one will do.
           void registration.update().catch(() => {});
         };
+        // A device following a report asks far sooner than this timer would.
+        registerUpdateCheck(check);
         const timer = window.setInterval(check, UPDATE_CHECK_MS);
         // Coming back to the app is the natural moment to catch up — and the
         // one where a deploy that happened meanwhile is most likely.

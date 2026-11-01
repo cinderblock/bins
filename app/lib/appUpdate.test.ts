@@ -11,6 +11,7 @@ const idle: ActivityState = {
   overlayOpen: false,
   focusedEditable: false,
   liveCamera: false,
+  unsavedInput: false,
   hidden: false,
 };
 
@@ -33,16 +34,30 @@ describe("reloadBlockedBy", () => {
     expect(reloadBlockedBy({ ...idle, liveCamera: true })).toBe("camera live");
   });
 
-  test("a hidden page is always free, whatever else is going on", () => {
-    // The most valuable case: backgrounding the app is how most devices will
-    // actually take an update, and it can interrupt nobody by definition.
+  test("a hidden page is free of anything that only interrupts", () => {
+    // Backgrounding the app is how most devices will actually take an update.
     expect(
       reloadBlockedBy({
-        overlayOpen: true,
+        ...idle,
         focusedEditable: true,
         liveCamera: true,
         hidden: true,
       }),
     ).toBeNull();
+  });
+
+  test("unsaved typing holds a reload even on a hidden page", () => {
+    // Switching apps to copy something into a half-written note is the classic
+    // way to lose it.
+    expect(reloadBlockedBy({ ...idle, unsavedInput: true, hidden: true })).toBe(
+      "unsaved input",
+    );
+  });
+
+  test("an open sheet holds a reload even on a hidden page", () => {
+    // Plenty of sheets hold choices that were never typed into a field.
+    expect(reloadBlockedBy({ ...idle, overlayOpen: true, hidden: true })).toBe(
+      "overlay open",
+    );
   });
 });

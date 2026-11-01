@@ -45,6 +45,7 @@ import {
   handlePasskeyRemove,
 } from "./passkeys";
 import { handleSubscribe } from "./push";
+import { handleAdminReportList, handleAdminReportUpdate } from "./reports";
 
 type GroupRow = typeof schema.group.$inferSelect;
 
@@ -664,6 +665,9 @@ export async function handleAdmin(
 
   if (path === "/api/admin/errors") return await handleErrorList(ctx);
   if (path === "/api/admin/errors/clear") return await handleErrorClear(ctx);
+  if (path === "/api/admin/reports") return await handleAdminReportList(ctx);
+  if (path === "/api/admin/reports/update")
+    return await handleAdminReportUpdate(ctx, body);
 
   if (path === "/api/admin/devices") {
     // Human devices only — integrations have their own section below.

@@ -25,6 +25,7 @@ import {
 } from "./db";
 import { flushErrors } from "./errors";
 import { prunePhotoCache } from "./photos";
+import { flushReports } from "./reports";
 import { clientStore } from "./store.client";
 
 const PUSH_BATCH = 200;
@@ -210,6 +211,7 @@ async function runSync(): Promise<void> {
     // Ship any errors captured while offline. Last, so a reporting failure
     // can never hold up the work people actually care about.
     await flushErrors();
+    await flushReports();
     if (authDead) {
       // The token works again (e.g. after sign-back-in) — clear the flag.
       authDead = false;

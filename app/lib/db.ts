@@ -63,6 +63,8 @@ class BinsDatabase extends Dexie {
   boxSizes!: EntityTable<BoxSizeState, "id">;
   /** Errors waiting to reach the server (lib/errors.ts). Diagnostics, not state. */
   errorQueue!: EntityTable<QueuedError, "id">;
+  /** Reports waiting to reach the server (lib/reports.ts). */
+  reportQueue!: EntityTable<QueuedReport, "id">;
   suggestions!: EntityTable<SuggestionState, "id">;
   pendingOps!: EntityTable<PendingOpRow, "opId">;
   blobs!: EntityTable<BlobRow, "hash">;
@@ -214,6 +216,22 @@ db.version(14).upgrade((tx) =>
       if (row.plan === undefined) row.plan = null;
     }),
 );
+
+// v15: a queue for reports written with no signal. A new table, nothing to
+// backfill, and like errorQueue it is never part of reducer state.
+db.version(15).stores({
+  bins: "id, updatedAt, status, *labelIds, handle, lastSeenAt",
+  entries: "id, binId, effectiveTime",
+  locations: "id, sortOrder, code",
+  labels: "id, sortOrder",
+  boxSizes: "id, sortOrder",
+  suggestions: "id, binId, status, [binId+status], createdAt",
+  pendingOps: "opId",
+  blobs: "hash, status, role, lastAccessAt",
+  errorQueue: "++id, at",
+  reportQueue: "id, at",
+  meta: "key",
+});
 
 // v12: a shelf can carry the string printed on its own sticker, so scanning
 // one files a box onto it. Indexed because put-away looks a place up by code
@@ -396,6 +414,26 @@ export const ACCESS_CODE_KEY = "accessCode";
  * same group has campers on phones scanning and campers on laptops sorting.
  */
 export const NO_CAMERA_KEY = "noCamera";
+
+/** One report, awaiting signal. */
+export type QueuedReport = {
+  /** Minted here, so a retried upload lands once. */
+  id: string;
+  text: string;
+  route: string | null;
+  buildSha: string | null;
+  userAgent: string | null;
+  context: Record<string, unknown>;
+  screenshot: Blob | null;
+  at: number;
+};
+
+/** Open reports this device is following: id → last status it announced. */
+export const REPORTS_TRACKED_KEY = "reportsTracked";
+/** Shake to report: "on", "off", or unset for the platform default. */
+export const SHAKE_KEY = "shakeToReport";
+/** Set when the person hid the report tab from the edge of the screen. */
+export const REPORT_TAB_HIDDEN_KEY = "reportTabHidden";
 
 /** One queued browser error, awaiting upload. */
 export type QueuedError = {

@@ -145,6 +145,10 @@ where.
   stretched mobile layouts, and dialogs where phones get bottom sheets.
   Touch devices get finger-sized targets and tappable buttons in place of
   keyboard-only affordances — never a decorative icon that looks pressable.
+- **Report a problem from anywhere**: shake the phone or tap the tab on the
+  screen's edge. The report carries a screenshot and what was on the page, and
+  queues offline. The tab shows whether the fixing agent is online and how far
+  along it is.
 
 ## Stack
 
@@ -205,8 +209,9 @@ bun scripts/generate-vapid.ts
 An installed PWA keeps running the build it cached, so a deploy is not the
 same event as devices picking it up. New builds therefore activate as soon as
 they're ready and the page reloads at the first moment it can't interrupt
-anyone — backgrounded, or with no sheet open, nothing focused for typing and
-no camera preview live. To make the gap visible rather than invisible, each
+anyone: backgrounded, or with nothing focused for typing and no camera preview
+live. Unsaved typing and an open sheet hold it back even in the background, so
+switching apps partway through a note never loses the note. To make the gap visible rather than invisible, each
 device reports the commit it is running and `/admin`'s device list marks
 anything behind the server as `old build`.
 

@@ -22,6 +22,9 @@ a shelf's editor on the shelf instead of in a settings page.
 Companion plan: `plans/floor-plan.md` — the top-down map of a space: many
 walls, loose bays and zones positioned in an arbitrarily shaped room, with
 landmarks, fullness/category shading, and "where is this box" highlighting.
+Companion plan: `plans/report-and-autofix.md` — shake or tap to report a
+problem from inside the app, a watcher that turns reports into shipped fixes,
+and reloading onto them without losing anything in progress.
 
 ## Goal
 

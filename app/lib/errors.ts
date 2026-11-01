@@ -25,6 +25,14 @@ const MAX_BATCH = 20;
 const seenThisSession = new Set<string>();
 const MAX_SESSION_KEYS = 100;
 
+/** The last few, for a report written right after something went wrong. */
+const recent: string[] = [];
+const MAX_RECENT = 5;
+
+export function recentErrors(): string[] {
+  return [...recent];
+}
+
 export type ErrorKind =
   | "unhandled"
   | "rejection"
@@ -56,6 +64,8 @@ export function reportError(
     try {
       const message = messageOf(err).slice(0, 500);
       if (!message) return;
+      recent.push(`${kind}: ${message}`);
+      if (recent.length > MAX_RECENT) recent.shift();
       const stack = err instanceof Error ? (err.stack ?? null) : null;
       const key = `${kind}|${message}|${(stack ?? "").split("\n")[1] ?? ""}`;
       if (seenThisSession.has(key)) return;

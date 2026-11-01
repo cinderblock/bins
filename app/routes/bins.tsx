@@ -477,6 +477,7 @@ export default function Bins() {
 
       <TextInput
         size="lg"
+        data-reload-safe
         placeholder="Which box is it in…"
         leftSection={<IconSearch size={18} />}
         value={query}

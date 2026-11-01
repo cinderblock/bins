@@ -27,6 +27,7 @@ import {
 } from "./passkeys";
 import { handlePushStatus, handleUnsubscribe } from "./push";
 import { handleRecover } from "./recover";
+import { handleReportCreate, handleReportsMine } from "./reports";
 import { handleSetup } from "./setup";
 import { handlePull, handlePush } from "./sync";
 import { handleV1 } from "./v1";
@@ -142,6 +143,15 @@ async function dispatch(
   // errors reach us without anyone having to notice or retype them.
   if (path === "/api/errors" && method === "POST")
     return await handleErrorReport(req, ctx);
+  // Any member can report a problem and watch what becomes of it.
+  if (path === "/api/reports" || path === "/api/reports/mine") {
+    if (ctx.kind !== "member") return error(403, "members only");
+    if (path === "/api/reports" && method === "POST")
+      return await handleReportCreate(req, ctx);
+    if (path === "/api/reports/mine" && method === "GET")
+      return await handleReportsMine(ctx);
+    return error(405, "method not allowed");
+  }
   if (path === "/api/devices" && method === "GET")
     return await handleDevices(ctx);
   if (path === "/api/sync/push" && method === "POST") {

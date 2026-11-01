@@ -887,6 +887,7 @@ function SlotFillSheet({
     >
       <Stack gap="xs" pb="env(safe-area-inset-bottom)">
         <TextInput
+          data-reload-safe
           placeholder="Box number or name…"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}

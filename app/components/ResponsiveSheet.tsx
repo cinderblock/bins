@@ -22,20 +22,25 @@ export function ResponsiveSheet({
   title,
   /** Phone-only bottom dismiss. "Done" where edits apply live; null to omit. */
   dismissLabel = "Close",
+  /** Left out of report screenshots: the report sheet itself. */
+  screenshotIgnored = false,
   children,
 }: {
   opened: boolean;
   onClose: () => void;
   title: ReactNode;
   dismissLabel?: string | null;
+  screenshotIgnored?: boolean;
   children: ReactNode;
 }) {
   const phone = useMediaQuery(PHONE_MEDIA, true, {
     getInitialValueInEffect: false,
   });
+  const rootProps = screenshotIgnored ? { "data-report-ignore": true } : {};
   if (phone) {
     return (
       <Drawer
+        {...rootProps}
         opened={opened}
         onClose={onClose}
         position="bottom"
@@ -63,6 +68,7 @@ export function ResponsiveSheet({
   }
   return (
     <Modal
+      {...rootProps}
       opened={opened}
       onClose={onClose}
       centered

@@ -12,6 +12,7 @@
 import { and, asc, desc, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { db, schema } from "../db/client.server";
 import { type Ctx, error, json } from "./context";
+import { handleV1Reports } from "./reports";
 
 /** Public shape of a bin — everything but the sticker secret. */
 function binView(row: typeof schema.bin.$inferSelect) {
@@ -144,6 +145,11 @@ export async function handleV1(
   ctx: Ctx,
   path: string,
 ): Promise<Response> {
+  // Before the GET-only rule: resolving a report is a write, and this surface
+  // has its own gate (write-scoped integrations only).
+  if (path === "/api/v1/reports" || path.startsWith("/api/v1/reports/")) {
+    return await handleV1Reports(req, ctx, path);
+  }
   if (req.method !== "GET") return error(405, "method not allowed");
   const url = new URL(req.url);
 
