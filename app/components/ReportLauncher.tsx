@@ -21,7 +21,9 @@ import {
   REPORT_EVENT,
   capturePageContext,
   captureScreenshot,
+  completeContext,
   followReports,
+  onSensitivePage,
   submitReport,
 } from "~/lib/reports";
 import { requestShakePermission, shakeSupport, watchShake } from "~/lib/shake";
@@ -112,7 +114,7 @@ export function ReportLauncher() {
       route: location.pathname,
       buildSha: BUILD_SHA,
       userAgent: navigator.userAgent.slice(0, 300),
-      context: context.current,
+      context: await completeContext(context.current),
       screenshot,
     });
     setText("");
@@ -206,6 +208,11 @@ export function ReportLauncher() {
               </Button>
             </Group>
           )}
+          <Text size="xs" c="dimmed">
+            {onSensitivePage()
+              ? "Sends your note and recent activity. No screenshot or page text from this page."
+              : "Sends your note, a screenshot, the page's text and recent activity. Never what you typed in other fields."}
+          </Text>
           <Button fullWidth disabled={!text.trim()} onClick={() => void send()}>
             Send
           </Button>

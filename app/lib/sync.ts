@@ -195,6 +195,14 @@ export async function syncNow(): Promise<void> {
   return inFlight;
 }
 
+let lastSyncOkAt: number | null = null;
+let lastSyncError: string | null = null;
+
+/** How the last pass went, for a report about something not showing up. */
+export function syncStatus() {
+  return { lastOkAt: lastSyncOkAt, lastError: lastSyncError, running: syncing };
+}
+
 async function runSync(): Promise<void> {
   if (syncing) return;
   syncing = true;
@@ -222,7 +230,10 @@ async function runSync(): Promise<void> {
     // network. Either way the sign-in card can go.
     if ((await db.meta.get(REMOTE_LOCKED_KEY))?.value === true)
       await setMeta(REMOTE_LOCKED_KEY, false);
+    lastSyncOkAt = Date.now();
+    lastSyncError = null;
   } catch (err) {
+    lastSyncError = err instanceof Error ? err.message : String(err);
     if (err instanceof ApiError && err.status === 401 && !authDead) {
       // The server no longer honors this device's token. Retrying is
       // pointless until the user signs back in (settings) — surface it.

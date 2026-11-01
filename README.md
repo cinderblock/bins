@@ -146,8 +146,9 @@ where.
   Touch devices get finger-sized targets and tappable buttons in place of
   keyboard-only affordances — never a decorative icon that looks pressable.
 - **Report a problem from anywhere**: shake the phone or tap the tab on the
-  screen's edge. The report carries a screenshot and what was on the page, and
-  queues offline. The tab shows whether the fixing agent is online and how far
+  screen's edge. The report carries a screenshot, what was on the page, recent
+  taps, failures and sync state, and queues offline. Pages showing codes or
+  passwords send no screenshot or page text, and typed values are never recorded. The tab shows whether the fixing agent is online and how far
   along it is.
 
 ## Stack

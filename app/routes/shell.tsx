@@ -14,6 +14,7 @@ import { RemoteSignIn } from "~/components/RemoteSignIn";
 import { ReportLauncher } from "~/components/ReportLauncher";
 import { SyncBanner } from "~/components/SyncBanner";
 import { installUnsavedTracking } from "~/lib/appUpdate";
+import { crumb, installBreadcrumbs } from "~/lib/breadcrumbs";
 import { IDENTITY_KEY, type Identity, REMOTE_LOCKED_KEY, db } from "~/lib/db";
 import { refreshDeployment, useDeployment } from "~/lib/deployment";
 import { installErrorReporting } from "~/lib/errors";
@@ -66,7 +67,14 @@ export default function Shell() {
   // From the first keystroke: see lib/appUpdate.
   useEffect(() => {
     installUnsavedTracking();
+    installBreadcrumbs();
   }, []);
+
+  // Every page change, for the trail a report carries. Not the hash, which is
+  // where a sticker's code lives.
+  useEffect(() => {
+    crumb("nav", location.pathname + location.search);
+  }, [location.pathname, location.search]);
 
   // Bending down to scan a low box shouldn't reflow the page mid-scan.
   // Best effort — see lib/orientation.

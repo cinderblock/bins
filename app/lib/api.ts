@@ -3,6 +3,7 @@
  * table (the replica IS the auth boundary on this device) and is cached in
  * module state after the first read.
  */
+import { recordRequest } from "./breadcrumbs";
 import { REMOTE_LOCKED_KEY, getIdentity, setMeta } from "./db";
 import {
   isServerDownStatus,
@@ -63,12 +64,16 @@ export async function apiFetch(
   // app renders happily from its replica while the server is face down, so
   // the only honest signal is what real traffic is getting back.
   let res: Response;
+  const method = init?.method ?? "GET";
+  const startedAt = performance.now();
   try {
     res = await fetch(path, { ...init, headers });
   } catch (err) {
+    recordRequest(method, path, "failed", performance.now() - startedAt);
     reportServerUnreachable(err instanceof Error ? err.message : String(err));
     throw err;
   }
+  recordRequest(method, path, res.status, performance.now() - startedAt);
   if (isServerDownStatus(res.status)) {
     // A 5xx means something answered — a reverse proxy, typically — but the
     // app behind it did not. From here that is indistinguishable from down,

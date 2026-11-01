@@ -38,6 +38,15 @@ losing work in progress.
   restart only loses it until the next beat. Progress is an estimate from the
   watcher's own past run times, and is labelled as one.
 
+- **What a report carries** (operator request, 2026-11-01: "add all the useful
+  metadata"): the page, a trail of taps, page changes, failed or slow requests
+  and console lines, device and network facts, sync and replica state, the box
+  on screen, and deployment flags. Typed values are never recorded.
+- **`/admin`, `/print`, `/setup`, `/join` send no screenshot or page text**
+  (agent's call, 2026-11-01). They show codes, passwords and tokens, and skipping
+  a page can't miss a field the way masking can. The trail still goes, and known
+  secrets are scrubbed from everything.
+
 ## How a deploy happens now
 
 `plans/local.md`'s "two steps" is out of date. Since 2026-10-24 Renovate

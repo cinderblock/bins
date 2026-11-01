@@ -2,7 +2,7 @@
  * Everything people have reported, and what became of it. The place to dismiss
  * a report or send one back to the agent.
  */
-import { Badge, Button, Group, Paper, Stack, Text } from "@mantine/core";
+import { Badge, Button, Code, Group, Paper, Stack, Text } from "@mantine/core";
 import { useCallback, useEffect, useState } from "react";
 import { apiJson } from "~/lib/api";
 import { relativeTime, shortBuild } from "~/lib/format";
@@ -17,6 +17,7 @@ type ReportRow = {
   status: string;
   resolution: string | null;
   fixedInBuild: string | null;
+  context: Record<string, unknown> | null;
   createdAt: number;
 };
 
@@ -85,6 +86,19 @@ export function ReportLog({ adminPassword }: { adminPassword: string }) {
               <Text size="xs" c="dimmed">
                 {report.resolution}
               </Text>
+            )}
+            {report.context && (
+              <details>
+                <summary style={{ cursor: "pointer", fontSize: 12 }}>
+                  What was sent
+                </summary>
+                <Code
+                  block
+                  style={{ fontSize: 11, maxHeight: 280, overflow: "auto" }}
+                >
+                  {JSON.stringify(report.context, null, 2)}
+                </Code>
+              </details>
             )}
             <Group gap="xs">
               {report.status !== "open" && report.status !== "working" && (

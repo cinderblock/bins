@@ -13,15 +13,21 @@
 import { domToBlob } from "modern-screenshot";
 import { BUILD_SHA, apiFetch, apiJson } from "./api";
 import { requestUpdateCheck } from "./appUpdate";
+import { activityTrail, scrub } from "./breadcrumbs";
 import {
+  ACCESS_CODE_KEY,
   ADMIN_PASSWORD_KEY,
+  AUTH_DEAD_KEY,
+  LAST_SEQ_KEY,
   type QueuedReport,
+  REMOTE_LOCKED_KEY,
   REPORTS_TRACKED_KEY,
   db,
   getIdentity,
   getMeta,
   setMeta,
 } from "./db";
+import { DEPLOYMENT_KEY } from "./deployment";
 import { recentErrors } from "./errors";
 import {
   type AgentStatus,
@@ -29,6 +35,7 @@ import {
   type Tracked,
   reportStep,
 } from "./reportStep";
+import { syncStatus } from "./sync";
 
 /** Long enough for a phone to render the page; short enough not to matter. */
 const SCREENSHOT_TIMEOUT_MS = 4000;
@@ -46,16 +53,153 @@ export function openReport(): void {
 
 export type PageContext = Record<string, unknown>;
 
-/** What the reporter was looking at. Taken before the sheet covers it. */
+/**
+ * Pages that show codes, passwords or tokens get no screenshot and no page text.
+ * Skipping the whole page beats masking fields, because a mask only covers the
+ * fields somebody remembered, and a report from here still has its words, its
+ * route and its trail.
+ */
+const SENSITIVE_PAGE = /^\/(admin|print|setup|join)(\/|$)/;
+
+export function onSensitivePage(path = location.pathname): boolean {
+  return SENSITIVE_PAGE.test(path);
+}
+
+type NetworkInformation = { effectiveType?: string; saveData?: boolean };
+
+/** The open sheet or dialog, by its title. */
+function openOverlay(): string | null {
+  const content = document.querySelector(
+    ".mantine-Modal-content, .mantine-Drawer-content",
+  );
+  if (!content) return null;
+  return content.querySelector("h2, [class*=title]")?.textContent ?? "untitled";
+}
+
+function focusedControl(): string | null {
+  const el = document.activeElement;
+  if (!el || el === document.body) return null;
+  const name = el.getAttribute("aria-label") ?? el.getAttribute("placeholder");
+  return name
+    ? `${el.tagName.toLowerCase()} ${name}`
+    : el.tagName.toLowerCase();
+}
+
+/**
+ * What the reporter was looking at and how they got there. Taken before the
+ * sheet covers it, and synchronously, so it's the moment of the report and not
+ * whatever a slower step gets to see later.
+ */
 export function capturePageContext(): PageContext {
-  return {
-    viewport: `${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio}`,
-    online: navigator.onLine,
-    title: document.title,
-    url: location.pathname + location.search,
-    pageText: document.body.innerText.slice(0, PAGE_TEXT_LIMIT),
-    recentErrors: recentErrors(),
+  const nav = navigator as Navigator & {
+    connection?: NetworkInformation;
+    deviceMemory?: number;
   };
+  const sensitive = onSensitivePage();
+  return {
+    url: location.pathname + location.search,
+    title: document.title,
+    sensitivePage: sensitive,
+    pageText: sensitive
+      ? null
+      : document.body.innerText.slice(0, PAGE_TEXT_LIMIT),
+    openOverlay: openOverlay(),
+    focused: focusedControl(),
+    scroll: {
+      y: Math.round(window.scrollY),
+      height: document.body.scrollHeight,
+    },
+    viewport: `${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio}`,
+    orientation: screen.orientation?.type ?? null,
+    standalone: window.matchMedia("(display-mode: standalone)").matches,
+    colorScheme: document.documentElement.getAttribute(
+      "data-mantine-color-scheme",
+    ),
+    language: navigator.language,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    localTime: new Date().toString(),
+    online: navigator.onLine,
+    connection: nav.connection?.effectiveType ?? null,
+    deviceMemoryGb: nav.deviceMemory ?? null,
+    sessionSeconds: Math.round(performance.now() / 1000),
+    recentErrors: recentErrors(),
+    ...activityTrail(),
+  };
+}
+
+/** The box on screen, if any: the state behind what the page is showing. */
+async function currentBox(path: string) {
+  const byNumber = path.match(/^\/(\d+)$/)?.[1];
+  const byHandle = path.match(/^\/b\/([0-9a-f-]{36})$/i)?.[1];
+  const bin = byNumber
+    ? await db.bins.get(Number(byNumber))
+    : byHandle
+      ? await db.bins.where("handle").equals(byHandle).first()
+      : undefined;
+  if (!bin) return null;
+  return {
+    id: bin.id,
+    status: bin.status,
+    location: bin.locationName,
+    updatedAt: bin.updatedAt,
+    entries: await db.entries.where("binId").equals(bin.id).count(),
+  };
+}
+
+/** The app's own state. Slower than the page, so it's filled in at send time. */
+async function captureAppState(path: string): Promise<PageContext> {
+  const [pendingOps, pendingBlobs, queuedErrors, queuedReports] =
+    await Promise.all([
+      db.pendingOps.count(),
+      db.blobs.where("status").equals("pending").count(),
+      db.errorQueue.count(),
+      db.reportQueue.count(),
+    ]);
+  const storage = await navigator.storage?.estimate?.().catch(() => null);
+  return {
+    sync: {
+      ...syncStatus(),
+      pendingOps,
+      pendingBlobs,
+      queuedErrors,
+      queuedReports,
+      lastSeq: (await getMeta<number>(LAST_SEQ_KEY)) ?? null,
+      signedOut: (await getMeta<boolean>(AUTH_DEAD_KEY)) ?? false,
+      remoteLocked: (await getMeta<boolean>(REMOTE_LOCKED_KEY)) ?? false,
+    },
+    replica: {
+      boxes: await db.bins.count(),
+      entries: await db.entries.count(),
+      places: await db.locations.count(),
+    },
+    box: await currentBox(path),
+    deployment: (await getMeta(DEPLOYMENT_KEY)) ?? null,
+    adminUnlocked: !!(await getMeta<string>(ADMIN_PASSWORD_KEY)),
+    serviceWorker: navigator.serviceWorker?.controller?.state ?? "none",
+    storage: storage
+      ? { usedMb: mb(storage.usage), quotaMb: mb(storage.quota) }
+      : null,
+  };
+}
+
+const mb = (bytes = 0) => Math.round(bytes / 1_000_000);
+
+/**
+ * Finish a captured context just before it's queued. Failing here must not cost
+ * the report, and the last step is scrubbing the page text of this device's own
+ * remembered credentials, wherever they happened to be showing.
+ */
+export async function completeContext(page: PageContext): Promise<PageContext> {
+  const secrets = [
+    await getMeta<string>(ACCESS_CODE_KEY),
+    await getMeta<string>(ADMIN_PASSWORD_KEY),
+  ].filter((value): value is string => typeof value === "string");
+  const pageText =
+    typeof page.pageText === "string"
+      ? scrub(page.pageText, secrets)
+      : page.pageText;
+  const app = await captureAppState(location.pathname).catch(() => null);
+  return { ...page, pageText, app };
 }
 
 /**
@@ -63,6 +207,7 @@ export function capturePageContext(): PageContext {
  * so nothing here is allowed to fail loudly or to take long.
  */
 export async function captureScreenshot(): Promise<Blob | null> {
+  if (onSensitivePage()) return null;
   const shot = domToBlob(document.documentElement, {
     type: "image/jpeg",
     quality: 0.7,

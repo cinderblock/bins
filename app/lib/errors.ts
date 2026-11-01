@@ -14,6 +14,7 @@
  * cause the very failure it is meant to report.
  */
 import { apiFetch } from "./api";
+import { crumb } from "./breadcrumbs";
 import { db, getIdentity } from "./db";
 
 /** Local queue cap. Beyond this the oldest are dropped, not the newest. */
@@ -65,6 +66,7 @@ export function reportError(
       const message = messageOf(err).slice(0, 500);
       if (!message) return;
       recent.push(`${kind}: ${message}`);
+      crumb("error", `${kind}: ${message}`);
       if (recent.length > MAX_RECENT) recent.shift();
       const stack = err instanceof Error ? (err.stack ?? null) : null;
       const key = `${kind}|${message}|${(stack ?? "").split("\n")[1] ?? ""}`;

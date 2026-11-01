@@ -20,8 +20,8 @@ import { BUILD_SHA } from "./build";
 import { type Ctx, error, json, serializedTransaction } from "./context";
 
 const MAX_TEXT = 4000;
-/** Serialized size of the context blob: on-screen text plus recent errors. */
-const MAX_CONTEXT_BYTES = 16_000;
+/** Serialized size of the context: on-screen text plus the activity trail. */
+const MAX_CONTEXT_BYTES = 40_000;
 /** Plenty for someone reporting by hand; a brake on a client gone wrong. */
 const MAX_PER_DEVICE_PER_HOUR = 20;
 const MAX_ROWS_PER_GROUP = 500;
