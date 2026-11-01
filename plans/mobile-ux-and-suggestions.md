@@ -223,8 +223,10 @@ credit lives in the header of `app/lib/photoGestures.ts`.
 **A regression report 1 introduced, now fixed.** Item 1 set `touch-action:
 pan-y` on the swipe track. Per spec that permits *only* vertical panning, so
 it silently killed the browser's own pinch-zoom inside the lightbox — which
-had worked, since the viewport meta (`app/root.tsx`) sets no `user-scalable=no`
-or `maximum-scale`. The viewport is now `touch-action: none` and every axis is
+had worked, since the viewport meta (`app/root.tsx`) set no `user-scalable=no`
+or `maximum-scale` at the time (it does now: page zoom was later turned off
+app-wide, see "Page zoom is off" in `plans/bins.md`; this viewer zooms itself
+and doesn't rely on it). The viewport is now `touch-action: none` and every axis is
 handled explicitly, which is the right answer anyway: sharing axes with the
 browser means the two fight over the same fingers.
 

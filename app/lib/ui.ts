@@ -79,15 +79,37 @@ export const HOVER_ACTIONS = "bins-hover-actions";
 export const HOVER_ONLY = "bins-hover-only";
 
 /**
+ * Scrolling stays with the browser; pinch and double-tap zoom don't. An
+ * element's effective touch-action is the intersection with its ancestors, so
+ * this reaches everything, including modals portaled under body. Surfaces that
+ * zoom themselves (the photo viewer, the floor plan) set `touch-action: none`
+ * and handle the gesture from pointer events, which this doesn't touch.
+ */
+const NO_PAGE_ZOOM_CSS = "html, body { touch-action: pan-x pan-y; }";
+
+/**
+ * WebKit's own pinch event: the last layer under the viewport tag and
+ * NO_PAGE_ZOOM_CSS, neither of which iOS is reliable about honouring on every
+ * version. Pointer events still arrive, so the photo viewer and floor plan
+ * keep their pinch. Returns the cleanup.
+ */
+export function blockPageZoom() {
+  const block = (event: Event) => event.preventDefault();
+  document.addEventListener("gesturestart", block);
+  return () => document.removeEventListener("gesturestart", block);
+}
+
+/**
  * The app's only stylesheet, injected by root.tsx next to the early
  * color-scheme rules. Everything else is Mantine props or inline styles;
- * these rules are here because a `:hover` on a PARENT and an `:empty`
- * sibling cannot be written inline.
+ * these rules are here because a `:hover` on a PARENT, an `:empty` sibling and
+ * a rule for `html` itself cannot be written inline.
  *
  * Reveal is opacity, never display: the icons occupy their space at all
  * times, so nothing reflows under the pointer on the way to a click.
  */
 export const UI_CSS = `
+${NO_PAGE_ZOOM_CSS}
 @media print { .report-tab { display: none; } }
 .${HOVER_ACTIONS}, .${HOVER_ONLY} { transition: opacity 120ms ease; }
 .${HOVER_ONLY} { display: none; }

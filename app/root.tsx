@@ -29,7 +29,7 @@ declare global {
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
 import { RECOVER_URL, StaleBuildBanner } from "./components/StaleBuildBanner";
 import { reportError } from "./lib/errors";
-import { TOAST_BOTTOM, UI_CSS } from "./lib/ui";
+import { TOAST_BOTTOM, UI_CSS, blockPageZoom } from "./lib/ui";
 
 // Paint the right background on the very first frame (before JS/CSS), so a
 // dark-mode phone never flashes white. Dark is the app default — this tool
@@ -118,9 +118,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <html lang="en" {...mantineHtmlProps}>
       <head>
         <meta charSet="utf-8" />
+        {/* Fixed at 1:1 so the page behaves like an app: a pinch can't leave a
+            list half off-screen, and iOS doesn't zoom in on a focused input
+            with text under 16px and stay there. iOS can ignore these limits
+            for pinches, hence NO_PAGE_ZOOM_CSS and blockPageZoom too. Photos
+            and the floor plan do their own zooming and are unaffected. */}
         <meta
           name="viewport"
-          content="width=device-width, initial-scale=1, viewport-fit=cover"
+          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
         />
         <title>bins</title>
         <meta name="theme-color" content="#242424" />
@@ -178,6 +183,7 @@ export default function App() {
   useEffect(() => {
     window.__binsBooted = true;
   }, []);
+  useEffect(() => blockPageZoom(), []);
   return <Outlet />;
 }
 

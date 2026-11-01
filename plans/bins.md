@@ -757,6 +757,23 @@ unreachable, and "recreate the database" was very nearly the remedy.
   socket before binding, so no external cleanup is ever needed; if the proxy
   502s and the container is up, check `ls` in the socket volume first and
   restart the container. Verified live across two deployments.
+- **Page zoom is off, in three layers (2026-11-01).** An admin report: lists
+  could be zoomed, leaving them cut off at the right edge. The app now sets
+  `maximum-scale=1, user-scalable=no` in the viewport tag (which also stops
+  iOS zooming in on a focused input under 16px), `touch-action: pan-x pan-y`
+  on html and body, and a `gesturestart` block (`blockPageZoom`, `lib/ui.ts`).
+  All three because public reports disagree on what current iOS honours in an
+  installed app. The photo viewer and floor plan keep their own pinch: both
+  are `touch-action: none` and work from pointer events. Trade-off accepted:
+  low-vision users lose browser zoom in the app, though the OS Zoom
+  accessibility feature still works. Verified with raw CDP touch events on a
+  bare test page in headless Chromium, not on the app itself: no limits zoomed
+  to 5x; the viewport tag alone or touch-action alone stayed at 1x; swipe
+  scrolling and pointer events on a `touch-action: none` element still worked.
+  NOT verified on an iPhone, and `gesturestart` is untested. Use
+  `Input.dispatchTouchEvent` for this: `Input.synthesizePinchGesture` and
+  `synthesizeScrollGesture` did nothing in headless, even on the unlocked
+  control, so without a control they look like a pass.
 
 ## Things not to do
 
