@@ -82,8 +82,10 @@ contain any string from the local deny list (tenant names, hostnames).
        toast once this device runs it.
 6. [x] Ship reporting: `2382121` live on both deployments, 2026-11-01 about 1:22 PM PST (21:22Z).
 7. [x] `scripts/report-watcher.ts`, then a dry run against seeded reports.
-8. [ ] Integration tokens from the operator, start the watcher. (current step)
-9. [ ] Live test: a real report from a phone, through to the reload.
+8. [x] Integration tokens from the operator; watcher started 2026-11-01 1:29 PM PST
+       (21:29Z), hidden, watching both deployments.
+9. [ ] Live test: a real report from a phone, through to the reload. (current step,
+       needs the operator)
 
 ## Findings / gotchas
 
@@ -118,6 +120,17 @@ draft and an open sheet, then proceeding.
 
 Not verified: a physical phone. Shake on real hardware, the iOS permission flow,
 and screenshot quality in WebKit all need a real device.
+
+## Running it
+
+    bun scripts/report-watcher.ts          # start (config: .report-watcher.local)
+    bun scripts/report-watcher.ts --stop   # stop
+
+State, log and pid are in `~/.bins-report-watcher/`. It doesn't restart after a
+reboot: the app shows "Agent offline" until it's started again.
+
+Never yet exercised for real: the push, build wait, deploy wait and live reload
+stages. The dry run stops before pushing, so the first real report is that test.
 
 ## Known limits
 
