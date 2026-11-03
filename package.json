@@ -31,7 +31,7 @@
     "@tabler/icons-react": "^3.31.0",
     "barcode-detector": "^3.0.0",
     "dexie": "^4.0.11",
-    "dexie-react-hooks": "^1.1.7",
+    "dexie-react-hooks": "^4.0.0",
     "drizzle-orm": "^0.45.2",
     "isbot": "^5",
     "minisearch": "^7.1.0",
