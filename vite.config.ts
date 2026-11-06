@@ -1,7 +1,6 @@
 import { reactRouter } from "@react-router/dev/vite";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
-import tsconfigPaths from "vite-tsconfig-paths";
 import { SERVICE_WORKER_FILENAME } from "./release-assets";
 
 const publicHost = process.env.PUBLIC_BASE_URL
@@ -22,9 +21,10 @@ export default defineConfig({
       process.env.GITHUB_SHA ?? process.env.BUILD_SHA ?? "dev",
     ),
   },
+  // Vite 8 resolves tsconfig "paths" natively (replaces vite-tsconfig-paths).
+  resolve: { tsconfigPaths: true },
   plugins: [
     reactRouter(),
-    tsconfigPaths(),
     VitePWA({
       // "prompt": a waiting SW NEVER auto-activates — mid-capture reloads
       // would lose work. PwaUpdatePrompt shows a toast; the user decides.
