@@ -18,7 +18,7 @@ sqlite.exec("PRAGMA journal_mode = WAL;");
 sqlite.exec("PRAGMA foreign_keys = ON;");
 
 export const db = drizzle({ client: sqlite, schema });
-export { schema, sqlite, dbPath };
+export { dbPath, schema, sqlite };
 
 // Apply pending migrations on startup so a self-hoster never runs a separate
 // command. Idempotent: drizzle tracks applied migrations in-db. Resolved from

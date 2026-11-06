@@ -15,10 +15,10 @@
  */
 import { ActionIcon, Group } from "@mantine/core";
 import {
-  type Point,
-  type Rect,
   landmarkKind,
+  type Point,
   planBounds,
+  type Rect,
 } from "@shared/floorplan";
 import type { Landmark } from "@shared/ops";
 import { IconFocusCentered, IconMinus, IconPlus } from "@tabler/icons-react";
@@ -34,13 +34,13 @@ import {
 } from "react";
 import {
   FULLNESS_RAMP,
+  fullnessClass,
   OVER_COLOR,
   type PlaceStats,
   type Scene,
   type SceneItem,
-  fullnessClass,
 } from "~/lib/floorplan";
-import { type LengthUnit, formatLength } from "~/lib/lengths";
+import { formatLength, type LengthUnit } from "~/lib/lengths";
 
 export type ColorBy = "fullness" | "category" | "none";
 
@@ -1002,6 +1002,7 @@ function OutlineHandles({
         return (
           // Edge midpoints: drag one to add a corner there.
           <g
+            // biome-ignore lint/suspicious/noArrayIndexKey: the index is the edge's identity (encoded in data-t)
             key={`m${i}-${x}-${y}`}
             data-t={encode({ t: "mid", index: i })}
             style={{ cursor: "copy" }}
@@ -1021,6 +1022,7 @@ function OutlineHandles({
       })}
       {outline.map(([x, y], i) => (
         <g
+          // biome-ignore lint/suspicious/noArrayIndexKey: the index is the vertex's identity (encoded in data-t)
           key={`v${i}-${x}-${y}`}
           data-t={encode({ t: "vtx", index: i })}
           style={{ cursor: "move" }}

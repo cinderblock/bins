@@ -4,13 +4,13 @@
  * part that needs Dexie and the box list.
  */
 import {
-  type ChildIndex,
-  type PlanKind,
   activeLayout,
   baySegments,
+  type ChildIndex,
   childrenIn,
   indexChildren,
   mapTarget,
+  type PlanKind,
   planKind,
 } from "@shared/floorplan";
 import { locationPath, slotCapacity } from "@shared/locations";

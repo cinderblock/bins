@@ -10,8 +10,7 @@
  * that climbs rather than thousands that fill the disk.
  */
 import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { group } from "./group";
-import { now } from "./group";
+import { group, now } from "./group";
 
 export const clientError = sqliteTable(
   "client_error",

@@ -5,12 +5,12 @@ import {
 } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import {
+  isRouteErrorResponse,
   Links,
   Meta,
   Outlet,
   Scripts,
   ScrollRestoration,
-  isRouteErrorResponse,
 } from "react-router";
 
 import "@mantine/core/styles.css";
@@ -29,7 +29,7 @@ declare global {
 import { PwaUpdatePrompt } from "./components/PwaUpdatePrompt";
 import { RECOVER_URL, StaleBuildBanner } from "./components/StaleBuildBanner";
 import { reportError } from "./lib/errors";
-import { TOAST_BOTTOM, UI_CSS, blockPageZoom } from "./lib/ui";
+import { blockPageZoom, TOAST_BOTTOM, UI_CSS } from "./lib/ui";
 
 // Paint the right background on the very first frame (before JS/CSS), so a
 // dark-mode phone never flashes white. Dark is the app default — this tool

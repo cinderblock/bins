@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import sharp from "sharp";
 import {
   DEFAULT_THRESHOLD,
+  fitMonochrome,
   MAX_THRESHOLD,
   MIN_THRESHOLD,
-  fitMonochrome,
   toMonochrome,
   toSource,
 } from "./mono";

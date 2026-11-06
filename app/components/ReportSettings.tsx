@@ -2,7 +2,7 @@
 import { Button, Paper, Stack, Switch, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useLiveQuery } from "dexie-react-hooks";
-import { REPORT_TAB_HIDDEN_KEY, SHAKE_KEY, db, setMeta } from "~/lib/db";
+import { db, REPORT_TAB_HIDDEN_KEY, SHAKE_KEY, setMeta } from "~/lib/db";
 import { openReport } from "~/lib/reports";
 import { requestShakePermission, shakeSupport } from "~/lib/shake";
 import { AgentStatusLine } from "./AgentStatusLine";

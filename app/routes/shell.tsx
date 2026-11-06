@@ -15,7 +15,7 @@ import { ReportLauncher } from "~/components/ReportLauncher";
 import { SyncBanner } from "~/components/SyncBanner";
 import { installUnsavedTracking } from "~/lib/appUpdate";
 import { crumb, installBreadcrumbs } from "~/lib/breadcrumbs";
-import { IDENTITY_KEY, type Identity, REMOTE_LOCKED_KEY, db } from "~/lib/db";
+import { db, IDENTITY_KEY, type Identity, REMOTE_LOCKED_KEY } from "~/lib/db";
 import { refreshDeployment, useDeployment } from "~/lib/deployment";
 import { installErrorReporting } from "~/lib/errors";
 import { binIdFromScan } from "~/lib/format";

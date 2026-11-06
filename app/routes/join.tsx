@@ -22,7 +22,7 @@ import { useState } from "react";
 import { Navigate, useLocation } from "react-router";
 import { rememberAdmin } from "~/lib/admin";
 import { adoptIdentity } from "~/lib/auth";
-import { IDENTITY_KEY, type Identity, db } from "~/lib/db";
+import { db, IDENTITY_KEY, type Identity } from "~/lib/db";
 import { rememberAccessCode } from "~/lib/invite";
 
 /** Invite links carry the access code in the fragment (#…); tolerate ?code= too. */

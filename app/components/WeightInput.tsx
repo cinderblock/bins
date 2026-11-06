@@ -6,11 +6,11 @@
 import { Group, NumberInput, SegmentedControl } from "@mantine/core";
 import { useState } from "react";
 import {
-  type WeightUnit,
   fromGrams,
   getWeightUnit,
   setWeightUnit,
   toGrams,
+  type WeightUnit,
 } from "~/lib/labels";
 
 export function WeightInput({

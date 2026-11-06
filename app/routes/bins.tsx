@@ -68,7 +68,7 @@ import { useDeployment } from "~/lib/deployment";
 import { relativeTime } from "~/lib/format";
 import { formatWeight, labelColor } from "~/lib/labels";
 import { createPlace, describeBinLocation, usePlaceMap } from "~/lib/places";
-import { type SearchDoc, buildSearchIndex } from "~/lib/search";
+import { buildSearchIndex, type SearchDoc } from "~/lib/search";
 import { SizeIcon } from "~/lib/sizeIcons";
 import { syncNow } from "~/lib/sync";
 import { PAGE_MAXW } from "~/lib/ui";

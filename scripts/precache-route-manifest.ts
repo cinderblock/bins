@@ -21,7 +21,7 @@
  * precache is wrong: the failure is invisible to typecheck, lint and the test
  * suite, so the build has to be the thing that refuses to ship it again.
  */
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { SERVICE_WORKER_FILENAME } from "../release-assets";
 
 const CLIENT_OUT = "build/client";

@@ -67,6 +67,7 @@ export function LabelPreview({
 
   return (
     <div
+      role="img"
       aria-label="Label preview"
       style={{
         width: WIDTH,

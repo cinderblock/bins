@@ -24,10 +24,10 @@ import { Link } from "react-router";
 import { boxPath, boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import { relativeTime } from "~/lib/format";
 import {
-  SUGGEST_FIELDS,
-  type SuggestionReview,
   fetchSuggestions,
   resolveSuggestion,
+  SUGGEST_FIELDS,
+  type SuggestionReview,
 } from "~/lib/suggestions";
 import { TOUCH_TARGET } from "~/lib/ui";
 

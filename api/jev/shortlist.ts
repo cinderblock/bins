@@ -18,7 +18,7 @@
  */
 import MiniSearch from "minisearch";
 import type { CatalogBin, CatalogData } from "../ai/catalog";
-import { JEV_MIN_CONFIDENCE, askJev } from "./client";
+import { askJev, JEV_MIN_CONFIDENCE } from "./client";
 import { type JevChoiceQuestion, JevUnavailableError } from "./types";
 
 /**

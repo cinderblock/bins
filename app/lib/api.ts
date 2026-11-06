@@ -4,7 +4,7 @@
  * module state after the first read.
  */
 import { recordRequest } from "./breadcrumbs";
-import { REMOTE_LOCKED_KEY, getIdentity, setMeta } from "./db";
+import { getIdentity, REMOTE_LOCKED_KEY, setMeta } from "./db";
 import {
   isServerDownStatus,
   reportServerOk,

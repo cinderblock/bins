@@ -4,7 +4,7 @@
  * carrying a box. Both directions are pinned here.
  */
 import { describe, expect, test } from "bun:test";
-import { type Sample, createShakeDetector } from "./shake";
+import { createShakeDetector, type Sample } from "./shake";
 
 /** Samples at 60 Hz of a sine wave along one axis. */
 function wave(

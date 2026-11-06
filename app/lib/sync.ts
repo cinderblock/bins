@@ -16,11 +16,11 @@ import { applyOp } from "@shared/reducer";
 import { ApiError, apiFetch, apiJson } from "./api";
 import {
   AUTH_DEAD_KEY,
-  LAST_SEQ_KEY,
-  REMOTE_LOCKED_KEY,
   db,
   getIdentity,
   getMeta,
+  LAST_SEQ_KEY,
+  REMOTE_LOCKED_KEY,
   setMeta,
 } from "./db";
 import { flushErrors } from "./errors";

@@ -16,16 +16,17 @@
  * (PUBLIC_BASE_URL, or the request's own origin in dev), which is what
  * binds a passkey to this site.
  */
+
+import type {
+  AuthenticationResponseJSON,
+  AuthenticatorTransport,
+  RegistrationResponseJSON,
+} from "@simplewebauthn/server";
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
-} from "@simplewebauthn/server";
-import type {
-  AuthenticationResponseJSON,
-  AuthenticatorTransport,
-  RegistrationResponseJSON,
 } from "@simplewebauthn/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";

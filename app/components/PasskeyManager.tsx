@@ -8,9 +8,9 @@ import { IconFingerprint, IconTrash } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { relativeTime } from "~/lib/format";
 import {
-  type PasskeyRow,
   defaultPasskeyLabel,
   listPasskeys,
+  type PasskeyRow,
   passkeysSupported,
   registerPasskey,
   removePasskey,

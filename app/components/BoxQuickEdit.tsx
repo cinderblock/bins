@@ -10,7 +10,7 @@
  * places → shelves → slots and still takes a freeform answer for the genuine
  * one-off ("Sam's truck").
  */
-import { Button, Group, Stack, Text, TextInput, Textarea } from "@mantine/core";
+import { Button, Group, Stack, Text, Textarea, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import type { BinState } from "@shared/reducer";
 import { IconMapPin } from "@tabler/icons-react";

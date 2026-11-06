@@ -12,7 +12,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import type { CatalogBin, CatalogData } from "../ai/catalog";
-import { JEV_MIN_CONFIDENCE, askJev, jevAvailable } from "./client";
+import { askJev, JEV_MIN_CONFIDENCE, jevAvailable } from "./client";
 import { verifyFit } from "./fit";
 import { routeIntent } from "./intent";
 import { lexicalShortlist, rankCandidates } from "./shortlist";
@@ -203,9 +203,9 @@ describe("verifyFit", () => {
   test("states fullness explicitly — it is what the answer turns on", async () => {
     stub([noul(0.5)]);
     await verifyFit("x", candidates);
-    expect(String((calls[0]?.body as { state: string }).state)).toContain(
-      "90% full",
-    );
+    expect(
+      String((calls[0]?.body as { state: string } | undefined)?.state),
+    ).toContain("90% full");
   });
 });
 

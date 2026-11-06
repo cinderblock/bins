@@ -13,7 +13,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { sha256Hex } from "../context";
-import { type TextBox, eraseText, findText } from "./detext";
+import { eraseText, findText, type TextBox } from "./detext";
 import { toMonochrome, toSource } from "./mono";
 
 /** Per-image USD cost, so a budget can be enforced before spending it. */

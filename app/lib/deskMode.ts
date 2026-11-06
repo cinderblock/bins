@@ -11,7 +11,7 @@
  * both: phones scanning in a storage unit and laptops sorting afterwards.
  */
 import { useLiveQuery } from "dexie-react-hooks";
-import { NO_CAMERA_KEY, db, getMeta, setMeta } from "./db";
+import { db, getMeta, NO_CAMERA_KEY, setMeta } from "./db";
 
 export async function setDeskMode(on: boolean): Promise<void> {
   if (on) await setMeta(NO_CAMERA_KEY, true);

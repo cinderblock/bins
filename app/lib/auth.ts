@@ -7,9 +7,9 @@
 import { setCachedToken } from "./api";
 import {
   AUTH_DEAD_KEY,
+  getIdentity,
   IDENTITY_KEY,
   type Identity,
-  getIdentity,
   setMeta,
 } from "./db";
 import { setGeoOptIn } from "./geo";

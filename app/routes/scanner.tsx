@@ -39,12 +39,10 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import wasmUrl from "zxing-wasm/reader/zxing_reader.wasm?url";
-import { BinPeek } from "~/components/BinPeek";
 import { BindStickerSheet } from "~/components/BindStickerSheet";
+import { BinPeek } from "~/components/BinPeek";
 import { PutawayBar } from "~/components/PutawayBar";
-import { addPhoto } from "~/lib/actions";
-import { recordSighting } from "~/lib/actions";
-import { setBinLocation } from "~/lib/actions";
+import { addPhoto, recordSighting, setBinLocation } from "~/lib/actions";
 import {
   boxPath,
   boxTitle,
@@ -61,9 +59,9 @@ import {
 import { db, getMeta, setMeta } from "~/lib/db";
 import { setDeskMode } from "~/lib/deskMode";
 import {
-  type ScanTarget,
   binIdFromScan,
   placeCodeFromScan,
+  type ScanTarget,
 } from "~/lib/format";
 import { captureFromVideo } from "~/lib/photos";
 import { findPlaceByCode, usePlaceMap } from "~/lib/places";

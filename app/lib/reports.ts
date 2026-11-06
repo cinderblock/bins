@@ -11,29 +11,29 @@
  * instructions, whoever sent the report.
  */
 import { domToBlob } from "modern-screenshot";
-import { BUILD_SHA, apiFetch, apiJson } from "./api";
+import { apiFetch, apiJson, BUILD_SHA } from "./api";
 import { requestUpdateCheck } from "./appUpdate";
 import { activityTrail, scrub } from "./breadcrumbs";
 import {
   ACCESS_CODE_KEY,
   ADMIN_PASSWORD_KEY,
   AUTH_DEAD_KEY,
+  db,
+  getIdentity,
+  getMeta,
   LAST_SEQ_KEY,
   type QueuedReport,
   REMOTE_LOCKED_KEY,
   REPORTS_TRACKED_KEY,
-  db,
-  getIdentity,
-  getMeta,
   setMeta,
 } from "./db";
 import { DEPLOYMENT_KEY } from "./deployment";
 import { recentErrors } from "./errors";
 import {
   type AgentStatus,
+  reportStep,
   type ServerReport,
   type Tracked,
-  reportStep,
 } from "./reportStep";
 import { syncStatus } from "./sync";
 

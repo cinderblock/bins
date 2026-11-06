@@ -50,14 +50,14 @@ import {
   upsertLabel,
   upsertLocation,
 } from "~/lib/actions";
-import { BUILD_SHA, apiJson } from "~/lib/api";
+import { apiJson, BUILD_SHA } from "~/lib/api";
 import { signBackIn } from "~/lib/auth";
 import {
   AUTH_DEAD_KEY,
-  IDENTITY_KEY,
-  type Identity,
   db,
   getMeta,
+  IDENTITY_KEY,
+  type Identity,
   resetLocalData,
   setMeta,
 } from "~/lib/db";
@@ -77,9 +77,9 @@ import { inviteLink, rememberAccessCode, useAccessCode } from "~/lib/invite";
 import { LABEL_COLORS, labelColor, nextLabelColor } from "~/lib/labels";
 import {
   DEFAULT_PHOTO_RETENTION,
+  getPhotoRetention,
   type PhotoRetention,
   type PrefetchProgress,
-  getPhotoRetention,
   prefetchAllPhotos,
   setPhotoRetention,
 } from "~/lib/photos";
