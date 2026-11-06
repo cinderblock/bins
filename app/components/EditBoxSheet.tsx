@@ -17,8 +17,8 @@ import {
   SegmentedControl,
   Stack,
   Text,
-  TextInput,
   Textarea,
+  TextInput,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import type { SuggestFields } from "@shared/ops";

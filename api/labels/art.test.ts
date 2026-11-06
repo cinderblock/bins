@@ -7,8 +7,8 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import sharp from "sharp";
 import {
-  ART_VARIANTS,
   ART_VARIANT_KEYS,
+  ART_VARIANTS,
   ArtBudgetError,
   ArtInputError,
   ArtUnavailableError,

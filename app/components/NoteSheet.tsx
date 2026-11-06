@@ -54,6 +54,7 @@ export function NoteSheet({
   const baseRef = useRef("");
   const [micAvailable, setMicAvailable] = useState(false);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: run only when the sheet opens/closes
   useEffect(() => {
     if (opened) setMicAvailable(speechRecognition() !== null);
     else stopListening();

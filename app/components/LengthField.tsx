@@ -9,9 +9,9 @@
 import { TextInput } from "@mantine/core";
 import { useEffect, useState } from "react";
 import {
+  formatLength,
   GRID_SQUARE_MM,
   type LengthUnit,
-  formatLength,
   parseLength,
 } from "~/lib/lengths";
 

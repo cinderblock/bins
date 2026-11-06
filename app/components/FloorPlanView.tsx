@@ -31,19 +31,19 @@ import {
   Switch,
   Text,
   TextInput,
+  useComputedColorScheme,
 } from "@mantine/core";
-import { useComputedColorScheme } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import {
+  childrenIn,
+  defaultFootprint,
   LANDMARK_DEFAULTS,
   LANDMARK_KINDS,
   type LandmarkKind,
-  MIN_LENGTH_MM,
-  type Point,
-  childrenIn,
-  defaultFootprint,
   landmarkKind,
+  MIN_LENGTH_MM,
   normalizeAngle,
+  type Point,
   planBounds,
   rectOutline,
   sanitizeLayout,
@@ -83,20 +83,20 @@ import { setPlaceLayout, setPlacePlan } from "~/lib/actions";
 import { useAdminPassword } from "~/lib/admin";
 import { boxTitle, useBoxNumbersInternal } from "~/lib/boxRef";
 import {
+  buildScene,
   FULLNESS_LEGEND,
   FULLNESS_RAMP,
+  fullnessClass,
+  mapTargetFor,
   OVER_COLOR,
   type PlanData,
   type SceneItem,
-  buildScene,
-  fullnessClass,
-  mapTargetFor,
   usePlanData,
 } from "~/lib/floorplan";
 import {
-  type LengthUnit,
   getLengthUnit,
   gridLineStep,
+  type LengthUnit,
   setLengthUnit,
   snapStep,
 } from "~/lib/lengths";

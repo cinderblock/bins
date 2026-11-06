@@ -23,7 +23,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router";
 import { adoptIdentity } from "~/lib/auth";
-import { IDENTITY_KEY, type Identity, db } from "~/lib/db";
+import { db, IDENTITY_KEY, type Identity } from "~/lib/db";
 import { refreshDeployment } from "~/lib/deployment";
 import { rememberAccessCode } from "~/lib/invite";
 

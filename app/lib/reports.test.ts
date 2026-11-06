@@ -3,7 +3,7 @@
  * "fixed" on a build that doesn't have the fix yet.
  */
 import { describe, expect, test } from "bun:test";
-import { type ServerReport, reportStep } from "./reportStep";
+import { reportStep, type ServerReport } from "./reportStep";
 
 const report = (over: Partial<ServerReport>): ServerReport => ({
   id: "a",

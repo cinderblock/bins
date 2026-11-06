@@ -54,7 +54,7 @@ import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { recordSighting } from "~/lib/actions";
 import { useAdminPassword } from "~/lib/admin";
 import { useAuthors } from "~/lib/authors";
-import { HANDLE_RE, boxTitle, normalizeHandle } from "~/lib/boxRef";
+import { boxTitle, HANDLE_RE, normalizeHandle } from "~/lib/boxRef";
 import { useBoxSizes } from "~/lib/boxSizes";
 import { db } from "~/lib/db";
 import { useDeployment } from "~/lib/deployment";

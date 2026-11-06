@@ -15,15 +15,15 @@ import { IconMessageReport, IconX } from "@tabler/icons-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BUILD_SHA } from "~/lib/api";
-import { REPORT_TAB_HIDDEN_KEY, SHAKE_KEY, db } from "~/lib/db";
+import { db, REPORT_TAB_HIDDEN_KEY, SHAKE_KEY } from "~/lib/db";
 import {
-  type PageContext,
-  REPORT_EVENT,
   capturePageContext,
   captureScreenshot,
   completeContext,
   followReports,
   onSensitivePage,
+  type PageContext,
+  REPORT_EVENT,
   submitReport,
 } from "~/lib/reports";
 import { requestShakePermission, shakeSupport, watchShake } from "~/lib/shake";

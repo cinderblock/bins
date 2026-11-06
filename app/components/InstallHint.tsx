@@ -7,7 +7,7 @@ import { Button, Group, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
-import { INSTALL_HINT_KEY, getMeta, setMeta } from "~/lib/db";
+import { getMeta, INSTALL_HINT_KEY, setMeta } from "~/lib/db";
 import { canPromptInstall, isStandalone, promptInstall } from "~/lib/install";
 
 export function InstallHint() {

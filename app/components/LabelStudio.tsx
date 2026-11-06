@@ -37,8 +37,8 @@ import {
   Slider,
   Stack,
   Text,
-  TextInput,
   Textarea,
+  TextInput,
   UnstyledButton,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
@@ -70,13 +70,13 @@ import { useDeployment } from "~/lib/deployment";
 import {
   type ArtReference,
   type ArtStatus,
-  type DarknessRange,
-  type LabelDrawing,
   cutLabelDrawing,
+  type DarknessRange,
   fetchArtStatus,
   fetchLabelDrawings,
   formatUsd,
   generateLabelArt,
+  type LabelDrawing,
   makeReference,
   previewCut,
   removeLabelDrawing,

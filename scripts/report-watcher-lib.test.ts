@@ -4,16 +4,16 @@
  */
 import { describe, expect, test } from "bun:test";
 import {
-  DEFAULT_TIMINGS,
-  MEMBER_ALLOWED_TOOLS,
-  type WatchedReport,
   agentPrompt,
+  DEFAULT_TIMINGS,
   denyListHits,
   estimate,
+  MEMBER_ALLOWED_TOOLS,
   memberDiffProblems,
   parseDiff,
   reviewPrompt,
   updateTiming,
+  type WatchedReport,
 } from "./report-watcher-lib";
 
 const diffOf = (file: string, added: string[]) =>

@@ -30,7 +30,7 @@ import {
   Text,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
-import { type EntryState, describedItems } from "@shared/reducer";
+import { describedItems, type EntryState } from "@shared/reducer";
 import {
   IconChevronLeft,
   IconChevronRight,

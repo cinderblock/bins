@@ -13,13 +13,13 @@
  */
 import { describe, expect, test } from "bun:test";
 import {
+  buildCatalogLayers,
   type CatalogBin,
   type CatalogData,
   type CatalogOp,
   type CatalogSource,
-  MAX_TAIL_OPS,
-  buildCatalogLayers,
   forgetSnapshot,
+  MAX_TAIL_OPS,
 } from "./catalog";
 import type { AiLayer } from "./types";
 

@@ -5,7 +5,6 @@
  */
 import { describe, expect, test } from "bun:test";
 import {
-  type PlanNode,
   activeLayout,
   baySegments,
   defaultFootprint,
@@ -14,6 +13,7 @@ import {
   indexChildren,
   mapTarget,
   normalizeAngle,
+  type PlanNode,
   planBounds,
   planKind,
   polygonArea,

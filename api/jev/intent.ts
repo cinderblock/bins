@@ -10,7 +10,7 @@
  * while holding a drill: "sharpies", "extension cords", "putting away paint
  * rollers". The wording below was tested against exactly those.
  */
-import { JEV_MIN_CONFIDENCE, askJev } from "./client";
+import { askJev, JEV_MIN_CONFIDENCE } from "./client";
 import { type JevChoiceQuestion, JevUnavailableError } from "./types";
 
 const QUESTION: JevChoiceQuestion = {

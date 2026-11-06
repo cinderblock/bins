@@ -15,7 +15,7 @@ import { handleBlob } from "./blobs";
  * (dev, TCP) and server.ts (production, unix socket).
  */
 import { isRemote } from "./config";
-import { type Ctx, authenticate, canWrite, error, json } from "./context";
+import { authenticate, type Ctx, canWrite, error, json } from "./context";
 import { handlePreflight, isCorsPath, withCors } from "./cors";
 import { handleErrorReport } from "./errors";
 import { handleLanding } from "./landing";

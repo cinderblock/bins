@@ -17,8 +17,8 @@ import { db, schema } from "../db/client.server";
 import { readBlob, storeBlob } from "./blobs";
 import { type Ctx, error, json } from "./context";
 import {
-  ART_VARIANTS,
   ART_VARIANT_KEYS,
+  ART_VARIANTS,
   ArtBudgetError,
   ArtInputError,
   ArtUnavailableError,
@@ -27,10 +27,10 @@ import {
   generateArtPng,
 } from "./labels/art";
 import {
+  clampThreshold,
   DEFAULT_THRESHOLD,
   MAX_THRESHOLD,
   MIN_THRESHOLD,
-  clampThreshold,
   toMonochrome,
 } from "./labels/mono";
 

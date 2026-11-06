@@ -18,7 +18,7 @@ import { InlineCreate } from "~/components/InlineCreate";
 import { ResponsiveSheet } from "~/components/ResponsiveSheet";
 import { upsertLocation } from "~/lib/actions";
 import { placeCodeKey } from "~/lib/format";
-import { type PlaceMap, codeOwners, createPlace } from "~/lib/places";
+import { codeOwners, createPlace, type PlaceMap } from "~/lib/places";
 
 export function BindStickerSheet({
   code,

@@ -16,9 +16,9 @@
  */
 import {
   Children,
+  isValidElement,
   type ReactElement,
   type ReactNode,
-  isValidElement,
 } from "react";
 import { CARD_MINW } from "~/lib/ui";
 

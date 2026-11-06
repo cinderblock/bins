@@ -6,12 +6,12 @@
  */
 import { describe, expect, test } from "bun:test";
 import {
-  type LocationNode,
-  MAX_LOCATION_DEPTH,
   hasCycle,
+  type LocationNode,
   locationGeometry,
   locationLabel,
   locationPath,
+  MAX_LOCATION_DEPTH,
   slotCapacity,
   slotName,
   slotNames,
