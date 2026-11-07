@@ -24,8 +24,7 @@
     "paths": {
       "~/*": ["./app/*"],
       "@shared/*": ["./shared/*"]
-    },
-    "baseUrl": "."
+    }
   },
   "include": [
     "db/**/*.ts",
