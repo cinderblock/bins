@@ -1,7 +1,9 @@
 import {
   ColorSchemeScript,
+  createTheme,
   MantineProvider,
   mantineHtmlProps,
+  v8CssVariablesResolver,
 } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
 import {
@@ -113,6 +115,10 @@ const bootWatchdogJs = `
 })();
 `;
 
+// Mantine 9 changed two visual defaults; keep the 8.x look: 4px radius
+// (9 defaults to 8px) and translucent `light` variants (via the resolver).
+const theme = createTheme({ defaultRadius: "sm" });
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" {...mantineHtmlProps}>
@@ -143,7 +149,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: bootWatchdogJs }} />
       </head>
       <body>
-        <MantineProvider defaultColorScheme="dark">
+        <MantineProvider
+          defaultColorScheme="dark"
+          theme={theme}
+          cssVariablesResolver={v8CssVariablesResolver}
+        >
           {/* Bottom-center: toasts land in the thumb/glance zone, confirming
               fast-flow actions ("Photo saved") without reaching — but lifted
               clear of the fixed bottom controls they'd otherwise cover.
@@ -165,6 +175,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             position="bottom-center"
             style={{ top: "auto", bottom: TOAST_BOTTOM, pointerEvents: "none" }}
             styles={{ notification: { pointerEvents: "auto" } }}
+            pauseResetOnHover="notification"
           />
           <PwaUpdatePrompt />
           <StaleBuildBanner />
