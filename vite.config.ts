@@ -31,6 +31,10 @@ export default defineConfig({
       registerType: "prompt",
       // Not vite-plugin-pwa's default `sw.js` — see SERVICE_WORKER_FILENAME.
       filename: SERVICE_WORKER_FILENAME,
+      // React Router 8 sets the client bundle's outDir per Vite environment;
+      // the plugin only sees the top-level `build.outDir` (Vite's default
+      // `dist`), so without this the worker lands outside the served build.
+      outDir: "build/client",
       // Registration + head links are hand-rolled (app/root.tsx) because the
       // SPA-mode index.html is prerendered by React, not vite's HTML pipeline.
       injectRegister: false,
