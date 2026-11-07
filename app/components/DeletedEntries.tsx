@@ -51,7 +51,7 @@ export function DeletedEntries({
         </Button>
       </Group>
 
-      <Collapse in={open}>
+      <Collapse expanded={open}>
         <Stack gap="xs">
           <Text size="xs" c="dimmed">
             Deleted photos and notes are kept, not erased. Restoring one brings
